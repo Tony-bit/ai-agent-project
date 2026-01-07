@@ -16,9 +16,6 @@ spring:
       embedding-model: deepseek-embedding  # DeepSeek 的嵌入模型
       chat:
         model: deepseek-chat
-    # 禁用 OpenAI 自动配置（如果不需要使用 OpenAI）
-    rag:
-      embed: nomic-embed-text #nomic-embed-text、text-embedding-ada-002
   datasource:
     driver-class-name: org.postgresql.Driver
     username: postgres
