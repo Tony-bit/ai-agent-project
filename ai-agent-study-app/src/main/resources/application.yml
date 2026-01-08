@@ -10,7 +10,7 @@ spring:
           num-batch: 512
         model: nomic-embed-text
     # 添加 DeepSeek 配置
-    deepseek:
+    openai:
       base-url: https://api.deepseek.com/
       api-key: sk-a0df0f93a5ac475e8c73c6e3495cfc05
       embedding-model: deepseek-embedding  # DeepSeek 的嵌入模型
