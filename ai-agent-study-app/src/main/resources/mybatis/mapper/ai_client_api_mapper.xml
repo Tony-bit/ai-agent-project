@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiClientApiDao">
+
+    <resultMap id="AiClientApiMap" type="denny.ai.agent.infrastructure.dao.po.AiClientApiPO">
+        <id column="id" property="id"/>
+        <result column="api_id" property="apiId"/>
+        <result column="base_url" property="baseUrl"/>
+        <result column="api_key" property="apiKey"/>
+        <result column="completions_path" property="completionsPath"/>
+        <result column="embeddings_path" property="embeddingsPath"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientApiPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_api (api_id, base_url, api_key, completions_path, embeddings_path, status, create_time, update_time)
+        VALUES (#{apiId}, #{baseUrl}, #{apiKey}, #{completionsPath}, #{embeddingsPath}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientApiPO">
+        UPDATE ai_client_api
+        <set>
+            <if test="apiId != null">api_id = #{apiId},</if>
+            <if test="baseUrl != null">base_url = #{baseUrl},</if>
+            <if test="apiKey != null">api_key = #{apiKey},</if>
+            <if test="completionsPath != null">completions_path = #{completionsPath},</if>
+            <if test="embeddingsPath != null">embeddings_path = #{embeddingsPath},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientApiMap">
+        SELECT id, api_id, base_url, api_key, completions_path, embeddings_path, status, create_time, update_time
+        FROM ai_client_api
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByApiId" parameterType="java.lang.String" resultMap="AiClientApiMap">
+        SELECT id, api_id, base_url, api_key, completions_path, embeddings_path, status, create_time, update_time
+        FROM ai_client_api
+        WHERE api_id = #{apiId}
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientApiPO" resultMap="AiClientApiMap">
+        SELECT id, api_id, base_url, api_key, completions_path, embeddings_path, status, create_time, update_time
+        FROM ai_client_api
+        <where>
+            <if test="apiId != null and apiId != ''">AND api_id = #{apiId}</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_api WHERE id = #{id}
+    </delete>
+
+</mapper>
+

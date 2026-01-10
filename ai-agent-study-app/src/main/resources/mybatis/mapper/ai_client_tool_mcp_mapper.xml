@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiClientToolMcpDao">
+
+    <resultMap id="AiClientToolMcpMap" type="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO">
+        <id column="id" property="id"/>
+        <result column="mcp_id" property="mcpId"/>
+        <result column="mcp_name" property="mcpName"/>
+        <result column="transport_type" property="transportType"/>
+        <result column="transport_config" property="transportConfig"/>
+        <result column="request_timeout" property="requestTimeout"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_tool_mcp (mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time)
+        VALUES (#{mcpId}, #{mcpName}, #{transportType}, #{transportConfig}, #{requestTimeout}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO">
+        UPDATE ai_client_tool_mcp
+        <set>
+            <if test="mcpId != null">mcp_id = #{mcpId},</if>
+            <if test="mcpName != null">mcp_name = #{mcpName},</if>
+            <if test="transportType != null">transport_type = #{transportType},</if>
+            <if test="transportConfig != null">transport_config = #{transportConfig},</if>
+            <if test="requestTimeout != null">request_timeout = #{requestTimeout},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByMcpId" parameterType="java.lang.String" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        WHERE mcp_id = #{mcpId}
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        <where>
+            <if test="mcpId != null and mcpId != ''">AND mcp_id = #{mcpId}</if>
+            <if test="mcpName != null and mcpName != ''">AND mcp_name LIKE CONCAT('%', #{mcpName}, '%')</if>
+            <if test="transportType != null and transportType != ''">AND transport_type = #{transportType}</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_tool_mcp WHERE id = #{id}
+    </delete>
+
+</mapper>
+

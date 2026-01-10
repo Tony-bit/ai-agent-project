@@ -1,0 +1,22 @@
+package denny.ai.agent.domain.xxx.service.armory.factory;
+
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.xxx.model.entity.ArmoryCommandEntity;
+import denny.ai.agent.domain.xxx.service.armory.RootNode;
+import org.springframework.stereotype.Service;
+
+/**
+ * 工厂类
+ */
+@Service
+public class DefaultArmoryStrategyFactory {
+    private final RootNode rootNode;
+
+    public DefaultArmoryStrategyFactory(RootNode rootNode) {
+        this.rootNode = rootNode;
+    }
+
+    public StrategyHandler<ArmoryCommandEntity, DynamicContext, String> armoryStrategyHandler(){
+        return rootNode;
+    }
+}

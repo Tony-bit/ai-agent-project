@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiClientSystemPromptDao">
+
+    <resultMap id="AiClientSystemPromptMap" type="denny.ai.agent.infrastructure.dao.po.AiClientSystemPromptPO">
+        <id column="id" property="id"/>
+        <result column="prompt_id" property="promptId"/>
+        <result column="prompt_name" property="promptName"/>
+        <result column="prompt_content" property="promptContent"/>
+        <result column="description" property="description"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientSystemPromptPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_system_prompt (prompt_id, prompt_name, prompt_content, description, status, create_time, update_time)
+        VALUES (#{promptId}, #{promptName}, #{promptContent}, #{description}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientSystemPromptPO">
+        UPDATE ai_client_system_prompt
+        <set>
+            <if test="promptId != null">prompt_id = #{promptId},</if>
+            <if test="promptName != null">prompt_name = #{promptName},</if>
+            <if test="promptContent != null">prompt_content = #{promptContent},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientSystemPromptMap">
+        SELECT id, prompt_id, prompt_name, prompt_content, description, status, create_time, update_time
+        FROM ai_client_system_prompt
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByPromptId" parameterType="java.lang.String" resultMap="AiClientSystemPromptMap">
+        SELECT id, prompt_id, prompt_name, prompt_content, description, status, create_time, update_time
+        FROM ai_client_system_prompt
+        WHERE prompt_id = #{promptId}
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientSystemPromptPO" resultMap="AiClientSystemPromptMap">
+        SELECT id, prompt_id, prompt_name, prompt_content, description, status, create_time, update_time
+        FROM ai_client_system_prompt
+        <where>
+            <if test="promptId != null and promptId != ''">AND prompt_id = #{promptId}</if>
+            <if test="promptName != null and promptName != ''">AND prompt_name LIKE CONCAT('%', #{promptName}, '%')</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_system_prompt WHERE id = #{id}
+    </delete>
+
+</mapper>
+

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiClientConfigDao">
+
+    <resultMap id="AiClientConfigMap" type="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO">
+        <id column="id" property="id"/>
+        <result column="source_type" property="sourceType"/>
+        <result column="source_id" property="sourceId"/>
+        <result column="target_type" property="targetType"/>
+        <result column="target_id" property="targetId"/>
+        <result column="ext_param" property="extParam"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_client_config (source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time)
+        VALUES (#{sourceType}, #{sourceId}, #{targetType}, #{targetId}, #{extParam}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO">
+        UPDATE ai_client_config
+        <set>
+            <if test="sourceType != null">source_type = #{sourceType},</if>
+            <if test="sourceId != null">source_id = #{sourceId},</if>
+            <if test="targetType != null">target_type = #{targetType},</if>
+            <if test="targetId != null">target_id = #{targetId},</if>
+            <if test="extParam != null">ext_param = #{extParam},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientConfigMap">
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        FROM ai_client_config
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryBySourceId" parameterType="java.lang.String" resultMap="AiClientConfigMap">
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        FROM ai_client_config
+        WHERE source_id = #{sourceId} AND status = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryByTargetId" parameterType="java.lang.String" resultMap="AiClientConfigMap">
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        FROM ai_client_config
+        WHERE target_id = #{targetId} AND status = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO" resultMap="AiClientConfigMap">
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        FROM ai_client_config
+        <where>
+            <if test="sourceType != null and sourceType != ''">AND source_type = #{sourceType}</if>
+            <if test="sourceId != null and sourceId != ''">AND source_id = #{sourceId}</if>
+            <if test="targetType != null and targetType != ''">AND target_type = #{targetType}</if>
+            <if test="targetId != null and targetId != ''">AND target_id = #{targetId}</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_config WHERE id = #{id}
+    </delete>
+
+</mapper>
+

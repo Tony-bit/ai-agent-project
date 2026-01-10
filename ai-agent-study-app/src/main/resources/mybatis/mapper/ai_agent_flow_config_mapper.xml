@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiAgentFlowConfigDao">
+
+    <resultMap id="AiAgentFlowConfigMap" type="denny.ai.agent.infrastructure.dao.po.AiAgentFlowConfigPO">
+        <id column="id" property="id"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="client_id" property="clientId"/>
+        <result column="sequence" property="sequence"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentFlowConfigPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_flow_config (agent_id, client_id, sequence, create_time)
+        VALUES (#{agentId}, #{clientId}, #{sequence}, #{createTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentFlowConfigPO">
+        UPDATE ai_agent_flow_config
+        <set>
+            <if test="agentId != null">agent_id = #{agentId},</if>
+            <if test="clientId != null">client_id = #{clientId},</if>
+            <if test="sequence != null">sequence = #{sequence},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiAgentFlowConfigMap">
+        SELECT id, agent_id, client_id, sequence, create_time
+        FROM ai_agent_flow_config
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByAgentId" parameterType="java.lang.Long" resultMap="AiAgentFlowConfigMap">
+        SELECT id, agent_id, client_id, sequence, create_time
+        FROM ai_agent_flow_config
+        WHERE agent_id = #{agentId}
+        ORDER BY sequence ASC
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentFlowConfigPO" resultMap="AiAgentFlowConfigMap">
+        SELECT id, agent_id, client_id, sequence, create_time
+        FROM ai_agent_flow_config
+        <where>
+            <if test="agentId != null">AND agent_id = #{agentId}</if>
+            <if test="clientId != null">AND client_id = #{clientId}</if>
+        </where>
+        ORDER BY sequence ASC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_agent_flow_config WHERE id = #{id}
+    </delete>
+
+</mapper>
+

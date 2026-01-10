@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAiAgentTaskScheduleDao">
+
+    <resultMap id="AiAgentTaskScheduleMap" type="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO">
+        <id column="id" property="id"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="task_name" property="taskName"/>
+        <result column="description" property="description"/>
+        <result column="cron_expression" property="cronExpression"/>
+        <result column="task_param" property="taskParam"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_task_schedule (agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time)
+        VALUES (#{agentId}, #{taskName}, #{description}, #{cronExpression}, #{taskParam}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO">
+        UPDATE ai_agent_task_schedule
+        <set>
+            <if test="agentId != null">agent_id = #{agentId},</if>
+            <if test="taskName != null">task_name = #{taskName},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="cronExpression != null">cron_expression = #{cronExpression},</if>
+            <if test="taskParam != null">task_param = #{taskParam},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AiAgentTaskScheduleMap">
+        SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        FROM ai_agent_task_schedule
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByAgentId" parameterType="java.lang.Long" resultMap="AiAgentTaskScheduleMap">
+        SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        FROM ai_agent_task_schedule
+        WHERE agent_id = #{agentId} AND status = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO" resultMap="AiAgentTaskScheduleMap">
+        SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        FROM ai_agent_task_schedule
+        <where>
+            <if test="agentId != null">AND agent_id = #{agentId}</if>
+            <if test="taskName != null and taskName != ''">AND task_name LIKE CONCAT('%', #{taskName}, '%')</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_agent_task_schedule WHERE id = #{id}
+    </delete>
+
+</mapper>
+
