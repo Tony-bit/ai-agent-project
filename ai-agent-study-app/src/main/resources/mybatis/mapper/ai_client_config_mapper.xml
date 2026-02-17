@@ -53,6 +53,12 @@
         ORDER BY create_time DESC
     </select>
 
+    <select id="queryBySourceTypeAndId" resultMap="AiClientConfigMap">
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        FROM ai_client_config
+        WHERE source_type = #{sourceType} AND source_id = #{sourceId}
+    </select>
+
     <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO" resultMap="AiClientConfigMap">
         SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
         FROM ai_client_config

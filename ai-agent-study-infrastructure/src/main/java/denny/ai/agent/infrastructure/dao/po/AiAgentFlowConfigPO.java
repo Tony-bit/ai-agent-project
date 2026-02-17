@@ -17,17 +17,32 @@ public class AiAgentFlowConfigPO {
     /**
      * 智能体ID
      */
-    private Long agentId;
+    private String agentId;
 
     /**
      * 客户端ID
      */
-    private Long clientId;
+    private String clientId;
+
+    /**
+     * 客户端名称
+     */
+    private String clientName;
+
+    /**
+     * 客户端枚举
+     */
+    private String clientType;
 
     /**
      * 序列号(执行顺序)
      */
     private Integer sequence;
+
+    /**
+     * 执行步骤提示词
+     */
+    private String stepPrompt;
 
     /**
      * 创建时间

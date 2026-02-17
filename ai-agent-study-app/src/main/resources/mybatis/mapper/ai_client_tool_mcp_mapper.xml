@@ -15,23 +15,43 @@
     </resultMap>
 
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_client_tool_mcp (mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time)
-        VALUES (#{mcpId}, #{mcpName}, #{transportType}, #{transportConfig}, #{requestTimeout}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO ai_client_tool_mcp (
+        mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        ) VALUES (
+        #{mcpId}, #{mcpName}, #{transportType}, #{transportConfig}, #{requestTimeout}, #{status}, #{createTime}, #{updateTime}
+        )
     </insert>
 
-    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO">
-        UPDATE ai_client_tool_mcp
-        <set>
-            <if test="mcpId != null">mcp_id = #{mcpId},</if>
-            <if test="mcpName != null">mcp_name = #{mcpName},</if>
-            <if test="transportType != null">transport_type = #{transportType},</if>
-            <if test="transportConfig != null">transport_config = #{transportConfig},</if>
-            <if test="requestTimeout != null">request_timeout = #{requestTimeout},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="updateTime != null">update_time = #{updateTime},</if>
-        </set>
+    <update id="updateById" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO">
+        UPDATE ai_client_tool_mcp SET
+        mcp_id = #{mcpId},
+        mcp_name = #{mcpName},
+        transport_type = #{transportType},
+        transport_config = #{transportConfig},
+        request_timeout = #{requestTimeout},
+        status = #{status},
+        update_time = #{updateTime}
         WHERE id = #{id}
     </update>
+
+    <update id="updateByMcpId" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO">
+        UPDATE ai_client_tool_mcp SET
+        mcp_name = #{mcpName},
+        transport_type = #{transportType},
+        transport_config = #{transportConfig},
+        request_timeout = #{requestTimeout},
+        status = #{status},
+        update_time = #{updateTime}
+        WHERE mcp_id = #{mcpId}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_tool_mcp WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByMcpId" parameterType="java.lang.String">
+        DELETE FROM ai_client_tool_mcp WHERE mcp_id = #{mcpId}
+    </delete>
 
     <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientToolMcpMap">
         SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
@@ -45,21 +65,31 @@
         WHERE mcp_id = #{mcpId}
     </select>
 
-    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientToolMcpPO" resultMap="AiClientToolMcpMap">
+    <select id="queryAll" resultMap="AiClientToolMcpMap">
         SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
         FROM ai_client_tool_mcp
-        <where>
-            <if test="mcpId != null and mcpId != ''">AND mcp_id = #{mcpId}</if>
-            <if test="mcpName != null and mcpName != ''">AND mcp_name LIKE CONCAT('%', #{mcpName}, '%')</if>
-            <if test="transportType != null and transportType != ''">AND transport_type = #{transportType}</if>
-            <if test="status != null">AND status = #{status}</if>
-        </where>
         ORDER BY create_time DESC
     </select>
 
-    <delete id="deleteById" parameterType="java.lang.Long">
-        DELETE FROM ai_client_tool_mcp WHERE id = #{id}
-    </delete>
+    <select id="queryByStatus" parameterType="java.lang.Integer" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        WHERE status = #{status}
+        ORDER BY create_time DESC
+    </select>
 
+    <select id="queryByTransportType" parameterType="java.lang.String" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        WHERE transport_type = #{transportType}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryEnabledMcps" resultMap="AiClientToolMcpMap">
+        SELECT id, mcp_id, mcp_name, transport_type, transport_config, request_timeout, status, create_time, update_time
+        FROM ai_client_tool_mcp
+        WHERE status = 1
+        ORDER BY create_time DESC
+    </select>
 </mapper>
 

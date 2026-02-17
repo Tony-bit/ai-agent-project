@@ -224,7 +224,7 @@ public class AiAgentTest {
                                 .build())
                 )
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("gpt-4.1")
+                        .model("deepseek-chat")
                         .build())
                 .build();
 
@@ -261,7 +261,7 @@ public class AiAgentTest {
                         new SimpleLoggerAdvisor()
                 )
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("gpt-4.1")
+                        .model("deepseek-chat")
                         .build())
                 .build();
 

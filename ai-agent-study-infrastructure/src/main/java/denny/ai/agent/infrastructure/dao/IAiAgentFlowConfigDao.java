@@ -1,6 +1,7 @@
 package denny.ai.agent.infrastructure.dao;
 
 import denny.ai.agent.infrastructure.dao.po.AiAgentFlowConfigPO;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -8,36 +9,70 @@ import java.util.List;
 /**
  * 智能体-客户端关联表 DAO
  */
+@Mapper
 public interface IAiAgentFlowConfigDao {
 
     /**
-     * 插入
+     * 插入智能体-客户端关联配置
+     * @param AiAgentFlowConfigPO 智能体-客户端关联配置对象
+     * @return 影响行数
      */
-    int insert(AiAgentFlowConfigPO po);
+    int insert(AiAgentFlowConfigPO AiAgentFlowConfigPO);
 
     /**
-     * 更新
+     * 根据ID更新智能体-客户端关联配置
+     * @param AiAgentFlowConfigPO 智能体-客户端关联配置对象
+     * @return 影响行数
      */
-    int update(AiAgentFlowConfigPO po);
+    int updateById(AiAgentFlowConfigPO AiAgentFlowConfigPO);
 
     /**
-     * 根据ID查询
+     * 根据ID删除智能体-客户端关联配置
+     * @param id 主键ID
+     * @return 影响行数
      */
-    AiAgentFlowConfigPO queryById(@Param("id") Long id);
+    int deleteById(String id);
 
     /**
-     * 根据agentId查询列表
+     * 根据智能体ID删除关联配置
+     * @param agentId 智能体ID
+     * @return 影响行数
      */
-    List<AiAgentFlowConfigPO> queryByAgentId(@Param("agentId") Long agentId);
+    int deleteByAgentId(Long agentId);
 
     /**
-     * 查询列表
+     * 根据ID查询智能体-客户端关联配置
+     * @param id 主键ID
+     * @return 智能体-客户端关联配置对象
      */
-    List<AiAgentFlowConfigPO> queryList(AiAgentFlowConfigPO po);
+    AiAgentFlowConfigPO queryById(String id);
 
     /**
-     * 根据ID删除
+     * 根据智能体ID查询关联配置列表
+     * @param agentId 智能体ID
+     * @return 智能体-客户端关联配置列表
      */
-    int deleteById(@Param("id") Long id);
+    List<AiAgentFlowConfigPO> queryByAgentId(String agentId);
+
+    /**
+     * 根据客户端ID查询关联配置列表
+     * @param clientId 客户端ID
+     * @return 智能体-客户端关联配置列表
+     */
+    List<AiAgentFlowConfigPO> queryByClientId(String clientId);
+
+    /**
+     * 根据智能体ID和客户端ID查询关联配置
+     * @param agentId 智能体ID
+     * @param clientId 客户端ID
+     * @return 智能体-客户端关联配置对象
+     */
+    AiAgentFlowConfigPO queryByAgentIdAndClientId(String agentId, String clientId);
+
+    /**
+     * 查询所有智能体-客户端关联配置
+     * @return 智能体-客户端关联配置列表
+     */
+    List<AiAgentFlowConfigPO> queryAll();
 }
 

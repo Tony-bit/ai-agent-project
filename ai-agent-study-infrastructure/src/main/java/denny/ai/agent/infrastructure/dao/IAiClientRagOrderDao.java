@@ -1,6 +1,7 @@
 package denny.ai.agent.infrastructure.dao;
 
 import denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -8,36 +9,75 @@ import java.util.List;
 /**
  * 知识库配置表 DAO
  */
+@Mapper
 public interface IAiClientRagOrderDao {
 
     /**
-     * 插入
+     * 插入知识库配置
+     * @param AiClientRagOrderPO 知识库配置对象
+     * @return 影响行数
      */
-    int insert(AiClientRagOrderPO po);
+    int insert(AiClientRagOrderPO AiClientRagOrderPO);
 
     /**
-     * 更新
+     * 根据ID更新知识库配置
+     * @param AiClientRagOrderPO 知识库配置对象
+     * @return 影响行数
      */
-    int update(AiClientRagOrderPO po);
+    int updateById(AiClientRagOrderPO AiClientRagOrderPO);
 
     /**
-     * 根据ID查询
+     * 根据知识库ID更新知识库配置
+     * @param AiClientRagOrderPO 知识库配置对象
+     * @return 影响行数
      */
-    AiClientRagOrderPO queryById(@Param("id") Long id);
+    int updateByRagId(AiClientRagOrderPO AiClientRagOrderPO);
 
     /**
-     * 根据ragId查询
+     * 根据ID删除知识库配置
+     * @param id 主键ID
+     * @return 影响行数
      */
-    AiClientRagOrderPO queryByRagId(@Param("ragId") String ragId);
+    int deleteById(Long id);
 
     /**
-     * 查询列表
+     * 根据知识库ID删除知识库配置
+     * @param ragId 知识库ID
+     * @return 影响行数
      */
-    List<AiClientRagOrderPO> queryList(AiClientRagOrderPO po);
+    int deleteByRagId(String ragId);
 
     /**
-     * 根据ID删除
+     * 根据ID查询知识库配置
+     * @param id 主键ID
+     * @return 知识库配置对象
      */
-    int deleteById(@Param("id") Long id);
+    AiClientRagOrderPO queryById(Long id);
+
+    /**
+     * 根据知识库ID查询知识库配置
+     * @param ragId 知识库ID
+     * @return 知识库配置对象
+     */
+    AiClientRagOrderPO queryByRagId(String ragId);
+
+    /**
+     * 查询启用的知识库配置
+     * @return 知识库配置列表
+     */
+    List<AiClientRagOrderPO> queryEnabledRagOrders();
+
+    /**
+     * 根据知识标签查询知识库配置
+     * @param knowledgeTag 知识标签
+     * @return 知识库配置列表
+     */
+    List<AiClientRagOrderPO> queryByKnowledgeTag(String knowledgeTag);
+
+    /**
+     * 查询所有知识库配置
+     * @return 知识库配置列表
+     */
+    List<AiClientRagOrderPO> queryAll();
 }
 

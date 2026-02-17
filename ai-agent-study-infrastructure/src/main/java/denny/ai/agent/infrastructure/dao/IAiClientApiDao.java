@@ -1,6 +1,7 @@
 package denny.ai.agent.infrastructure.dao;
 
 import denny.ai.agent.infrastructure.dao.po.AiClientApiPO;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -8,36 +9,68 @@ import java.util.List;
 /**
  * OpenAI API配置表 DAO
  */
+@Mapper
 public interface IAiClientApiDao {
 
     /**
-     * 插入
+     * 插入AI客户端API配置
+     * @param AiClientApiPO AI客户端API配置对象
+     * @return 影响行数
      */
-    int insert(AiClientApiPO po);
+    int insert(AiClientApiPO AiClientApiPO);
 
     /**
-     * 更新
+     * 根据ID更新AI客户端API配置
+     * @param AiClientApiPO AI客户端API配置对象
+     * @return 影响行数
      */
-    int update(AiClientApiPO po);
+    int updateById(AiClientApiPO AiClientApiPO);
 
     /**
-     * 根据ID查询
+     * 根据API ID更新AI客户端API配置
+     * @param AiClientApiPO AI客户端API配置对象
+     * @return 影响行数
      */
-    AiClientApiPO queryById(@Param("id") Long id);
+    int updateByApiId(AiClientApiPO AiClientApiPO);
 
     /**
-     * 根据apiId查询
+     * 根据ID删除AI客户端API配置
+     * @param id 主键ID
+     * @return 影响行数
      */
-    AiClientApiPO queryByApiId(@Param("apiId") String apiId);
+    int deleteById(Long id);
 
     /**
-     * 查询列表
+     * 根据API ID删除AI客户端API配置
+     * @param apiId API ID
+     * @return 影响行数
      */
-    List<AiClientApiPO> queryList(AiClientApiPO po);
+    int deleteByApiId(String apiId);
 
     /**
-     * 根据ID删除
+     * 根据ID查询AI客户端API配置
+     * @param id 主键ID
+     * @return AI客户端API配置对象
      */
-    int deleteById(@Param("id") Long id);
+    AiClientApiPO queryById(Long id);
+
+    /**
+     * 根据API ID查询AI客户端API配置
+     * @param apiId API ID
+     * @return AI客户端API配置对象
+     */
+    AiClientApiPO queryByApiId(String apiId);
+
+    /**
+     * 查询所有启用的AI客户端API配置
+     * @return AI客户端API配置列表
+     */
+    List<AiClientApiPO> queryEnabledApis();
+
+    /**
+     * 查询所有AI客户端API配置
+     * @return AI客户端API配置列表
+     */
+    List<AiClientApiPO> queryAll();
 }
 

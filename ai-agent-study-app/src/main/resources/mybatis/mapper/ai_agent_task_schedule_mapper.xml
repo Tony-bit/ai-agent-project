@@ -15,23 +15,32 @@
     </resultMap>
 
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_agent_task_schedule (agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time)
-        VALUES (#{agentId}, #{taskName}, #{description}, #{cronExpression}, #{taskParam}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO ai_agent_task_schedule (
+        agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        ) VALUES (
+        #{agentId}, #{taskName}, #{description}, #{cronExpression}, #{taskParam}, #{status}, #{createTime}, #{updateTime}
+        )
     </insert>
 
-    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO">
-        UPDATE ai_agent_task_schedule
-        <set>
-            <if test="agentId != null">agent_id = #{agentId},</if>
-            <if test="taskName != null">task_name = #{taskName},</if>
-            <if test="description != null">description = #{description},</if>
-            <if test="cronExpression != null">cron_expression = #{cronExpression},</if>
-            <if test="taskParam != null">task_param = #{taskParam},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="updateTime != null">update_time = #{updateTime},</if>
-        </set>
+    <update id="updateById" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO">
+        UPDATE ai_agent_task_schedule SET
+        agent_id = #{agentId},
+        task_name = #{taskName},
+        description = #{description},
+        cron_expression = #{cronExpression},
+        task_param = #{taskParam},
+        status = #{status},
+        update_time = #{updateTime}
         WHERE id = #{id}
     </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_agent_task_schedule WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByAgentId" parameterType="java.lang.Long">
+        DELETE FROM ai_agent_task_schedule WHERE agent_id = #{agentId}
+    </delete>
 
     <select id="queryById" parameterType="java.lang.Long" resultMap="AiAgentTaskScheduleMap">
         SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
@@ -42,24 +51,28 @@
     <select id="queryByAgentId" parameterType="java.lang.Long" resultMap="AiAgentTaskScheduleMap">
         SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
         FROM ai_agent_task_schedule
-        WHERE agent_id = #{agentId} AND status = 1
+        WHERE agent_id = #{agentId}
         ORDER BY create_time DESC
     </select>
 
-    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO" resultMap="AiAgentTaskScheduleMap">
+    <select id="queryEnabledTasks" resultMap="AiAgentTaskScheduleMap">
         SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
         FROM ai_agent_task_schedule
-        <where>
-            <if test="agentId != null">AND agent_id = #{agentId}</if>
-            <if test="taskName != null and taskName != ''">AND task_name LIKE CONCAT('%', #{taskName}, '%')</if>
-            <if test="status != null">AND status = #{status}</if>
-        </where>
+        WHERE status = 1
         ORDER BY create_time DESC
     </select>
 
-    <delete id="deleteById" parameterType="java.lang.Long">
-        DELETE FROM ai_agent_task_schedule WHERE id = #{id}
-    </delete>
+    <select id="queryByTaskName" parameterType="java.lang.String" resultMap="AiAgentTaskScheduleMap">
+        SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        FROM ai_agent_task_schedule
+        WHERE task_name = #{taskName}
+    </select>
+
+    <select id="queryAll" resultMap="AiAgentTaskScheduleMap">
+        SELECT id, agent_id, task_name, description, cron_expression, task_param, status, create_time, update_time
+        FROM ai_agent_task_schedule
+        ORDER BY create_time DESC
+    </select>
 
 </mapper>
 

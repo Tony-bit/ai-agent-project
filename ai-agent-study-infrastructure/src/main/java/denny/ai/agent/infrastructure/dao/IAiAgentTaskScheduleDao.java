@@ -1,6 +1,7 @@
 package denny.ai.agent.infrastructure.dao;
 
 import denny.ai.agent.infrastructure.dao.po.AiAgentTaskSchedulePO;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -8,36 +9,68 @@ import java.util.List;
 /**
  * 智能体任务调度配置表 DAO
  */
+@Mapper
 public interface IAiAgentTaskScheduleDao {
 
     /**
-     * 插入
+     * 插入智能体任务调度配置
+     * @param AiAgentTaskSchedulePO 智能体任务调度配置对象
+     * @return 影响行数
      */
-    int insert(AiAgentTaskSchedulePO po);
+    int insert(AiAgentTaskSchedulePO AiAgentTaskSchedulePO);
 
     /**
-     * 更新
+     * 根据ID更新智能体任务调度配置
+     * @param AiAgentTaskSchedulePO 智能体任务调度配置对象
+     * @return 影响行数
      */
-    int update(AiAgentTaskSchedulePO po);
+    int updateById(AiAgentTaskSchedulePO AiAgentTaskSchedulePO);
 
     /**
-     * 根据ID查询
+     * 根据ID删除智能体任务调度配置
+     * @param id 主键ID
+     * @return 影响行数
      */
-    AiAgentTaskSchedulePO queryById(@Param("id") Long id);
+    int deleteById(Long id);
 
     /**
-     * 根据agentId查询列表
+     * 根据智能体ID删除任务调度配置
+     * @param agentId 智能体ID
+     * @return 影响行数
      */
-    List<AiAgentTaskSchedulePO> queryByAgentId(@Param("agentId") Long agentId);
+    int deleteByAgentId(Long agentId);
 
     /**
-     * 查询列表
+     * 根据ID查询智能体任务调度配置
+     * @param id 主键ID
+     * @return 智能体任务调度配置对象
      */
-    List<AiAgentTaskSchedulePO> queryList(AiAgentTaskSchedulePO po);
+    AiAgentTaskSchedulePO queryById(Long id);
 
     /**
-     * 根据ID删除
+     * 根据智能体ID查询任务调度配置列表
+     * @param agentId 智能体ID
+     * @return 智能体任务调度配置列表
      */
-    int deleteById(@Param("id") Long id);
+    List<AiAgentTaskSchedulePO> queryByAgentId(Long agentId);
+
+    /**
+     * 查询所有有效的任务调度配置
+     * @return 智能体任务调度配置列表
+     */
+    List<AiAgentTaskSchedulePO> queryEnabledTasks();
+
+    /**
+     * 根据任务名称查询任务调度配置
+     * @param taskName 任务名称
+     * @return 智能体任务调度配置对象
+     */
+    AiAgentTaskSchedulePO queryByTaskName(String taskName);
+
+    /**
+     * 查询所有智能体任务调度配置
+     * @return 智能体任务调度配置列表
+     */
+    List<AiAgentTaskSchedulePO> queryAll();
 }
 

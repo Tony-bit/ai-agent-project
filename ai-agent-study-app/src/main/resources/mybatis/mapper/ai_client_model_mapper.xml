@@ -14,22 +14,41 @@
     </resultMap>
 
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientModelPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_client_model (model_id, api_id, model_name, model_type, status, create_time, update_time)
-        VALUES (#{modelId}, #{apiId}, #{modelName}, #{modelType}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO ai_client_model (
+        model_id, api_id, model_name, model_type, status, create_time, update_time
+        ) VALUES (
+        #{modelId}, #{apiId}, #{modelName}, #{modelType}, #{status}, #{createTime}, #{updateTime}
+        )
     </insert>
 
-    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientModelPO">
-        UPDATE ai_client_model
-        <set>
-            <if test="modelId != null">model_id = #{modelId},</if>
-            <if test="apiId != null">api_id = #{apiId},</if>
-            <if test="modelName != null">model_name = #{modelName},</if>
-            <if test="modelType != null">model_type = #{modelType},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="updateTime != null">update_time = #{updateTime},</if>
-        </set>
+    <update id="updateById" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientModelPO">
+        UPDATE ai_client_model SET
+        model_id = #{modelId},
+        api_id = #{apiId},
+        model_name = #{modelName},
+        model_type = #{modelType},
+        status = #{status},
+        update_time = #{updateTime}
         WHERE id = #{id}
     </update>
+
+    <update id="updateByModelId" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientModelPO">
+        UPDATE ai_client_model SET
+        api_id = #{apiId},
+        model_name = #{modelName},
+        model_type = #{modelType},
+        status = #{status},
+        update_time = #{updateTime}
+        WHERE model_id = #{modelId}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_model WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByModelId" parameterType="java.lang.String">
+        DELETE FROM ai_client_model WHERE model_id = #{modelId}
+    </delete>
 
     <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientModelMap">
         SELECT id, model_id, api_id, model_name, model_type, status, create_time, update_time
@@ -43,21 +62,32 @@
         WHERE model_id = #{modelId}
     </select>
 
-    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientModelPO" resultMap="AiClientModelMap">
+    <select id="queryByApiId" parameterType="java.lang.String" resultMap="AiClientModelMap">
         SELECT id, model_id, api_id, model_name, model_type, status, create_time, update_time
         FROM ai_client_model
-        <where>
-            <if test="modelId != null and modelId != ''">AND model_id = #{modelId}</if>
-            <if test="apiId != null and apiId != ''">AND api_id = #{apiId}</if>
-            <if test="modelType != null and modelType != ''">AND model_type = #{modelType}</if>
-            <if test="status != null">AND status = #{status}</if>
-        </where>
+        WHERE api_id = #{apiId}
         ORDER BY create_time DESC
     </select>
 
-    <delete id="deleteById" parameterType="java.lang.Long">
-        DELETE FROM ai_client_model WHERE id = #{id}
-    </delete>
+    <select id="queryByModelType" parameterType="java.lang.String" resultMap="AiClientModelMap">
+        SELECT id, model_id, api_id, model_name, model_type, status, create_time, update_time
+        FROM ai_client_model
+        WHERE model_type = #{modelType}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryEnabledModels" resultMap="AiClientModelMap">
+        SELECT id, model_id, api_id, model_name, model_type, status, create_time, update_time
+        FROM ai_client_model
+        WHERE status = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="queryAll" resultMap="AiClientModelMap">
+        SELECT id, model_id, api_id, model_name, model_type, status, create_time, update_time
+        FROM ai_client_model
+        ORDER BY create_time DESC
+    </select>
 
 </mapper>
 

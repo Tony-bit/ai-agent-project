@@ -13,21 +13,39 @@
     </resultMap>
 
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_client_rag_order (rag_id, rag_name, knowledge_tag, status, create_time, update_time)
-        VALUES (#{ragId}, #{ragName}, #{knowledgeTag}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO ai_client_rag_order (
+        rag_id, rag_name, knowledge_tag, status, create_time, update_time
+        ) VALUES (
+        #{ragId}, #{ragName}, #{knowledgeTag}, #{status}, #{createTime}, #{updateTime}
+        )
     </insert>
 
-    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO">
-        UPDATE ai_client_rag_order
-        <set>
-            <if test="ragId != null">rag_id = #{ragId},</if>
-            <if test="ragName != null">rag_name = #{ragName},</if>
-            <if test="knowledgeTag != null">knowledge_tag = #{knowledgeTag},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="updateTime != null">update_time = #{updateTime},</if>
-        </set>
+    <update id="updateById" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO">
+        UPDATE ai_client_rag_order SET
+        rag_id = #{ragId},
+        rag_name = #{ragName},
+        knowledge_tag = #{knowledgeTag},
+        status = #{status},
+        update_time = #{updateTime}
         WHERE id = #{id}
     </update>
+
+    <update id="updateByRagId" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO">
+        UPDATE ai_client_rag_order SET
+        rag_name = #{ragName},
+        knowledge_tag = #{knowledgeTag},
+        status = #{status},
+        update_time = #{updateTime}
+        WHERE rag_id = #{ragId}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_rag_order WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByRagId" parameterType="java.lang.String">
+        DELETE FROM ai_client_rag_order WHERE rag_id = #{ragId}
+    </delete>
 
     <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientRagOrderMap">
         SELECT id, rag_id, rag_name, knowledge_tag, status, create_time, update_time
@@ -41,21 +59,24 @@
         WHERE rag_id = #{ragId}
     </select>
 
-    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientRagOrderPO" resultMap="AiClientRagOrderMap">
+    <select id="queryEnabledRagOrders" resultMap="AiClientRagOrderMap">
         SELECT id, rag_id, rag_name, knowledge_tag, status, create_time, update_time
         FROM ai_client_rag_order
-        <where>
-            <if test="ragId != null and ragId != ''">AND rag_id = #{ragId}</if>
-            <if test="ragName != null and ragName != ''">AND rag_name LIKE CONCAT('%', #{ragName}, '%')</if>
-            <if test="knowledgeTag != null and knowledgeTag != ''">AND knowledge_tag = #{knowledgeTag}</if>
-            <if test="status != null">AND status = #{status}</if>
-        </where>
+        WHERE status = 1
         ORDER BY create_time DESC
     </select>
 
-    <delete id="deleteById" parameterType="java.lang.Long">
-        DELETE FROM ai_client_rag_order WHERE id = #{id}
-    </delete>
+    <select id="queryByKnowledgeTag" parameterType="java.lang.String" resultMap="AiClientRagOrderMap">
+        SELECT id, rag_id, rag_name, knowledge_tag, status, create_time, update_time
+        FROM ai_client_rag_order
+        WHERE knowledge_tag = #{knowledgeTag}
+        ORDER BY create_time DESC
+    </select>
 
+    <select id="queryAll" resultMap="AiClientRagOrderMap">
+        SELECT id, rag_id, rag_name, knowledge_tag, status, create_time, update_time
+        FROM ai_client_rag_order
+        ORDER BY create_time DESC
+    </select>
 </mapper>
 

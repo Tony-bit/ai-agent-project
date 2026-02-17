@@ -14,24 +14,45 @@
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
+
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientAdvisorPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_client_advisor (advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time)
-        VALUES (#{advisorId}, #{advisorName}, #{advisorType}, #{orderNum}, #{extParam}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO ai_client_advisor (
+        advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time
+        ) VALUES (
+        #{advisorId}, #{advisorName}, #{advisorType}, #{orderNum}, #{extParam}, #{status}, #{createTime}, #{updateTime}
+        )
     </insert>
 
-    <update id="update" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientAdvisorPO">
-        UPDATE ai_client_advisor
-        <set>
-            <if test="advisorId != null">advisor_id = #{advisorId},</if>
-            <if test="advisorName != null">advisor_name = #{advisorName},</if>
-            <if test="advisorType != null">advisor_type = #{advisorType},</if>
-            <if test="orderNum != null">order_num = #{orderNum},</if>
-            <if test="extParam != null">ext_param = #{extParam},</if>
-            <if test="status != null">status = #{status},</if>
-            <if test="updateTime != null">update_time = #{updateTime},</if>
-        </set>
+    <update id="updateById" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientAdvisorPO">
+        UPDATE ai_client_advisor SET
+        advisor_id = #{advisorId},
+        advisor_name = #{advisorName},
+        advisor_type = #{advisorType},
+        order_num = #{orderNum},
+        ext_param = #{extParam},
+        status = #{status},
+        update_time = #{updateTime}
         WHERE id = #{id}
     </update>
+
+    <update id="updateByAdvisorId" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientAdvisorPO">
+        UPDATE ai_client_advisor SET
+        advisor_name = #{advisorName},
+        advisor_type = #{advisorType},
+        order_num = #{orderNum},
+        ext_param = #{extParam},
+        status = #{status},
+        update_time = #{updateTime}
+        WHERE advisor_id = #{advisorId}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM ai_client_advisor WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByAdvisorId" parameterType="java.lang.String">
+        DELETE FROM ai_client_advisor WHERE advisor_id = #{advisorId}
+    </delete>
 
     <select id="queryById" parameterType="java.lang.Long" resultMap="AiClientAdvisorMap">
         SELECT id, advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time
@@ -45,20 +66,25 @@
         WHERE advisor_id = #{advisorId}
     </select>
 
-    <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientAdvisorPO" resultMap="AiClientAdvisorMap">
+    <select id="queryAll" resultMap="AiClientAdvisorMap">
         SELECT id, advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time
         FROM ai_client_advisor
-        <where>
-            <if test="advisorId != null and advisorId != ''">AND advisor_id = #{advisorId}</if>
-            <if test="advisorType != null and advisorType != ''">AND advisor_type = #{advisorType}</if>
-            <if test="status != null">AND status = #{status}</if>
-        </where>
         ORDER BY order_num ASC, create_time DESC
     </select>
 
-    <delete id="deleteById" parameterType="java.lang.Long">
-        DELETE FROM ai_client_advisor WHERE id = #{id}
-    </delete>
+    <select id="queryByStatus" parameterType="java.lang.Integer" resultMap="AiClientAdvisorMap">
+        SELECT id, advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time
+        FROM ai_client_advisor
+        WHERE status = #{status}
+        ORDER BY order_num ASC, create_time DESC
+    </select>
+
+    <select id="queryByAdvisorType" parameterType="java.lang.String" resultMap="AiClientAdvisorMap">
+        SELECT id, advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time
+        FROM ai_client_advisor
+        WHERE advisor_type = #{advisorType}
+        ORDER BY order_num ASC, create_time DESC
+    </select>
 
 </mapper>
 
