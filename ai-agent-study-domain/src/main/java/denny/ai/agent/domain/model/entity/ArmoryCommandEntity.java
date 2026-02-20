@@ -30,6 +30,7 @@ public class ArmoryCommandEntity {
      */
     private List<String> commandIdList;
 
+
     /**
      * 根据 commandType 获取对应的数据加载策略字符串。
      * 通过调用 AiAgentEnumVO 枚举类的 getByCode 方法，获取枚举实例，

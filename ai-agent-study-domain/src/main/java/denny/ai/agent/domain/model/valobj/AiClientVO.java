@@ -27,6 +27,11 @@ public class AiClientVO {
     private String clientId;
 
     /**
+     * inputType  匹配的输入内容类型
+     */
+    private Integer inputType = 0;
+
+    /**
      * 客户端名称
      */
     private String clientName;

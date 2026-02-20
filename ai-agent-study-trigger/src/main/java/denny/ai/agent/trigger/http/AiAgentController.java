@@ -50,6 +50,7 @@ public class AiAgentController implements IAiAgentService {
                     .message(request.getMessage())
                     .sessionId(request.getSessionId())
                     .maxStep(request.getMaxStep())
+                    .inputType(request.getInputType())
                     .build();
             
             // 3. 异步执行AutoAgent

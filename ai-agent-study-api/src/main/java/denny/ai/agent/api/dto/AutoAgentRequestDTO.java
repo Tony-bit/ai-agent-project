@@ -42,4 +42,9 @@ public class AutoAgentRequestDTO implements Serializable {
      */
     private Integer maxStep;
 
+    /**
+     * 输入的内容
+     */
+    private Integer inputType;
+
 }

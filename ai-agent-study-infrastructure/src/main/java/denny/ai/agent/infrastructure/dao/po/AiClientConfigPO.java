@@ -53,5 +53,10 @@ public class AiClientConfigPO {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 输入类型
+     */
+    private Integer inputType;
 }
 

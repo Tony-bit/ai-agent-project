@@ -12,6 +12,7 @@
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
+        <result column="input_type" property="inputType"/>
     </resultMap>
 
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO" useGeneratedKeys="true" keyProperty="id">
@@ -39,10 +40,14 @@
         WHERE id = #{id}
     </select>
 
-    <select id="queryBySourceId" parameterType="java.lang.String" resultMap="AiClientConfigMap">
+    <select id="queryBySourceId" resultMap="AiClientConfigMap">
         SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
         FROM ai_client_config
-        WHERE source_id = #{sourceId} AND status = 1
+        <where>
+            <if test="sourceId != null and sourceId != ''">AND source_id = #{sourceId}</if>
+            <if test="inputType != null">AND input_type = #{inputType}</if>
+            AND status = 1
+        </where>
         ORDER BY create_time DESC
     </select>
 
@@ -54,9 +59,13 @@
     </select>
 
     <select id="queryBySourceTypeAndId" resultMap="AiClientConfigMap">
-        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time
+        SELECT id, source_type, source_id, target_type, target_id, ext_param, status, create_time, update_time, input_type
         FROM ai_client_config
-        WHERE source_type = #{sourceType} AND source_id = #{sourceId}
+        <where>
+            <if test="sourceType != null and sourceType != ''">AND source_type = #{sourceType}</if>
+            <if test="sourceId != null and sourceId != ''">AND source_id = #{sourceId}</if>
+            <if test="inputType != null">AND input_type = #{inputType}</if>
+        </where>
     </select>
 
     <select id="queryList" parameterType="denny.ai.agent.infrastructure.dao.po.AiClientConfigPO" resultMap="AiClientConfigMap">

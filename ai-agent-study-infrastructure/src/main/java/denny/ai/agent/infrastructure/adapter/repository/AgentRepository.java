@@ -69,7 +69,7 @@ public class AgentRepository implements IAgentRepository {
 
         for (String clientId : clientIdList) {
             // 1. 通过clientId查询关联的modelId
-            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId);
+            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId, null);
 
             for (AiClientConfigPO config : configs) {
                 if (AiAgentEnumVO.AI_CLIENT_MODEL.getCode().equals(config.getTargetType()) && config.getStatus() == 1) {
@@ -115,7 +115,7 @@ public class AgentRepository implements IAgentRepository {
 
         for (String clientId : clientIdList) {
             // 1. 通过clientId查询关联的modelId
-            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId);
+            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId, null);
 
             for (AiClientConfigPO config : configs) {
                 if (AiAgentEnumVO.AI_CLIENT_MODEL.getCode().equals(config.getTargetType()) && config.getStatus() == 1) {
@@ -126,7 +126,7 @@ public class AgentRepository implements IAgentRepository {
                     if (model != null && model.getStatus() == 1) {
 
                         // 3. 查询该模型关联的tool_mcp配置
-                        List<AiClientConfigPO> toolMcpConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId);
+                        List<AiClientConfigPO> toolMcpConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId, null);
                         List<String> toolMcpIds = new ArrayList<>();
 
                         for (AiClientConfigPO toolMcpConfig : toolMcpConfigs) {
@@ -167,14 +167,14 @@ public class AgentRepository implements IAgentRepository {
 
         for (String clientId : clientIdList) {
             // 1. 通过clientId查询关联的model配置
-            List<AiClientConfigPO> clientConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId);
+            List<AiClientConfigPO> clientConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId, null);
 
             for (AiClientConfigPO clientConfig : clientConfigs) {
                 if (AiAgentEnumVO.AI_CLIENT_MODEL.getCode().equals(clientConfig.getTargetType()) && clientConfig.getStatus() == 1) {
                     String modelId = clientConfig.getTargetId();
 
                     // 2. 通过modelId查询关联的tool_mcp配置
-                    List<AiClientConfigPO> modelConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId);
+                    List<AiClientConfigPO> modelConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId, null);
 
                     for (AiClientConfigPO modelConfig : modelConfigs) {
                         if (AiAgentEnumVO.AI_CLIENT_TOOL_MCP.getCode().equals(modelConfig.getTargetType()) && modelConfig.getStatus() == 1) {
@@ -243,7 +243,7 @@ public class AgentRepository implements IAgentRepository {
 
         for (String clientId : clientIdList) {
             // 1. 通过clientId查询关联的prompt配置
-            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId);
+            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId, null);
 
             for (AiClientConfigPO config : configs) {
                 if ("prompt".equals(config.getTargetType()) && config.getStatus() == 1) {
@@ -287,7 +287,7 @@ public class AgentRepository implements IAgentRepository {
 
         for (String clientId : clientIdList) {
             // 1. 查询客户端相关的advisor配置
-            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId("client", clientId);
+            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId("client", clientId, null);
 
             for (AiClientConfigPO config : configs) {
                 if (config.getStatus() != 1 || !"advisor".equals(config.getTargetType())) {
@@ -364,9 +364,10 @@ public class AgentRepository implements IAgentRepository {
             }
 
             // 2. 查询客户端相关配置
-            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId("client", clientId);
+            List<AiClientConfigPO> configs = aiClientConfigDao.queryBySourceTypeAndId("client", clientId, null);
 
             String modelId = null;
+            Integer inputType = null;
             List<String> promptIdList = new ArrayList<>();
             List<String> mcpIdList = new ArrayList<>();
             List<String> advisorIdList = new ArrayList<>();
@@ -379,6 +380,7 @@ public class AgentRepository implements IAgentRepository {
                 switch (config.getTargetType()) {
                     case "model":
                         modelId = config.getTargetId();
+                        inputType = config.getInputType();
                         break;
                     case "prompt":
                         promptIdList.add(config.getTargetId());
@@ -398,6 +400,7 @@ public class AgentRepository implements IAgentRepository {
                     .clientName(aiClient.getClientName())
                     .description(aiClient.getDescription())
                     .modelId(modelId)
+                    .inputType(inputType)
                     .promptIdList(promptIdList)
                     .mcpIdList(mcpIdList)
                     .advisorIdList(advisorIdList)
