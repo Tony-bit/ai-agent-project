@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    oss:
+      bucket-name: https://s3.cn-north-1.jdcloud-oss.com
+      region: cn-north-1
+      access-key: JDC_DBA83F9D0DE38A07D239EEAE8576
+      secret-key: EE9A6C0EADC7A96325349BF03C6E5A8A
+      endpoint: denny-test

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 执行命令实体
@@ -26,5 +27,7 @@ public class ExecuteCommandEntity {
     private Integer maxStep;
 
     private Integer inputType;
+
+    private MultipartFile file;
 
 }

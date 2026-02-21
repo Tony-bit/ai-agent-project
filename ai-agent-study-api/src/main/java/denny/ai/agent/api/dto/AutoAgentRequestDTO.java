@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -43,8 +44,13 @@ public class AutoAgentRequestDTO implements Serializable {
     private Integer maxStep;
 
     /**
-     * 输入的内容
+     * 输入的内容 0.文本 1.图片 2.音频
      */
     private Integer inputType;
+
+    /**
+     * file 图片、音频存储路径
+     */
+    private String url;
 
 }

@@ -81,6 +81,14 @@
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
 
+
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-s3</artifactId>
+            <version>1.11.490</version>
+        </dependency>
+
+
         <!-- 系统模块 -->
         <dependency>
             <groupId>denny.ai.agent</groupId>
