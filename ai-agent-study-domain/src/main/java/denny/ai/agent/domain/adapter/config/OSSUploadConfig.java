@@ -2,6 +2,7 @@ package denny.ai.agent.domain.adapter.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * OSS对象存储桶 自动装配配置属性
@@ -10,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 2026/2/21 9:11
  */
 @Data
+@Configuration
 @ConfigurationProperties(prefix = "spring.datasource.oss")
 public class OSSUploadConfig {
     /**

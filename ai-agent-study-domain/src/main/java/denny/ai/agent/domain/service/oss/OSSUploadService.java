@@ -10,6 +10,7 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import denny.ai.agent.domain.adapter.config.OSSUploadConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
@@ -20,6 +21,7 @@ import java.io.InputStream;
  * @author Denny
  */
 @Slf4j
+@Service
 public class OSSUploadService {
     @Resource
     private OSSUploadConfig ossUploadConfig;

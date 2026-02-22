@@ -76,7 +76,7 @@ public class AiClientNode extends AbstractArmorySupport {
                     .defaultAdvisors(advisorArray)
                     .build();
 
-            registerBean(beanName(aiClientVO.getClientId(), aiClientVO.getInputType()), ChatClient.class, chatClient);
+            registerBean(beanName(aiClientVO.getClientId(), aiClientVO.getTaskType()), ChatClient.class, chatClient);
         }
 
         return router(requestParameter, dynamicContext);
@@ -86,8 +86,8 @@ public class AiClientNode extends AbstractArmorySupport {
         return defaultStrategyHandler;
     }
 
-    protected String beanName(String id, Integer inputType) {
-        return AiAgentEnumVO.AI_CLIENT.getBeanName(id) + "ip" + inputType.toString();
+    protected String beanName(String id, Integer taskType) {
+        return AiAgentEnumVO.AI_CLIENT.getBeanName(id) + "taskType" + taskType.toString();
     }
 
     protected String dataName() {

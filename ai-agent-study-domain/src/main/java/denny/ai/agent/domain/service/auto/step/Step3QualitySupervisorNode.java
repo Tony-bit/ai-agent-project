@@ -37,7 +37,7 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
         String supervisionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), executionResult);
 
         // 获取对话客户端
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), null);
+        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
 
         String supervisionResult = chatClient
                 .prompt(supervisionPrompt)

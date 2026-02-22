@@ -77,7 +77,7 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             String summaryPrompt = getSummaryPrompt(aiAgentClientFlowConfigVO, requestParameter, dynamicContext, isCompleted);
 
             // 获取对话客户端 - 使用任务分析客户端进行总结
-            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), null);
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
             
             String summaryResult = chatClient
                     .prompt(summaryPrompt)

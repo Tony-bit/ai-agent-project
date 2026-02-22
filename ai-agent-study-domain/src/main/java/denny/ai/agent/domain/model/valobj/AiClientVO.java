@@ -32,6 +32,11 @@ public class AiClientVO {
     private Integer inputType = 0;
 
     /**
+     * taskType  匹配的任务类型
+     */
+    private Integer taskType = 0;
+
+    /**
      * 客户端名称
      */
     private String clientName;

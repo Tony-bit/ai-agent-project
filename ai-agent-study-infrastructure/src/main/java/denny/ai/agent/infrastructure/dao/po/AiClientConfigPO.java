@@ -58,5 +58,10 @@ public class AiClientConfigPO {
      * 输入类型
      */
     private Integer inputType;
+
+    /**
+     * 匹配的任务类型
+     */
+    private Integer taskType;
 }
 

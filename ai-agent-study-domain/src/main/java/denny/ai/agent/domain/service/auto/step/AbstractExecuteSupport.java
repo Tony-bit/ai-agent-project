@@ -40,11 +40,8 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     }
 
-    protected ChatClient getChatClientByClientId(String clientId, Integer inputType) {
-        if (inputType == null) {
-            return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId));
-        }
-        return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId) + "it" + inputType.toString());
+    protected ChatClient getChatClientByClientId(String clientId, Integer taskType) {
+        return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId) + "taskType" + taskType.toString());
     }
 
     protected <T> T getBean(String beanName) {

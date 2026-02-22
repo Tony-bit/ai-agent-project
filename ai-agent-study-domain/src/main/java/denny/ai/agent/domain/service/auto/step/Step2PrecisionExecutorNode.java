@@ -37,8 +37,19 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
 
         String executionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), analysisResult);
 
+        Integer taskType = 0;
+        // 根据分析任务类型，获取对应的客户端进行执行任务
+        if (analysisResult.contains("推理任务类型")) {
+            taskType = 1;
+        } else if (analysisResult.contains("计算任务类型")) {
+            taskType = 2;
+        } else if (analysisResult.contains("知识检索任务类型")) {
+            taskType = 3;
+        }
+        log.info("本任务类型为：{}", taskType);
+
         // 获取对话客户端
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), null);
+        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);
 
         String executionResult = chatClient
                 .prompt(executionPrompt)
