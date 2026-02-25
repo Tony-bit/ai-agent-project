@@ -70,6 +70,11 @@ spring:
       access-key: JDC_DBA83F9D0DE38A07D239EEAE8576
       secret-key: EE9A6C0EADC7A96325349BF03C6E5A8A
       endpoint: denny-test
+  data:
+    elasticsearch:
+      client:
+        rest:
+          uris: http://localhost:9200
 
 # MyBatis 配置
 mybatis:
