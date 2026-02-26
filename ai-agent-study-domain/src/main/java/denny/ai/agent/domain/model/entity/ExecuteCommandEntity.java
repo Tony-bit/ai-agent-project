@@ -30,4 +30,6 @@ public class ExecuteCommandEntity {
 
     private MultipartFile file;
 
+    private String userId;
+
 }
