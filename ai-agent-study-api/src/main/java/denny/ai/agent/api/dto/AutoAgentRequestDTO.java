@@ -29,6 +29,11 @@ public class AutoAgentRequestDTO implements Serializable {
     private String aiAgentId;
 
     /**
+     * 用户ID
+     */
+    private String userId;
+
+    /**
      * 用户消息
      */
     private String message;
