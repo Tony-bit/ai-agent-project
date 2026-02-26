@@ -1,16 +1,16 @@
 package denny.ai.agent.domain.service.auto.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
-
-import java.util.Base64;
 
 /**
  * 精准执行节点
@@ -21,6 +21,9 @@ import java.util.Base64;
 @Slf4j
 @Service
 public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
+
+    @Resource
+    private IRagKnowledgeRepository ragKnowledgeRepository;
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -35,9 +38,7 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
 
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
 
-        String executionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), analysisResult);
-
-        Integer taskType = 0;
+        int taskType = 0;
         // 根据分析任务类型，获取对应的客户端进行执行任务
         if (analysisResult.contains("推理任务类型")) {
             taskType = 1;
@@ -47,6 +48,44 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             taskType = 3;
         }
         log.info("本任务类型为：{}", taskType);
+
+        // 知识检索任务类型：先通过 RAG 混合检索生成上下文，并注入到 Prompt
+        String userId = requestParameter.getUserId();
+        
+        String executionPrompt;
+        if (taskType == 3) {
+            String ragContext = ragKnowledgeRepository.retrieveContext(userId, requestParameter.getMessage(), 5);
+
+            String ragPromptTemplate = """
+                    你是一名专业的知识问答与任务执行助手，请基于以下知识文档回答用户问题并完成任务。
+                    如果文档中无法找到答案，请明确说明不知道，不要编造。
+
+                    【知识文档】
+                    %s
+
+                    【任务分析结果】
+                    %s
+
+                    【用户问题】
+                    %s
+
+                    请用中文给出清晰、结构化的执行方案或答案。
+                    """;
+
+            executionPrompt = String.format(
+                    ragPromptTemplate,
+                    ragContext,
+                    analysisResult,
+                    requestParameter.getMessage()
+            );
+        } else {
+            // 非知识检索任务，保持原有执行 Prompt 逻辑
+            executionPrompt = String.format(
+                    aiAgentClientFlowConfigVO.getStepPrompt(),
+                    requestParameter.getMessage(),
+                    analysisResult
+            );
+        }
 
         // 获取对话客户端
         ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);

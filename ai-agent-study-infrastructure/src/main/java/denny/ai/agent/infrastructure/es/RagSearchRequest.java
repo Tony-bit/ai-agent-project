@@ -3,10 +3,13 @@ package denny.ai.agent.infrastructure.es;
 import lombok.Data;
 
 /**
- * RAG/BM25 关键词检索请求参数
+ * RAG/BM25 关键词检索请求参数（支持 user_id 隔离）
  */
 @Data
 public class RagSearchRequest {
+
+    /** 用户ID，用于知识库隔离（必填） */
+    private String userId;
 
     /** 查询文本 */
     private String queryText;

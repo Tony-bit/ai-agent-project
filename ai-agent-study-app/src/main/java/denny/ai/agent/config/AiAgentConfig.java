@@ -26,7 +26,7 @@ public class AiAgentConfig {
      * <p>
      * SELECT * FROM vector_store_openai
      */
-    @Bean("vectorStore")
+    @Bean
     public PgVectorStore pgVectorStore(@Value("${spring.ai.openai.base-url}") String baseUrl,
                                        @Value("${spring.ai.openai.api-key}") String apiKey,
                                        @Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate) {
@@ -38,7 +38,7 @@ public class AiAgentConfig {
 
         OpenAiEmbeddingModel embeddingModel = new OpenAiEmbeddingModel(openAiApi);
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-                .vectorTableName("vector_store_openai")
+                .vectorTableName("vector_store")
                 .build();
     }
 

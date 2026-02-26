@@ -17,11 +17,11 @@ spring:
         options:
           num-batch: 512
         model: nomic-embed-text
-    # 添加 DeepSeek 配置
+    # 添加 zhipu 配置
     openai:
-      base-url: https://api.deepseek.com/
-      api-key: sk-a0df0f93a5ac475e8c73c6e3495cfc05
-      embedding-model: deepseek-embedding  # DeepSeek 的嵌入模型
+      base-url: https://open.bigmodel.cn/api/paas/v4/embeddings
+      api-key: f159764707384a1ca0b0a83fbd3ed065.YooCMBFpJSN0vUoN
+      embedding-model: embedding-3  # zhipu 的嵌入模型
       chat:
         model: deepseek-chat
   datasource:
