@@ -5,6 +5,7 @@ import denny.ai.agent.infrastructure.es.RagKnowledgeDocument;
 import denny.ai.agent.infrastructure.es.RagKnowledgeEsGateway;
 import denny.ai.agent.infrastructure.es.RagSearchRequest;
 import denny.ai.agent.infrastructure.es.RagSearchResultItem;
+import denny.ai.agent.infrastructure.rag.RagCrossEncoderService;
 import denny.ai.agent.infrastructure.rag.RagDocumentParser;
 import denny.ai.agent.infrastructure.rag.RagEmbeddingService;
 import denny.ai.agent.infrastructure.rag.RagTextSplitter;
@@ -17,7 +18,6 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.stereotype.Repository;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -34,11 +34,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
+    private static final int RRF_K = 60;
+
     private final PgVectorStore pgVectorStore;
     private final RagKnowledgeEsGateway esGateway;
     private final RagDocumentParser documentParser;
     private final RagTextSplitter textSplitter;
     private final RagEmbeddingService embeddingService;
+    private final RagCrossEncoderService crossEncoderService;
 
     @Override
     public String retrieveContext(String userId, String question, int topK) {
@@ -47,11 +50,12 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
         }
 
         try {
-            // 1. 并发发起向量检索（PgVectorStore）和 ES 关键词检索（BM25），减少端到端时延
-            // 向量检索：通过 filterExpression 实现 user_id 隔离
+            int recallSize = Math.max(topK * 5, topK);
+            int rerankCandidateSize = Math.min(100, Math.max(topK * 5, topK));
+
             SearchRequest vectorReq = SearchRequest.builder()
                     .query(question)
-                    .topK(topK)
+                    .topK(recallSize)
                     .filterExpression("user_id == '" + userId + "'")
                     .build();
 
@@ -65,11 +69,10 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 }
             });
 
-            // ES 检索：通过 request.userId 实现隔离
             RagSearchRequest esReq = new RagSearchRequest();
             esReq.setUserId(userId);
             esReq.setQueryText(question);
-            esReq.setSize(topK);
+            esReq.setSize(recallSize);
             esReq.setPhrasePreferred(true);
 
             CompletableFuture<List<RagSearchResultItem>> esFuture = CompletableFuture.supplyAsync(() -> {
@@ -82,65 +85,103 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 }
             });
 
-            // 等待两个检索都完成
             List<Document> vectorDocs = vectorFuture.join();
             List<RagSearchResultItem> esDocs = esFuture.join();
 
-            // 2. 统一封装候选文档
-            List<SimpleDoc> candidates = new ArrayList<>();
+            if (vectorDocs.isEmpty() && esDocs.isEmpty()) {
+                log.warn("未检索到相关文档，userId={}, question={}", userId, question);
+                return "";
+            }
 
-            for (Document d : vectorDocs) {
+            List<SimpleDoc> vectorList = new ArrayList<>();
+            for (int i = 0; i < vectorDocs.size(); i++) {
+                Document d = vectorDocs.get(i);
                 SimpleDoc sd = new SimpleDoc();
                 sd.setSource("vector");
                 Object titleMeta = d.getMetadata().get("title");
                 sd.setTitle(titleMeta != null ? String.valueOf(titleMeta) : "");
-                sd.setContent(d.getText());
-                // 使用相似度分数（如果有）
+                sd.setContent(Optional.ofNullable(d.getText()).orElse(""));
                 sd.setScore(d.getScore() != null ? d.getScore().floatValue() : 1.0f);
-                candidates.add(sd);
+                sd.setVectorRank(i + 1);
+                vectorList.add(sd);
             }
 
-            for (RagSearchResultItem item : esDocs) {
+            List<SimpleDoc> esList = new ArrayList<>();
+            for (int i = 0; i < esDocs.size(); i++) {
+                RagSearchResultItem item = esDocs.get(i);
                 SimpleDoc sd = new SimpleDoc();
                 sd.setSource("es");
                 sd.setTitle(Optional.ofNullable(item.getTitle()).orElse(""));
                 sd.setContent(Optional.ofNullable(item.getContent()).orElse(""));
                 sd.setScore(Optional.ofNullable(item.getScore()).orElse(1.0f));
-                candidates.add(sd);
+                sd.setEsRank(i + 1);
+                esList.add(sd);
             }
 
-            if (candidates.isEmpty()) {
-                log.warn("未检索到相关文档，userId={}, question={}", userId, question);
+            Map<String, SimpleDoc> merged = new LinkedHashMap<>();
+
+            for (SimpleDoc d : vectorList) {
+                String key = d.uniqueKey();
+                merged.putIfAbsent(key, d);
+                SimpleDoc m = merged.get(key);
+                m.setVectorRank(Math.min(m.getVectorRank(), d.getVectorRank()));
+                m.setRrfScore(m.getRrfScore() + (1.0d / (RRF_K + d.getVectorRank())));
+            }
+
+            for (SimpleDoc d : esList) {
+                String key = d.uniqueKey();
+                merged.putIfAbsent(key, d);
+                SimpleDoc m = merged.get(key);
+                m.setEsRank(Math.min(m.getEsRank(), d.getEsRank()));
+                m.setRrfScore(m.getRrfScore() + (1.0d / (RRF_K + d.getEsRank())));
+            }
+
+            List<SimpleDoc> rrfCandidates = merged.values().stream()
+                    .sorted(Comparator.comparing(SimpleDoc::getRrfScore).reversed())
+                    .limit(rerankCandidateSize)
+                    .collect(Collectors.toList());
+
+            if (rrfCandidates.isEmpty()) {
+                log.warn("RRF 融合后无可用候选，userId={}, question={}", userId, question);
                 return "";
             }
 
-            // 3. 去重（按 title+content）
-            Map<String, SimpleDoc> merged = new LinkedHashMap<>();
-            for (SimpleDoc d : candidates) {
-                String key = d.getTitle() + "||" + d.getContent();
-                if (!merged.containsKey(key) || merged.get(key).getScore() < d.getScore()) {
-                    merged.put(key, d);
+            List<SimpleDoc> sorted;
+            try {
+                List<String> passages = rrfCandidates.stream()
+                        .map(d -> (d.getTitle() == null || d.getTitle().isEmpty() ? "" : "标题: " + d.getTitle() + "\n")
+                                + Optional.ofNullable(d.getContent()).orElse(""))
+                        .collect(Collectors.toList());
+
+                List<Double> ceScores = crossEncoderService.score(question, passages);
+                for (int i = 0; i < rrfCandidates.size(); i++) {
+                    double ce = (ceScores != null && i < ceScores.size() && ceScores.get(i) != null)
+                            ? ceScores.get(i)
+                            : -1e9;
+                    rrfCandidates.get(i).setRerankScore(ce);
                 }
+
+                sorted = rrfCandidates.stream()
+                        .sorted(Comparator.comparing(SimpleDoc::getRerankScore).reversed())
+                        .limit(topK)
+                        .collect(Collectors.toList());
+            } catch (Exception ceEx) {
+                log.warn("Cross-Encoder 重排失败，降级使用 RRF 结果，userId={}, question={}", userId, question, ceEx);
+                sorted = rrfCandidates.stream().limit(topK).collect(Collectors.toList());
             }
 
-            // 4. 简单重排：按分数从高到低，取前 topK
-            List<SimpleDoc> sorted = merged.values().stream()
-                    .sorted(Comparator.comparing(SimpleDoc::getScore).reversed())
-                    .limit(topK)
-                    .collect(Collectors.toList());
-
-            // 5. 拼接为可直接注入 Prompt 的上下文文本
             StringBuilder sb = new StringBuilder();
             int idx = 1;
             for (SimpleDoc d : sorted) {
                 sb.append("【文档 ").append(idx++).append(" | 来源: ").append(d.getSource()).append("】\n");
-                if (!d.getTitle().isEmpty()) {
+                if (d.getTitle() != null && !d.getTitle().isEmpty()) {
                     sb.append("标题: ").append(d.getTitle()).append("\n");
                 }
-                sb.append("内容: ").append(d.getContent()).append("\n\n");
+                sb.append("内容: ").append(Optional.ofNullable(d.getContent()).orElse("")).append("\n\n");
             }
 
-            log.info("RAG 混合检索完成，userId={}, 召回文档数={}, 最终返回={}", userId, candidates.size(), sorted.size());
+            log.info("RAG 混合检索完成，userId={}, vector召回={}, es召回={}, RRF候选={}, 最终返回={}",
+                    userId, vectorDocs.size(), esDocs.size(), rrfCandidates.size(), sorted.size());
             return sb.toString();
         } catch (Exception e) {
             log.error("RAG 混合检索发生异常，userId={}, question={}", userId, question, e);
@@ -157,23 +198,18 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
         try {
             log.info("开始 RAG Pipeline，userId={}, fileName={}", userId, fileName);
 
-            // Step 1: 文件解析
             List<Document> documents = documentParser.parse(file, fileName != null ? fileName : file.getOriginalFilename());
             if (documents.isEmpty()) {
                 return "文件解析失败：未提取到文本内容";
             }
             log.info("文件解析完成，文档数={}", documents.size());
 
-            // Step 2: 文本分块（Chunk 切分）
             List<Document> chunks = textSplitter.split(documents);
             log.info("文本切分完成，chunk 数={}", chunks.size());
 
-            // Step 3: Embedding 向量化（PgVectorStore 会自动处理，这里主要是日志）
             embeddingService.embed(chunks);
             log.info("向量化完成");
 
-            // Step 4: 批量存储到 PgVector（向量存储）
-            // 为每个 chunk 添加 user_id 元数据，实现隔离
             for (Document chunk : chunks) {
                 chunk.getMetadata().put("user_id", userId);
                 chunk.getMetadata().put("title", fileName != null ? fileName : file.getOriginalFilename());
@@ -181,7 +217,6 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             pgVectorStore.add(chunks);
             log.info("向量存储完成，已写入 PgVector");
 
-            // Step 5: 批量存储到 ES（关键词检索）
             List<RagKnowledgeDocument> esDocs = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Document chunk = chunks.get(i);
@@ -197,7 +232,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             esGateway.saveDocuments(esDocs);
             log.info("ES 存储完成，已写入 {} 条文档", esDocs.size());
 
-            return String.format("RAG Pipeline 完成：文件解析=%d 文档，切分=%d chunks，已存储到向量库和 ES", 
+            return String.format("RAG Pipeline 完成：文件解析=%d 文档，切分=%d chunks，已存储到向量库和 ES",
                     documents.size(), chunks.size());
         } catch (Exception e) {
             log.error("RAG Pipeline 失败，userId={}, fileName={}", userId, fileName, e);
@@ -208,12 +243,8 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
     @Override
     public int deleteUserKnowledge(String userId) {
         try {
-            // 删除 ES 中的文档
             long esDeleted = esGateway.deleteByUserId(userId);
 
-            // 删除 PgVector 中的文档（通过 filterExpression）
-            // 注意：PgVectorStore 可能没有直接的 deleteByFilter 方法，需要手动查询后删除
-            // 这里简化处理，实际可能需要根据你的 PgVectorStore 实现调整
             log.warn("PgVector 删除功能需要根据实际实现调整，当前仅删除 ES 文档");
 
             log.info("删除用户知识库完成，userId={}, ES 删除数={}", userId, esDeleted);
@@ -226,9 +257,17 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
     @Data
     private static class SimpleDoc {
-        private String source;  // vector / es
+        private String source;
         private String title;
         private String content;
         private float score;
+        private double rrfScore;
+        private double rerankScore;
+        private int vectorRank = Integer.MAX_VALUE;
+        private int esRank = Integer.MAX_VALUE;
+
+        public String uniqueKey() {
+            return Optional.ofNullable(title).orElse("") + "||" + Optional.ofNullable(content).orElse("");
+        }
     }
 }
