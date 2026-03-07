@@ -6,6 +6,7 @@ import denny.ai.agent.domain.adapter.repository.IAgentRepository;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
+import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -32,6 +33,9 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     @Resource
     protected IAgentRepository repository;
 
+    @Resource
+    protected ArmoryObjectRegistry armoryObjectRegistry;
+
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
 
@@ -41,7 +45,12 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     protected ChatClient getChatClientByClientId(String clientId, Integer taskType) {
-        return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId) + "taskType" + taskType.toString());
+        String key = AiAgentEnumVO.AI_CLIENT.getBeanName(clientId) + "taskType" + taskType;
+        ChatClient chatClient = armoryObjectRegistry.get(key);
+        if (chatClient == null) {
+            throw new RuntimeException("ChatClient 未初始化，key: " + key);
+        }
+        return chatClient;
     }
 
     protected <T> T getBean(String beanName) {
@@ -53,12 +62,11 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      * @param dynamicContext 动态上下文
      * @param result 要发送的结果实体
      */
-    protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
+    protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                 AutoAgentExecuteResultEntity result) {
         try {
             ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
             if (emitter != null) {
-                // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
                 emitter.send(sseData);
             }
