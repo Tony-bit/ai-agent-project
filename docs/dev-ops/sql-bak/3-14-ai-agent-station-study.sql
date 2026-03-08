@@ -444,16 +444,6 @@ CREATE TABLE `ai_client_tool_mcp` (
 LOCK TABLES `ai_client_tool_mcp` WRITE;
 /*!40000 ALTER TABLE `ai_client_tool_mcp` DISABLE KEYS */;
 
-INSERT INTO `ai_client_tool_mcp` (`id`, `mcp_id`, `mcp_name`, `transport_type`, `transport_config`, `request_timeout`, `status`, `create_time`, `update_time`)
-VALUES
-	(6,'5001','CSDN自动发帖','sse','{\n	\"baseUri\":\"http://192.168.1.108:8101\",\n        \"sseEndpoint\":\"/sse\"\n}',180,1,'2025-06-14 12:36:30','2025-06-14 12:36:40'),
-	(7,'5002','微信公众号消息通知','sse','{\n	\"baseUri\":\"http://192.168.1.108:8102\",\n        \"sseEndpoint\":\"/sse\"\n}',180,1,'2025-06-14 12:36:30','2025-06-14 12:36:40'),
-	(8,'5003','filesystem','stdio','{\n    \"filesystem\": {\n        \"command\": \"npx\",\n        \"args\": [\n            \"-y\",\n            \"@modelcontextprotocol/server-filesystem\",\n            \"/Users/fuzhengwei/Desktop\",\n            \"/Users/fuzhengwei/Desktop\"\n        ]\n    }\n}',180,1,'2025-06-14 12:36:30','2025-07-05 16:31:44'),
-	(9,'5004','g-search','stdio','{\n    \"g-search\": {\n        \"command\": \"npx\",\n        \"args\": [\n            \"-y\",\n            \"g-search-mcp\"\n        ]\n    }\n}',180,1,'2025-06-14 12:36:30','2025-06-14 12:36:40'),
-	(10,'5005','高德地图','sse','{\n	\"baseUri\":\"https://mcp.amap.com\",\n        \"sseEndpoint\":\"/sse?key=801aabf79ed055c2ff78603cfe851787\"\n}',180,1,'2025-06-14 12:36:30','2025-06-14 12:36:40'),
-	(12,'5006','baidu-search','sse','{\n	\"baseUri\":\"http://appbuilder.baidu.com/v2/ai_search/mcp/\",\n        \"sseEndpoint\":\"sse?api_key=Bearer+bce-v3/ALTAK-3zODLb9qHozIftQlGwez5/2696e92781f5bf1ba1870e2958f239fd6dc822a4\"\n}',180,1,'2025-06-14 12:36:30','2025-07-27 14:44:17'),
-	(13,'5007','elasticsearch-mcp-server','stdio','{\n    \"elasticsearch-mcp-server\": {\n      \"command\": \"npx\",\n      \"args\": [\n        \"-y\",\n        \"@awesome-ai/elasticsearch-mcp\"\n      ],\n      \"env\": {\n        \"ES_HOST\": \"http://127.0.0.1:9200\",\n        \"ES_API_KEY\": \"your-api-key\",\n        \"OTEL_SDK_DISABLED\":\"true\",\n        \"NODE_OPTIONS\":\"--no-warnings\"\n      }\n    }\n}',180,1,'2025-06-14 12:36:30','2025-08-09 14:12:22')
-
 /*!40000 ALTER TABLE `ai_client_tool_mcp` ENABLE KEYS */;
 UNLOCK TABLES;
 
