@@ -227,7 +227,7 @@ LOCK TABLES `ai_client_api` WRITE;
 
 INSERT INTO `ai_client_api` (`id`, `api_id`, `base_url`, `api_key`, `completions_path`, `embeddings_path`, `status`, `create_time`, `update_time`)
 VALUES
-	(1,'1001','https://apis.itedus.cn','sk-LMVN0AS4CNoBXB1oB848CaD2F46e424aA37e8c8eD54765Cb','v1/chat/completions','v1/embeddings',1,'2025-06-14 12:33:22','2025-08-16 10:58:07');
+	(1,'1001','https://apis.itedus.cn','sk-LMVN0A****XB1oB848CaD2F46e424aA37e8c8eD54765Cb','v1/chat/completions','v1/embeddings',1,'2025-06-14 12:33:22','2025-08-16 10:58:07');
 
 /*!40000 ALTER TABLE `ai_client_api` ENABLE KEYS */;
 UNLOCK TABLES;

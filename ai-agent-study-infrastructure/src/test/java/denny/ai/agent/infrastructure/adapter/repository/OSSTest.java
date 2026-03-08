@@ -40,7 +40,7 @@ public class OSSTest {
     @Value("classpath:data/dog.png")
     private org.springframework.core.io.Resource imageResource;
 
-    private final String accessKey = "JDC_DBA83F9D0DE38A07D239EEAE8576";
+    private final String accessKey = "JDC_DBA*****7D239EEAE8576";
     private final String secretKey = "EE9A6C0EADC7A96325349BF03C6E5A8A";
     private final String endpoint = "https://s3.cn-north-1.jdcloud-oss.com";
     private final String region = "cn-north-1";
@@ -95,7 +95,7 @@ public class OSSTest {
         MultiModalConversationParam param = MultiModalConversationParam.builder()
                 // 若没有配置环境变量，请用百炼API Key将下行替换为：.apiKey("sk-xxx")
                 // 各地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
-                .apiKey("sk-b1050a5b1a7e41bcaddc968acdf637a6")
+                .apiKey("sk-b1050a5b1a7*****c968acdf637a6")
                 .model("qwen3.5-plus")  // 此处以qwen3.5-plus为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
                 .messages(Arrays.asList(userMessage))
                 .build();
@@ -110,7 +110,7 @@ public class OSSTest {
     @Test
     public void testDashscopeTextRerank() throws Exception {
         String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
-        String apiKey = "sk-b1050a5b1a7e41bcaddc968acdf637a6";
+        String apiKey = "sk-b1050a5b1a7e4******968acdf637a6";
 
         RerankReq requestBody = RerankReq.builder()
                 .model("qwen3-rerank")

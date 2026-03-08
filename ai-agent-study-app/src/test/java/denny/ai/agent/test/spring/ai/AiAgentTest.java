@@ -55,7 +55,7 @@ public class AiAgentTest {
 
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://api.deepseek.com/")
-                .apiKey("sk-a0df0f93a5ac475e8c73c6e3495cfc05")
+                .apiKey("sk-a0df0f9*****73c6e3495cfc05")
                 .completionsPath("v1/chat/completions")
                 .embeddingsPath("v1/embeddings")
                 .build();
