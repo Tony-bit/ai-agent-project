@@ -49,6 +49,41 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             return "";
         }
 
+        List<SimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
+        if (sorted.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int idx = 1;
+        for (SimpleDoc d : sorted) {
+            sb.append("【文档 ").append(idx++).append(" | 来源: ").append(d.getSource()).append("】\n");
+            if (d.getTitle() != null && !d.getTitle().isEmpty()) {
+                sb.append("标题: ").append(d.getTitle()).append("\n");
+            }
+            sb.append("内容: ").append(Optional.ofNullable(d.getContent()).orElse("")).append("\n\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 评测专用检索接口：返回最终有序候选文档，用于计算 Hit@K / MRR。
+     */
+    public List<RetrievedDoc> retrieveRankedDocsForEval(String userId, String question, int topK) {
+        List<SimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
+        return sorted.stream().map(d -> {
+            RetrievedDoc rd = new RetrievedDoc();
+            rd.setDocId(d.uniqueKey());
+            rd.setSource(d.getSource());
+            rd.setTitle(d.getTitle());
+            rd.setContent(d.getContent());
+            rd.setRrfScore(d.getRrfScore());
+            rd.setRerankScore(d.getRerankScore());
+            return rd;
+        }).collect(Collectors.toList());
+    }
+
+    private List<SimpleDoc> retrieveRankedDocsInternal(String userId, String question, int topK) {
         try {
             int recallSize = Math.max(topK * 5, topK);
             int rerankCandidateSize = Math.min(100, Math.max(topK * 5, topK));
@@ -90,7 +125,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
             if (vectorDocs.isEmpty() && esDocs.isEmpty()) {
                 log.warn("未检索到相关文档，userId={}, question={}", userId, question);
-                return "";
+                return Collections.emptyList();
             }
 
             List<SimpleDoc> vectorList = new ArrayList<>();
@@ -143,7 +178,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
             if (rrfCandidates.isEmpty()) {
                 log.warn("RRF 融合后无可用候选，userId={}, question={}", userId, question);
-                return "";
+                return Collections.emptyList();
             }
 
             List<SimpleDoc> sorted;
@@ -170,22 +205,12 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 sorted = rrfCandidates.stream().limit(topK).collect(Collectors.toList());
             }
 
-            StringBuilder sb = new StringBuilder();
-            int idx = 1;
-            for (SimpleDoc d : sorted) {
-                sb.append("【文档 ").append(idx++).append(" | 来源: ").append(d.getSource()).append("】\n");
-                if (d.getTitle() != null && !d.getTitle().isEmpty()) {
-                    sb.append("标题: ").append(d.getTitle()).append("\n");
-                }
-                sb.append("内容: ").append(Optional.ofNullable(d.getContent()).orElse("")).append("\n\n");
-            }
-
             log.info("RAG 混合检索完成，userId={}, vector召回={}, es召回={}, RRF候选={}, 最终返回={}",
                     userId, vectorDocs.size(), esDocs.size(), rrfCandidates.size(), sorted.size());
-            return sb.toString();
+            return sorted;
         } catch (Exception e) {
             log.error("RAG 混合检索发生异常，userId={}, question={}", userId, question, e);
-            return "";
+            return Collections.emptyList();
         }
     }
 
@@ -253,6 +278,16 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             log.error("删除用户知识库失败，userId={}", userId, e);
             return 0;
         }
+    }
+
+    @Data
+    public static class RetrievedDoc {
+        private String docId;
+        private String source;
+        private String title;
+        private String content;
+        private double rrfScore;
+        private double rerankScore;
     }
 
     @Data
