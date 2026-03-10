@@ -23,25 +23,25 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "rag.rerank.provider", havingValue = "cohere")
-public class RagCrossEncoderServiceCohereImpl implements RagCrossEncoderService {
+@ConditionalOnProperty(name = "rag.rerank.provider", havingValue = "rank")
+public class RagCrossEncoderServiceReRankImpl implements RagCrossEncoderService {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${rag.rerank.cohere.base-url:https://dashscope.aliyuncs.com}")
+    @Value("${rag.rerank.config.base-url:https://dashscope.aliyuncs.com}")
     private String baseUrl;
 
-    @Value("${rag.rerank.cohere.api-key:}")
+    @Value("${rag.rerank.config.api-key:}")
     private String apiKey;
 
-    @Value("${rag.rerank.cohere.model:qwen3-rerank}")
+    @Value("${rag.rerank.config.model:qwen3-rerank}")
     private String model;
 
-    @Value("${rag.rerank.cohere.timeout-ms:8000}")
+    @Value("${rag.rerank.config.timeout-ms:8000}")
     private int timeoutMs;
 
-    public RagCrossEncoderServiceCohereImpl() {
+    public RagCrossEncoderServiceReRankImpl() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();

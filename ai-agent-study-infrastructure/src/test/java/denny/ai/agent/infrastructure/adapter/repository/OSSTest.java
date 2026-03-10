@@ -17,10 +17,18 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.reader.tika.TikaDocumentReader;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,11 +39,20 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 @Slf4j
+@RunWith(SpringRunner.class)
+@SpringBootTest
 public class OSSTest {
 
     private AmazonS3 s3;
+
+    @Resource
+    private TokenTextSplitter tokenTextSplitter;
+
+    @Resource
+    private PgVectorStore pgVectorStore;
 
     @Value("classpath:data/dog.png")
     private org.springframework.core.io.Resource imageResource;
@@ -144,4 +161,52 @@ public class OSSTest {
         System.out.println("statusCode: " + response.statusCode());
         System.out.println("output: " + objectMapper.writeValueAsString(rerankResponse.getOutput()));
     }
+
+    @Test
+    public void testDashscopeTextEmbeddings() throws Exception {
+        String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding";
+        String apiKey = "sk-b1050a5b1a7e41bcaddc968acdf637a6";
+
+        TextEmbeddingReq requestBody = TextEmbeddingReq.builder()
+                .model("qwen3-vl-embedding")
+                .input(TextEmbeddingReq.Input.builder().contents(Arrays.asList(
+                        TextEmbeddingReq.Embedding.builder()
+                                .text("多模态向量模型")
+                                .build()
+                ))
+                        .build())
+                .build();
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        String jsonBody = objectMapper.writeValueAsString(requestBody);
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(apiUrl))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        EmbeddingResponse embeddingResponse = objectMapper.readValue(response.body(), EmbeddingResponse.class);
+
+        System.out.println("statusCode: " + response.statusCode());
+        System.out.println("output: " + objectMapper.writeValueAsString(embeddingResponse.getOutput()));
+    }
+
+//    @Test
+//    public void upload() {
+//        TikaDocumentReader reader = new TikaDocumentReader("classpath:/data/file.text");
+//
+//        List<Document> documents = reader.get();
+//        List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
+//
+//        documents.forEach(doc -> doc.getMetadata().put("knowledge", "知识库名称"));
+//        documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", "知识库名称"));
+//
+//        pgVectorStore.accept(documentSplitterList);
+//
+//        log.info("上传完成");
+//    }
 }

@@ -1,6 +1,7 @@
 package denny.ai.agent.config;
 
 import denny.ai.agent.infrastructure.adapter.repository.RagKnowledgeRepository;
+import denny.ai.agent.infrastructure.adapter.repository.model.RagRetrievedDoc;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -39,7 +40,7 @@ public class RagRetrievalEvalScheduler {
         double rrAt10Sum = 0.0d;
 
         for (EvalCase evalCase : evalCases) {
-            List<RagKnowledgeRepository.RetrievedDoc> retrieved = ragKnowledgeRepository
+            List<RagRetrievedDoc> retrieved = ragKnowledgeRepository
                     .retrieveRankedDocsForEval(evalCase.getUserId(), evalCase.getQuery(), TOP_K);
 
             EvalMetrics metrics = computeMetrics(retrieved, evalCase.getGoldDocIds(), 5, 10);
@@ -64,7 +65,7 @@ public class RagRetrievalEvalScheduler {
                 String.format("%.4f", mrrAt10));
     }
 
-    private EvalMetrics computeMetrics(List<RagKnowledgeRepository.RetrievedDoc> retrieved,
+    private EvalMetrics computeMetrics(List<RagRetrievedDoc> retrieved,
                                        List<String> goldDocIds,
                                        int hitK,
                                        int mrrK) {

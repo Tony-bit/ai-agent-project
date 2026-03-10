@@ -1,6 +1,8 @@
 package denny.ai.agent.infrastructure.adapter.repository;
 
 import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
+import denny.ai.agent.infrastructure.adapter.repository.model.RagRetrievedDoc;
+import denny.ai.agent.infrastructure.adapter.repository.model.RagSimpleDoc;
 import denny.ai.agent.infrastructure.es.RagKnowledgeDocument;
 import denny.ai.agent.infrastructure.es.RagKnowledgeEsGateway;
 import denny.ai.agent.infrastructure.es.RagSearchRequest;
@@ -9,7 +11,6 @@ import denny.ai.agent.infrastructure.rag.RagCrossEncoderService;
 import denny.ai.agent.infrastructure.rag.RagDocumentParser;
 import denny.ai.agent.infrastructure.rag.RagEmbeddingService;
 import denny.ai.agent.infrastructure.rag.RagTextSplitter;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -49,14 +50,14 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             return "";
         }
 
-        List<SimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
+        List<RagSimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
         if (sorted.isEmpty()) {
             return "";
         }
 
         StringBuilder sb = new StringBuilder();
         int idx = 1;
-        for (SimpleDoc d : sorted) {
+        for (RagSimpleDoc d : sorted) {
             sb.append("【文档 ").append(idx++).append(" | 来源: ").append(d.getSource()).append("】\n");
             if (d.getTitle() != null && !d.getTitle().isEmpty()) {
                 sb.append("标题: ").append(d.getTitle()).append("\n");
@@ -69,10 +70,10 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
     /**
      * 评测专用检索接口：返回最终有序候选文档，用于计算 Hit@K / MRR。
      */
-    public List<RetrievedDoc> retrieveRankedDocsForEval(String userId, String question, int topK) {
-        List<SimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
+    public List<RagRetrievedDoc> retrieveRankedDocsForEval(String userId, String question, int topK) {
+        List<RagSimpleDoc> sorted = retrieveRankedDocsInternal(userId, question, topK);
         return sorted.stream().map(d -> {
-            RetrievedDoc rd = new RetrievedDoc();
+            RagRetrievedDoc rd = new RagRetrievedDoc();
             rd.setDocId(d.uniqueKey());
             rd.setSource(d.getSource());
             rd.setTitle(d.getTitle());
@@ -83,55 +84,23 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
         }).collect(Collectors.toList());
     }
 
-    private List<SimpleDoc> retrieveRankedDocsInternal(String userId, String question, int topK) {
+    private List<RagSimpleDoc> retrieveRankedDocsInternal(String userId, String question, int topK) {
         try {
             int recallSize = Math.max(topK * 5, topK);
             int rerankCandidateSize = Math.min(100, Math.max(topK * 5, topK));
 
-            SearchRequest vectorReq = SearchRequest.builder()
-                    .query(question)
-                    .topK(recallSize)
-                    .filterExpression("user_id == '" + userId + "'")
-                    .build();
-
-            CompletableFuture<List<Document>> vectorFuture = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return Optional.ofNullable(pgVectorStore.similaritySearch(vectorReq))
-                            .orElseGet(ArrayList::new);
-                } catch (Exception e) {
-                    log.error("PgVector 向量检索异常，userId={}, question={}", userId, question, e);
-                    return new ArrayList<>();
-                }
-            });
-
-            RagSearchRequest esReq = new RagSearchRequest();
-            esReq.setUserId(userId);
-            esReq.setQueryText(question);
-            esReq.setSize(recallSize);
-            esReq.setPhrasePreferred(true);
-
-            CompletableFuture<List<RagSearchResultItem>> esFuture = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return Optional.ofNullable(esGateway.search(esReq))
-                            .orElseGet(ArrayList::new);
-                } catch (Exception e) {
-                    log.error("ES 关键词检索异常，userId={}, question={}", userId, question, e);
-                    return new ArrayList<>();
-                }
-            });
-
-            List<Document> vectorDocs = vectorFuture.join();
-            List<RagSearchResultItem> esDocs = esFuture.join();
+            List<Document> vectorDocs = retrieveVectorDocs(userId, question, recallSize);
+            List<RagSearchResultItem> esDocs = retrieveEsDocs(userId, question, recallSize);
 
             if (vectorDocs.isEmpty() && esDocs.isEmpty()) {
                 log.warn("未检索到相关文档，userId={}, question={}", userId, question);
                 return Collections.emptyList();
             }
 
-            List<SimpleDoc> vectorList = new ArrayList<>();
+            List<RagSimpleDoc> vectorList = new ArrayList<>();
             for (int i = 0; i < vectorDocs.size(); i++) {
                 Document d = vectorDocs.get(i);
-                SimpleDoc sd = new SimpleDoc();
+                RagSimpleDoc sd = new RagSimpleDoc();
                 sd.setSource("vector");
                 Object titleMeta = d.getMetadata().get("title");
                 sd.setTitle(titleMeta != null ? String.valueOf(titleMeta) : "");
@@ -141,10 +110,10 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 vectorList.add(sd);
             }
 
-            List<SimpleDoc> esList = new ArrayList<>();
+            List<RagSimpleDoc> esList = new ArrayList<>();
             for (int i = 0; i < esDocs.size(); i++) {
                 RagSearchResultItem item = esDocs.get(i);
-                SimpleDoc sd = new SimpleDoc();
+                RagSimpleDoc sd = new RagSimpleDoc();
                 sd.setSource("es");
                 sd.setTitle(Optional.ofNullable(item.getTitle()).orElse(""));
                 sd.setContent(Optional.ofNullable(item.getContent()).orElse(""));
@@ -153,26 +122,26 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 esList.add(sd);
             }
 
-            Map<String, SimpleDoc> merged = new LinkedHashMap<>();
+            Map<String, RagSimpleDoc> merged = new LinkedHashMap<>();
 
-            for (SimpleDoc d : vectorList) {
+            for (RagSimpleDoc d : vectorList) {
                 String key = d.uniqueKey();
                 merged.putIfAbsent(key, d);
-                SimpleDoc m = merged.get(key);
+                RagSimpleDoc m = merged.get(key);
                 m.setVectorRank(Math.min(m.getVectorRank(), d.getVectorRank()));
                 m.setRrfScore(m.getRrfScore() + (1.0d / (RRF_K + d.getVectorRank())));
             }
 
-            for (SimpleDoc d : esList) {
+            for (RagSimpleDoc d : esList) {
                 String key = d.uniqueKey();
                 merged.putIfAbsent(key, d);
-                SimpleDoc m = merged.get(key);
+                RagSimpleDoc m = merged.get(key);
                 m.setEsRank(Math.min(m.getEsRank(), d.getEsRank()));
                 m.setRrfScore(m.getRrfScore() + (1.0d / (RRF_K + d.getEsRank())));
             }
 
-            List<SimpleDoc> rrfCandidates = merged.values().stream()
-                    .sorted(Comparator.comparing(SimpleDoc::getRrfScore).reversed())
+            List<RagSimpleDoc> rrfCandidates = merged.values().stream()
+                    .sorted(Comparator.comparing(RagSimpleDoc::getRrfScore).reversed())
                     .limit(rerankCandidateSize)
                     .collect(Collectors.toList());
 
@@ -181,7 +150,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 return Collections.emptyList();
             }
 
-            List<SimpleDoc> sorted;
+            List<RagSimpleDoc> sorted;
             try {
                 List<String> passages = rrfCandidates.stream()
                         .map(d -> (d.getTitle() == null || d.getTitle().isEmpty() ? "" : "标题: " + d.getTitle() + "\n")
@@ -197,7 +166,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 }
 
                 sorted = rrfCandidates.stream()
-                        .sorted(Comparator.comparing(SimpleDoc::getRerankScore).reversed())
+                        .sorted(Comparator.comparing(RagSimpleDoc::getRerankScore).reversed())
                         .limit(topK)
                         .collect(Collectors.toList());
             } catch (Exception ceEx) {
@@ -212,6 +181,116 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             log.error("RAG 混合检索发生异常，userId={}, question={}", userId, question, e);
             return Collections.emptyList();
         }
+    }
+
+    private List<Document> retrieveVectorDocs(String userId, String question, int recallSize) {
+        SearchRequest publicVectorReq = SearchRequest.builder()
+                .query(question)
+                .topK(recallSize)
+                .build();
+
+        CompletableFuture<List<Document>> publicVectorFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                List<Document> docs = Optional.ofNullable(pgVectorStore.similaritySearch(publicVectorReq))
+                        .orElseGet(ArrayList::new);
+                return docs.stream()
+                        .filter(doc -> {
+                            Object uid = doc.getMetadata().get("user_id");
+                            return uid == null || String.valueOf(uid).isBlank();
+                        })
+                        .collect(Collectors.toList());
+            } catch (Exception e) {
+                log.error("PgVector 公共向量检索异常，userId={}, question={}", userId, question, e);
+                return new ArrayList<>();
+            }
+        });
+
+        CompletableFuture<List<Document>> privateVectorFuture;
+        if (userId != null && !userId.isBlank()) {
+            SearchRequest privateVectorReq = SearchRequest.builder()
+                    .query(question)
+                    .topK(recallSize)
+                    .filterExpression("user_id == '" + userId + "'")
+                    .build();
+
+            privateVectorFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return Optional.ofNullable(pgVectorStore.similaritySearch(privateVectorReq))
+                            .orElseGet(ArrayList::new);
+                } catch (Exception e) {
+                    log.error("PgVector 私有向量检索异常，userId={}, question={}", userId, question, e);
+                    return new ArrayList<>();
+                }
+            });
+        } else {
+            privateVectorFuture = CompletableFuture.completedFuture(new ArrayList<>());
+        }
+
+        Map<String, Document> vectorMergedMap = new LinkedHashMap<>();
+        for (Document doc : publicVectorFuture.join()) {
+            String key = Optional.ofNullable(doc.getId())
+                    .orElse(Optional.ofNullable(doc.getText()).orElse(""));
+            vectorMergedMap.putIfAbsent(key, doc);
+        }
+        for (Document doc : privateVectorFuture.join()) {
+            String key = Optional.ofNullable(doc.getId())
+                    .orElse(Optional.ofNullable(doc.getText()).orElse(""));
+            vectorMergedMap.putIfAbsent(key, doc);
+        }
+
+        return new ArrayList<>(vectorMergedMap.values());
+    }
+
+    private List<RagSearchResultItem> retrieveEsDocs(String userId, String question, int recallSize) {
+        RagSearchRequest publicEsReq = new RagSearchRequest();
+        publicEsReq.setUserId(null);
+        publicEsReq.setQueryText(question);
+        publicEsReq.setSize(recallSize);
+        publicEsReq.setPhrasePreferred(true);
+
+        CompletableFuture<List<RagSearchResultItem>> publicEsFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                List<RagSearchResultItem> items = Optional.ofNullable(esGateway.search(publicEsReq))
+                        .orElseGet(ArrayList::new);
+                return items.stream()
+                        .filter(item -> item.getUserId() == null || item.getUserId().isBlank())
+                        .collect(Collectors.toList());
+            } catch (Exception e) {
+                log.error("ES 公共关键词检索异常，userId={}, question={}", userId, question, e);
+                return new ArrayList<>();
+            }
+        });
+
+        CompletableFuture<List<RagSearchResultItem>> privateEsFuture;
+        if (userId != null && !userId.isBlank()) {
+            RagSearchRequest privateEsReq = new RagSearchRequest();
+            privateEsReq.setUserId(userId);
+            privateEsReq.setQueryText(question);
+            privateEsReq.setSize(recallSize);
+            privateEsReq.setPhrasePreferred(true);
+
+            privateEsFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return Optional.ofNullable(esGateway.search(privateEsReq))
+                            .orElseGet(ArrayList::new);
+                } catch (Exception e) {
+                    log.error("ES 私有关键词检索异常，userId={}, question={}", userId, question, e);
+                    return new ArrayList<>();
+                }
+            });
+        } else {
+            privateEsFuture = CompletableFuture.completedFuture(new ArrayList<>());
+        }
+
+        Map<String, RagSearchResultItem> esMergedMap = new LinkedHashMap<>();
+        for (RagSearchResultItem item : publicEsFuture.join()) {
+            esMergedMap.putIfAbsent(Optional.ofNullable(item.getId()).orElse(item.getTitle() + "||" + item.getContent()), item);
+        }
+        for (RagSearchResultItem item : privateEsFuture.join()) {
+            esMergedMap.putIfAbsent(Optional.ofNullable(item.getId()).orElse(item.getTitle() + "||" + item.getContent()), item);
+        }
+
+        return new ArrayList<>(esMergedMap.values());
     }
 
     @Override
@@ -280,29 +359,4 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
         }
     }
 
-    @Data
-    public static class RetrievedDoc {
-        private String docId;
-        private String source;
-        private String title;
-        private String content;
-        private double rrfScore;
-        private double rerankScore;
-    }
-
-    @Data
-    private static class SimpleDoc {
-        private String source;
-        private String title;
-        private String content;
-        private float score;
-        private double rrfScore;
-        private double rerankScore;
-        private int vectorRank = Integer.MAX_VALUE;
-        private int esRank = Integer.MAX_VALUE;
-
-        public String uniqueKey() {
-            return Optional.ofNullable(title).orElse("") + "||" + Optional.ofNullable(content).orElse("");
-        }
-    }
 }

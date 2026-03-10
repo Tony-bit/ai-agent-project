@@ -1,7 +1,7 @@
 package denny.ai.agent.infrastructure.rag;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -15,7 +15,7 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@ConditionalOnMissingBean(RagCrossEncoderService.class)
+@ConditionalOnProperty(name = "rag.rerank.provider", havingValue = "noop", matchIfMissing = true)
 public class RagCrossEncoderServiceNoopImpl implements RagCrossEncoderService {
 
     @Override

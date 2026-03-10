@@ -153,6 +153,7 @@ public class RagKnowledgeEsGateway {
             if (doc != null) {
                 RagSearchResultItem item = new RagSearchResultItem();
                 item.setId(hit.id());
+                item.setUserId(doc.getUserId());
                 item.setTitle(doc.getTitle());
                 item.setContent(doc.getContent());
                 item.setScore(hit.score() != null ? hit.score().floatValue() : null);
