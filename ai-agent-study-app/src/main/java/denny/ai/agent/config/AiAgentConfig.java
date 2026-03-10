@@ -17,7 +17,7 @@ public class AiAgentConfig {
             @Value("${rag.embedding.config.base-url}") String apiUrl,
             @Value("${rag.embedding.config.api-key}") String apiKey,
             @Value("${rag.embedding.config.model:qwen3-vl-embedding}") String model,
-            @Value("${rag.embedding.config.dimension:512}") Integer dimension) {
+            @Value("${rag.embedding.config.dimension:768}") Integer dimension) {
         Integer actualDimension = (dimension == null || dimension <= 0) ? null : dimension;
         return new DashscopeEmbeddingModel(apiUrl, apiKey, model, actualDimension);
     }
