@@ -5,8 +5,8 @@ import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.enums.AiClientAdvisorTypeEnumVO;
-import denny.ai.agent.domain.service.armory.factory.DefaultArmoryStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +28,9 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
 
     @Resource
     private VectorStore vectorStore;
+
+    @Resource
+    private IRagKnowledgeRepository ragKnowledgeRepository;
 
     @Resource
     private AiClientNode aiClientNode;
@@ -70,6 +73,6 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
-        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore);
+        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository);
     }
 }

@@ -1,5 +1,6 @@
 package denny.ai.agent.domain.model.valobj.enums;
 
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.service.armory.factory.element.RagAnswerAdvisor;
 import lombok.AllArgsConstructor;
@@ -27,7 +28,7 @@ public enum AiClientAdvisorTypeEnumVO {
 
     CHAT_MEMORY("ChatMemory", "上下文记忆（内存模式）") {
         @Override
-        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore) {
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository) {
             AiClientAdvisorVO.ChatMemory chatMemory = aiClientAdvisorVO.getChatMemory();
             return PromptChatMemoryAdvisor.builder(
                     MessageWindowChatMemory.builder()
@@ -39,9 +40,9 @@ public enum AiClientAdvisorTypeEnumVO {
     
     RAG_ANSWER("RagAnswer", "知识库") {
         @Override
-        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore) {
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository) {
             AiClientAdvisorVO.RagAnswer ragAnswer = aiClientAdvisorVO.getRagAnswer();
-            return new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
+            return new RagAnswerAdvisor(ragKnowledgeRepository, SearchRequest.builder()
                     .topK(ragAnswer.getTopK())
                     .filterExpression(ragAnswer.getFilterExpression())
                     .build());
@@ -69,7 +70,7 @@ public enum AiClientAdvisorTypeEnumVO {
      * @param vectorStore 向量存储
      * @return 顾问对象
      */
-    public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore);
+    public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository);
     
     /**
      * 根据code获取枚举

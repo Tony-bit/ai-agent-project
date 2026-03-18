@@ -68,7 +68,7 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
         switch (transportType) {
             case "sse" -> {
                 AiClientToolMcpVO.TransportConfigSse transportConfigSse = aiClientToolMcpVO.getTransportConfigSse();
-                // http://127.0.0.1:9999/sse?apikey=DElk89iu8Ehhnbu
+                // http://127.0.0.1:9999/sse?apikey=**********
                 String originalBaseUri = transportConfigSse.getBaseUri();
                 String baseUri;
                 String sseEndpoint;
