@@ -41,40 +41,73 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
         // 获取配置信息
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
 
-        // 第一阶段：任务分析
-        log.info("\n📊 阶段1: 任务状态分析");
-        String analysisPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
-                requestParameter.getMessage(),
-                dynamicContext.getStep(),
-                dynamicContext.getMaxStep(),
-                !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
-                dynamicContext.getCurrentTask()
-        );
+        String traceId = dynamicContext.getTraceId();
+        Map<String, Object> spanMetadata = new HashMap<>();
+        spanMetadata.put("node", "step1_analyzer");
+        spanMetadata.put("step", dynamicContext.getStep());
+        spanMetadata.put("maxStep", dynamicContext.getMaxStep());
+        spanMetadata.put("sessionId", requestParameter.getSessionId());
+        spanMetadata.put("historyLength", dynamicContext.getExecutionHistory().length());
+        String spanId = observabilityService.startSpan(traceId, "step1_analyzer", spanMetadata);
 
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+        try {
+            // 第一阶段：任务分析
+            log.info("\n📊 阶段1: 任务状态分析");
+            String analysisPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
+                    requestParameter.getMessage(),
+                    dynamicContext.getStep(),
+                    dynamicContext.getMaxStep(),
+                    !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
+                    dynamicContext.getCurrentTask()
+            );
 
-        String analysisResult = chatClient
-                .prompt(analysisPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
 
-        assert analysisResult != null;
-        parseAnalysisResult(dynamicContext, analysisResult, requestParameter.getSessionId());
-        
-        // 将分析结果保存到动态上下文中，供下一步使用
-        dynamicContext.setValue("analysisResult", analysisResult);
+            long startAt = System.currentTimeMillis();
+            String analysisResult = chatClient
+                    .prompt(analysisPrompt)
+                    .advisors(a -> a
+                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024)
+                            .param("trace_id", traceId))
+                    .call().content();
 
-        // 检查是否已完成
-        if (analysisResult.contains("任务状态: COMPLETED") ||
-                analysisResult.contains("完成度评估: 100%")) {
-            dynamicContext.setCompleted(true);
-            log.info("✅ 任务分析显示已完成！");
+            assert analysisResult != null;
+            parseAnalysisResult(dynamicContext, analysisResult, requestParameter.getSessionId());
+
+            long latencyMs = System.currentTimeMillis() - startAt;
+            Map<String, Object> generationMetadata = new HashMap<>();
+            generationMetadata.put("node", "step1_analyzer");
+            generationMetadata.put("latencyMs", latencyMs);
+            generationMetadata.put("step", dynamicContext.getStep());
+            generationMetadata.put("analysisLength", analysisResult.length());
+            generationMetadata.put("taskStatus", extractTaskStatus(analysisResult));
+            generationMetadata.put("progress", extractProgress(analysisResult));
+            observabilityService.logGeneration(
+                    traceId,
+                    spanId,
+                    aiAgentClientFlowConfigVO.getClientId(),
+                    analysisPrompt,
+                    analysisResult,
+                    generationMetadata
+            );
+
+            // 将分析结果保存到动态上下文中，供下一步使用
+            dynamicContext.setValue("analysisResult", analysisResult);
+
+            // 检查是否已完成
+            if (analysisResult.contains("任务状态: COMPLETED") ||
+                    analysisResult.contains("完成度评估: 100%")) {
+                dynamicContext.setCompleted(true);
+                log.info("✅ 任务分析显示已完成！");
+            }
+
+            observabilityService.endSpan(spanId, true, null);
             return router(requestParameter, dynamicContext);
+        } catch (Exception e) {
+            observabilityService.endSpan(spanId, false, e.getMessage());
+            throw e;
         }
-
-        return router(requestParameter, dynamicContext);
     }
 
     @Override
@@ -179,6 +212,31 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                     dynamicContext.getStep(), subType, content, sessionId);
             sendSseResult(dynamicContext, result);
         }
+    }
+
+    private String extractTaskStatus(String analysisResult) {
+        for (String line : analysisResult.split("\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("任务状态:")) {
+                return trimmed.substring(trimmed.indexOf(":") + 1).trim();
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    private Double extractProgress(String analysisResult) {
+        for (String line : analysisResult.split("\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("完成度评估:")) {
+                String raw = trimmed.substring(trimmed.indexOf(":") + 1).trim().replace("%", "");
+                try {
+                    return Double.parseDouble(raw);
+                } catch (Exception ignore) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
 }

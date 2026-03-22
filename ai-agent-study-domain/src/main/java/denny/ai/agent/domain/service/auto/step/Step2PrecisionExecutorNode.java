@@ -97,7 +97,8 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
                     .prompt(executionPrompt)
                     .advisors(a -> a
                             .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096))
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096)
+                            .param("trace_id", traceId))
                     .call().content();
 
             assert executionResult != null;
@@ -109,6 +110,9 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             generationMetadata.put("latencyMs", latencyMs);
             generationMetadata.put("step", dynamicContext.getStep());
             generationMetadata.put("taskType", taskType);
+            generationMetadata.put("executionLength", executionResult.length());
+            generationMetadata.put("analysisLength", analysisResult.length());
+            generationMetadata.put("isRagTask", taskType == 3);
             observabilityService.logGeneration(
                     traceId,
                     spanId,

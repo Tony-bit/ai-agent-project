@@ -2,12 +2,13 @@ package denny.ai.agent.domain.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
-import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.enums.AiClientAdvisorTypeEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -31,6 +32,9 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
 
     @Resource
     private IRagKnowledgeRepository ragKnowledgeRepository;
+
+    @Resource
+    private ObservabilityService observabilityService;
 
     @Resource
     private AiClientNode aiClientNode;
@@ -65,7 +69,6 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
         return AiAgentEnumVO.AI_CLIENT_ADVISOR.getBeanName(beanId);
     }
 
-
     protected String dataName() {
         return AiAgentEnumVO.AI_CLIENT_ADVISOR.getDataName();
     }
@@ -73,6 +76,6 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
-        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository);
+        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository, observabilityService);
     }
 }

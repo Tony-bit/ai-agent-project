@@ -60,7 +60,8 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
                     .prompt(supervisionPrompt)
                     .advisors(a -> a
                             .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024)
+                            .param("trace_id", traceId))
                     .call().content();
 
             assert supervisionResult != null;
@@ -71,6 +72,9 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
             generationMetadata.put("node", "step3_quality_supervisor");
             generationMetadata.put("latencyMs", latencyMs);
             generationMetadata.put("step", dynamicContext.getStep());
+            generationMetadata.put("supervisionLength", supervisionResult.length());
+            generationMetadata.put("passStatus", extractPassStatus(supervisionResult));
+            generationMetadata.put("qualityScore", extractQualityScore(supervisionResult));
             observabilityService.logGeneration(
                     traceId,
                     spanId,

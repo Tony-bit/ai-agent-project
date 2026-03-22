@@ -2,7 +2,9 @@ package denny.ai.agent.domain.model.valobj.enums;
 
 import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
+import denny.ai.agent.domain.service.armory.factory.element.ObservabilityAdvisor;
 import denny.ai.agent.domain.service.armory.factory.element.RagAnswerAdvisor;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,7 +30,10 @@ public enum AiClientAdvisorTypeEnumVO {
 
     CHAT_MEMORY("ChatMemory", "上下文记忆（内存模式）") {
         @Override
-        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository) {
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                     VectorStore vectorStore,
+                                     IRagKnowledgeRepository ragKnowledgeRepository,
+                                     ObservabilityService observabilityService) {
             AiClientAdvisorVO.ChatMemory chatMemory = aiClientAdvisorVO.getChatMemory();
             return PromptChatMemoryAdvisor.builder(
                     MessageWindowChatMemory.builder()
@@ -37,41 +42,57 @@ public enum AiClientAdvisorTypeEnumVO {
             ).build();
         }
     },
-    
+
     RAG_ANSWER("RagAnswer", "知识库") {
         @Override
-        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository) {
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                     VectorStore vectorStore,
+                                     IRagKnowledgeRepository ragKnowledgeRepository,
+                                     ObservabilityService observabilityService) {
             AiClientAdvisorVO.RagAnswer ragAnswer = aiClientAdvisorVO.getRagAnswer();
             return new RagAnswerAdvisor(ragKnowledgeRepository, SearchRequest.builder()
                     .topK(ragAnswer.getTopK())
                     .filterExpression(ragAnswer.getFilterExpression())
                     .build());
         }
+    },
+
+    OBSERVABILITY("Observability", "可观测日志打点") {
+        @Override
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                     VectorStore vectorStore,
+                                     IRagKnowledgeRepository ragKnowledgeRepository,
+                                     ObservabilityService observabilityService) {
+            return new ObservabilityAdvisor(observabilityService);
+        }
     }
-    
+
     ;
 
     private String code;
     private String info;
-    
+
     // 静态Map缓存，用于快速查找
     private static final Map<String, AiClientAdvisorTypeEnumVO> CODE_MAP = new HashMap<>();
-    
+
     // 静态初始化块，在类加载时初始化Map
     static {
         for (AiClientAdvisorTypeEnumVO enumVO : values()) {
             CODE_MAP.put(enumVO.getCode(), enumVO);
         }
     }
-    
+
     /**
      * 策略方法：创建顾问对象
      * @param aiClientAdvisorVO 顾问配置对象
      * @param vectorStore 向量存储
      * @return 顾问对象
      */
-    public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore, IRagKnowledgeRepository ragKnowledgeRepository);
-    
+    public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                          VectorStore vectorStore,
+                                          IRagKnowledgeRepository ragKnowledgeRepository,
+                                          ObservabilityService observabilityService);
+
     /**
      * 根据code获取枚举
      * @param code 编码

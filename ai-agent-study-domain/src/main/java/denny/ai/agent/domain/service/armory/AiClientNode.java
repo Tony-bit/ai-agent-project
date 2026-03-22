@@ -13,6 +13,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -55,6 +56,7 @@ public class AiClientNode extends AbstractArmorySupport {
             for (String advisorBeanName : aiClientVO.getAdvisorBeanNameList()) {
                 advisors.add(getBean(advisorBeanName));
             }
+            advisors.sort(AnnotationAwareOrderComparator.INSTANCE);
 
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())

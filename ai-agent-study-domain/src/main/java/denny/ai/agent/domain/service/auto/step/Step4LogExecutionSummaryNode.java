@@ -72,6 +72,16 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
      * 生成最终总结报告
      */
     private void generateFinalReport(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        String traceId = dynamicContext.getTraceId();
+        Map<String, Object> spanMetadata = new HashMap<>();
+        spanMetadata.put("node", "step4_execution_summary");
+        spanMetadata.put("step", dynamicContext.getStep());
+        spanMetadata.put("maxStep", dynamicContext.getMaxStep());
+        spanMetadata.put("sessionId", requestParameter.getSessionId());
+        String spanId = StringUtils.isNotBlank(traceId)
+                ? observabilityService.startSpan(traceId, "step4_execution_summary", spanMetadata)
+                : "";
+
         try {
             boolean isCompleted = dynamicContext.isCompleted();
             log.info("\n--- 生成{}任务的最终答案 ---", isCompleted ? "已完成" : "未完成");
@@ -82,21 +92,41 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
 
             // 获取对话客户端 - 使用任务分析客户端进行总结
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
-            
+
+            long startAt = System.currentTimeMillis();
             String summaryResult = chatClient
                     .prompt(summaryPrompt)
                     .advisors(a -> a
                             .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50))
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50)
+                            .param("trace_id", traceId))
                     .call().content();
 
             assert summaryResult != null;
             logFinalReport(dynamicContext, summaryResult, requestParameter.getSessionId());
-            
+
+            long latencyMs = System.currentTimeMillis() - startAt;
+            if (StringUtils.isNotBlank(traceId) && StringUtils.isNotBlank(spanId)) {
+                Map<String, Object> generationMetadata = new HashMap<>();
+                generationMetadata.put("node", "step4_execution_summary");
+                generationMetadata.put("latencyMs", latencyMs);
+                generationMetadata.put("step", dynamicContext.getStep());
+                generationMetadata.put("completed", isCompleted);
+                generationMetadata.put("summaryLength", summaryResult.length());
+                generationMetadata.put("historyLength", dynamicContext.getExecutionHistory().length());
+                observabilityService.logGeneration(
+                        traceId,
+                        spanId,
+                        aiAgentClientFlowConfigVO.getClientId(),
+                        summaryPrompt,
+                        summaryResult,
+                        generationMetadata
+                );
+            }
+
             // 将总结结果保存到动态上下文中
             dynamicContext.setValue("finalSummary", summaryResult);
 
-            String traceId = dynamicContext.getTraceId();
             if (StringUtils.isNotBlank(traceId)) {
                 Map<String, Object> traceMetadata = new HashMap<>();
                 traceMetadata.put("node", "step4_execution_summary");
@@ -104,13 +134,18 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
                 traceMetadata.put("step", dynamicContext.getStep());
                 traceMetadata.put("maxStep", dynamicContext.getMaxStep());
                 traceMetadata.put("sessionId", requestParameter.getSessionId());
+                log.info("endTrce: traceMetaData{},   summaryResult:{}",traceMetadata,summaryResult);
                 observabilityService.endTrace(traceId, summaryResult, traceMetadata);
+            }
+
+            if (StringUtils.isNotBlank(spanId)) {
+                observabilityService.endSpan(spanId, true, null);
             }
 
         } catch (Exception e) {
             log.error("生成最终总结报告时出现异常: {}", e.getMessage(), e);
-            String traceId = dynamicContext.getTraceId();
-            if (StringUtils.isNotBlank(traceId)) {
+            String currentTraceId = dynamicContext.getTraceId();
+            if (StringUtils.isNotBlank(currentTraceId)) {
                 Map<String, Object> traceMetadata = new HashMap<>();
                 traceMetadata.put("node", "step4_execution_summary");
                 traceMetadata.put("completed", dynamicContext.isCompleted());
@@ -118,7 +153,12 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
                 traceMetadata.put("maxStep", dynamicContext.getMaxStep());
                 traceMetadata.put("sessionId", requestParameter.getSessionId());
                 traceMetadata.put("error", e.getMessage());
-                observabilityService.endTrace(traceId, "", traceMetadata);
+                log.info("endTrceError: traceMetaData{},   summaryResult:{}",traceMetadata,null);
+
+                observabilityService.endTrace(currentTraceId, "", traceMetadata);
+            }
+            if (StringUtils.isNotBlank(spanId)) {
+                observabilityService.endSpan(spanId, false, e.getMessage());
             }
         }
     }

@@ -131,10 +131,12 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("id", traceId);
+        payload.put("timestamp", Instant.now().toString());
         payload.put("output", output);
         payload.put("metadata", metadata);
 
-        sendEvent("trace-update", payload);
+        // Langfuse ingestion 对 trace 使用 trace-create(upsert) 更稳定，避免 trace-update 不生效。
+        sendEvent("trace-create", payload);
     }
 
     private void sendEvent(String type, Map<String, Object> body) {
