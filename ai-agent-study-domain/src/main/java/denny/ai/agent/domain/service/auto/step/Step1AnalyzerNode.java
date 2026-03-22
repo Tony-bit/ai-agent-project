@@ -7,6 +7,9 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +26,17 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n🎯 === 执行第 {} 步 ===", dynamicContext.getStep());
+
+        // 初始化 Langfuse Trace（一次会话生命周期只初始化一次）
+        if (dynamicContext.getTraceId() == null || dynamicContext.getTraceId().isBlank()) {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("node", "step1_analyzer");
+            metadata.put("maxStep", dynamicContext.getMaxStep());
+            metadata.put("currentStep", dynamicContext.getStep());
+            String traceId = observabilityService.startTrace(requestParameter.getSessionId(), requestParameter.getMessage(), metadata);
+            dynamicContext.setTraceId(traceId);
+            log.info("📡 Langfuse trace initialized, traceId={}", traceId);
+        }
 
         // 获取配置信息
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());

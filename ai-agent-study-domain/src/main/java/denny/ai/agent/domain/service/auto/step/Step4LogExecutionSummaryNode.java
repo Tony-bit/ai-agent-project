@@ -7,8 +7,12 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 执行总结节点
@@ -91,9 +95,31 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             
             // 将总结结果保存到动态上下文中
             dynamicContext.setValue("finalSummary", summaryResult);
-            
+
+            String traceId = dynamicContext.getTraceId();
+            if (StringUtils.isNotBlank(traceId)) {
+                Map<String, Object> traceMetadata = new HashMap<>();
+                traceMetadata.put("node", "step4_execution_summary");
+                traceMetadata.put("completed", dynamicContext.isCompleted());
+                traceMetadata.put("step", dynamicContext.getStep());
+                traceMetadata.put("maxStep", dynamicContext.getMaxStep());
+                traceMetadata.put("sessionId", requestParameter.getSessionId());
+                observabilityService.endTrace(traceId, summaryResult, traceMetadata);
+            }
+
         } catch (Exception e) {
             log.error("生成最终总结报告时出现异常: {}", e.getMessage(), e);
+            String traceId = dynamicContext.getTraceId();
+            if (StringUtils.isNotBlank(traceId)) {
+                Map<String, Object> traceMetadata = new HashMap<>();
+                traceMetadata.put("node", "step4_execution_summary");
+                traceMetadata.put("completed", dynamicContext.isCompleted());
+                traceMetadata.put("step", dynamicContext.getStep());
+                traceMetadata.put("maxStep", dynamicContext.getMaxStep());
+                traceMetadata.put("sessionId", requestParameter.getSessionId());
+                traceMetadata.put("error", e.getMessage());
+                observabilityService.endTrace(traceId, "", traceMetadata);
+            }
         }
     }
 

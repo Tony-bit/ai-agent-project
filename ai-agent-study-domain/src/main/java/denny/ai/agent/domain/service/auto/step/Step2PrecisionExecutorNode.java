@@ -10,6 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 精准执行节点
  *
@@ -24,85 +27,115 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n⚡ 阶段2: 精准任务执行");
-        
-        // 从动态上下文中获取分析结果
-        String analysisResult = dynamicContext.getValue("analysisResult");
-        if (analysisResult == null || analysisResult.trim().isEmpty()) {
-            log.warn("⚠️ 分析结果为空，使用默认执行策略");
-            analysisResult = "执行当前任务步骤";
-        }
 
-        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
+        String traceId = dynamicContext.getTraceId();
+        Map<String, Object> spanMetadata = new HashMap<>();
+        spanMetadata.put("node", "step2_precision_executor");
+        spanMetadata.put("step", dynamicContext.getStep());
+        spanMetadata.put("maxStep", dynamicContext.getMaxStep());
+        spanMetadata.put("sessionId", requestParameter.getSessionId());
+        String spanId = observabilityService.startSpan(traceId, "step2_precision_executor", spanMetadata);
 
-        int taskType = 0;
-        // 根据分析任务类型，获取对应的客户端进行执行任务
-        if (analysisResult.contains("推理任务类型")) {
-            taskType = 1;
-        } else if (analysisResult.contains("计算任务类型")) {
-            taskType = 2;
-        } else if (analysisResult.contains("知识检索任务类型")) {
-            taskType = 3;
-        }
-        log.info("本任务类型为：{}", taskType);
+        try {
+            // 从动态上下文中获取分析结果
+            String analysisResult = dynamicContext.getValue("analysisResult");
+            if (analysisResult == null || analysisResult.trim().isEmpty()) {
+                log.warn("⚠️ 分析结果为空，使用默认执行策略");
+                analysisResult = "执行当前任务步骤";
+            }
 
-        String executionPrompt;
-        if (taskType == 3) {
-            String ragPromptTemplate = """
-                    你是一名专业的知识问答与任务执行助手，请基于以下知识文档回答用户问题并完成任务。
-                    如果文档中无法找到答案，请明确说明不知道，不要编造。
+            AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
 
-                    【知识文档】
-                    {question_answer_context}
+            int taskType = 0;
+            // 根据分析任务类型，获取对应的客户端进行执行任务
+            if (analysisResult.contains("推理任务类型")) {
+                taskType = 1;
+            } else if (analysisResult.contains("计算任务类型")) {
+                taskType = 2;
+            } else if (analysisResult.contains("知识检索任务类型")) {
+                taskType = 3;
+            }
+            log.info("本任务类型为：{}", taskType);
 
-                    【任务分析结果】
-                    %s
+            String executionPrompt;
+            if (taskType == 3) {
+                String ragPromptTemplate = """
+                        你是一名专业的知识问答与任务执行助手，请基于以下知识文档回答用户问题并完成任务。
+                        如果文档中无法找到答案，请明确说明不知道，不要编造。
 
-                    【用户问题】
-                    %s
+                        【知识文档】
+                        {question_answer_context}
 
-                    请用中文给出清晰、结构化的执行方案或答案。
-                    """;
+                        【任务分析结果】
+                        %s
 
-            executionPrompt = String.format(
-                    ragPromptTemplate,
-                    analysisResult,
-                    requestParameter.getMessage()
+                        【用户问题】
+                        %s
+
+                        请用中文给出清晰、结构化的执行方案或答案。
+                        """;
+
+                executionPrompt = String.format(
+                        ragPromptTemplate,
+                        analysisResult,
+                        requestParameter.getMessage()
+                );
+            } else {
+                // 非知识检索任务，保持原有执行 Prompt 逻辑
+                executionPrompt = String.format(
+                        aiAgentClientFlowConfigVO.getStepPrompt(),
+                        requestParameter.getMessage(),
+                        analysisResult
+                );
+            }
+
+            // 获取对话客户端
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);
+
+            long startAt = System.currentTimeMillis();
+            String executionResult = chatClient
+                    .prompt(executionPrompt)
+                    .advisors(a -> a
+                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096))
+                    .call().content();
+
+            assert executionResult != null;
+            parseExecutionResult(dynamicContext, executionResult, requestParameter.getSessionId());
+
+            long latencyMs = System.currentTimeMillis() - startAt;
+            Map<String, Object> generationMetadata = new HashMap<>();
+            generationMetadata.put("node", "step2_precision_executor");
+            generationMetadata.put("latencyMs", latencyMs);
+            generationMetadata.put("step", dynamicContext.getStep());
+            generationMetadata.put("taskType", taskType);
+            observabilityService.logGeneration(
+                    traceId,
+                    spanId,
+                    aiAgentClientFlowConfigVO.getClientId(),
+                    executionPrompt,
+                    executionResult,
+                    generationMetadata
             );
-        } else {
-            // 非知识检索任务，保持原有执行 Prompt 逻辑
-            executionPrompt = String.format(
-                    aiAgentClientFlowConfigVO.getStepPrompt(),
-                    requestParameter.getMessage(),
-                    analysisResult
-            );
+
+            // 将执行结果保存到动态上下文中，供下一步使用
+            dynamicContext.setValue("executionResult", executionResult);
+
+            // 更新执行历史
+            String stepSummary = String.format("""
+                    === 第 %d 步执行记录 ===
+                    【分析阶段】%s
+                    【执行阶段】%s
+                    """, dynamicContext.getStep(), analysisResult, executionResult);
+
+            dynamicContext.getExecutionHistory().append(stepSummary);
+
+            observabilityService.endSpan(spanId, true, null);
+            return router(requestParameter, dynamicContext);
+        } catch (Exception e) {
+            observabilityService.endSpan(spanId, false, e.getMessage());
+            throw e;
         }
-
-        // 获取对话客户端
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);
-
-        String executionResult = chatClient
-                .prompt(executionPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096))
-                .call().content();
-
-        assert executionResult != null;
-        parseExecutionResult(dynamicContext, executionResult, requestParameter.getSessionId());
-        
-        // 将执行结果保存到动态上下文中，供下一步使用
-        dynamicContext.setValue("executionResult", executionResult);
-        
-        // 更新执行历史
-        String stepSummary = String.format("""
-                === 第 %d 步执行记录 ===
-                【分析阶段】%s
-                【执行阶段】%s
-                """, dynamicContext.getStep(), analysisResult, executionResult);
-        
-        dynamicContext.getExecutionHistory().append(stepSummary);
-
-        return router(requestParameter, dynamicContext);
     }
 
     @Override

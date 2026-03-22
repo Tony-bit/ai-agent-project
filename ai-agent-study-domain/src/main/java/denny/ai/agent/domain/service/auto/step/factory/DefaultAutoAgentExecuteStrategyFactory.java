@@ -48,6 +48,11 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         private String currentTask;
 
+        /**
+         * Langfuse traceId（一次完整任务生命周期）
+         */
+        private String traceId;
+
         boolean isCompleted = false;
 
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;

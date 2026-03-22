@@ -20,7 +20,10 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionTextParser;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,7 +42,7 @@ public class RagAnswerAdvisor implements BaseAdvisor {
 
     @Override
     public ChatClientRequest before(ChatClientRequest chatClientRequest, AdvisorChain advisorChain) {
-        HashMap<String, Object> context = new HashMap(chatClientRequest.context());
+        HashMap<String, Object> context = new HashMap<>(chatClientRequest.context());
 
         String userText = chatClientRequest.prompt().getUserMessage().getText();
         String advisedUserText = userText + System.lineSeparator() + this.userTextAdvise;
@@ -47,11 +50,22 @@ public class RagAnswerAdvisor implements BaseAdvisor {
         String query = (new PromptTemplate(userText)).render();
 
         SearchRequest searchRequestToUse = SearchRequest.from(this.searchRequest).query(query).filterExpression(this.doGetFilterExpression(context)).build();
-        List<Document> documents = this.vectorStore.similaritySearch(searchRequestToUse);
-        context.put("qa_retrieved_documents", documents);
+        List<String> queries = buildQueries(query);
+        List<Document> documents = new ArrayList<>();
+        Map<String, Document> uniqueDocuments = new LinkedHashMap<>();
+        for (String q : queries) {
+            SearchRequest searchRequestForQuery = SearchRequest.from(searchRequestToUse).query(q).build();
+            List<Document> docs = this.vectorStore.similaritySearch(searchRequestForQuery);
+            documents.addAll(docs);
+            for (Document doc : docs) {
+                uniqueDocuments.putIfAbsent(doc.getId(), doc);
+            }
+        }
+        List<Document> mergedDocuments = new ArrayList<>(uniqueDocuments.values());
+        context.put("qa_retrieved_documents", mergedDocuments);
 
-        String documentContext = documents.stream().map(Document::getText).collect(Collectors.joining(System.lineSeparator()));
-        Map<String, Object> advisedUserParams = new HashMap(chatClientRequest.context());
+        String documentContext = mergedDocuments.stream().map(Document::getText).collect(Collectors.joining(System.lineSeparator()));
+        Map<String, Object> advisedUserParams = new HashMap<>(chatClientRequest.context());
         advisedUserParams.put("question_answer_context", documentContext);
 
         return ChatClientRequest.builder()
@@ -95,6 +109,24 @@ public class RagAnswerAdvisor implements BaseAdvisor {
 
     protected Filter.Expression doGetFilterExpression(Map<String, Object> context) {
         return context.containsKey("qa_filter_expression") && StringUtils.hasText(context.get("qa_filter_expression").toString()) ? (new FilterExpressionTextParser()).parse(context.get("qa_filter_expression").toString()) : this.searchRequest.getFilterExpression();
+    }
+
+    private List<String> buildQueries(String query) {
+        if (!StringUtils.hasText(query)) {
+            return List.of();
+        }
+        String normalizedQuery = query.trim();
+        List<String> queries = new ArrayList<>();
+        queries.add(normalizedQuery);
+
+        for (String part : Arrays.asList(normalizedQuery.split("[。！？!?\\n]+"))) {
+            String trimmed = part.trim();
+            if (StringUtils.hasText(trimmed) && trimmed.length() >= 3) {
+                queries.add(trimmed);
+            }
+        }
+
+        return queries.stream().distinct().collect(Collectors.toList());
     }
 
 }

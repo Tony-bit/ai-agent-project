@@ -7,6 +7,11 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -20,73 +25,114 @@ import org.springframework.stereotype.Service;
 @Service
 public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
 
+    private static final Pattern QUALITY_SCORE_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)");
+
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         // 第三阶段：质量监督
         log.info("\n🔍 阶段3: 质量监督检查");
-        
-        // 从动态上下文中获取执行结果
-        String executionResult = dynamicContext.getValue("executionResult");
-        if (executionResult == null || executionResult.trim().isEmpty()) {
-            log.warn("⚠️ 执行结果为空，跳过质量监督");
-            return "质量监督跳过";
-        }
 
-        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.QUALITY_SUPERVISOR_CLIENT.getCode());
-        
-        String supervisionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), executionResult);
+        String traceId = dynamicContext.getTraceId();
+        Map<String, Object> spanMetadata = new HashMap<>();
+        spanMetadata.put("node", "step3_quality_supervisor");
+        spanMetadata.put("step", dynamicContext.getStep());
+        spanMetadata.put("maxStep", dynamicContext.getMaxStep());
+        spanMetadata.put("sessionId", requestParameter.getSessionId());
+        String spanId = observabilityService.startSpan(traceId, "step3_quality_supervisor", spanMetadata);
+        long startAt = System.currentTimeMillis();
 
-        // 获取对话客户端
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+        try {
+            // 从动态上下文中获取执行结果
+            String executionResult = dynamicContext.getValue("executionResult");
+            if (executionResult == null || executionResult.trim().isEmpty()) {
+                log.warn("⚠️ 执行结果为空，跳过质量监督");
+                return "质量监督跳过";
+            }
 
-        String supervisionResult = chatClient
-                .prompt(supervisionPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+            AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.QUALITY_SUPERVISOR_CLIENT.getCode());
 
-        assert supervisionResult != null;
-        parseSupervisionResult(dynamicContext, supervisionResult, requestParameter.getSessionId());
-        
-        // 将监督结果保存到动态上下文中
-        dynamicContext.setValue("supervisionResult", supervisionResult);
-        
-        // 根据监督结果决定是否需要重新执行
-        if (supervisionResult.contains("是否通过: FAIL")) {
-            log.info("❌ 质量检查未通过，需要重新执行");
-            dynamicContext.setCurrentTask("根据质量监督的建议重新执行任务");
-        } else if (supervisionResult.contains("是否通过: OPTIMIZE")) {
-            log.info("🔧 质量检查建议优化，继续改进");
-            dynamicContext.setCurrentTask("根据质量监督的建议优化执行结果");
-        } else {
-            log.info("✅ 质量检查通过");
-            dynamicContext.setCompleted(true);
-        }
-        
-        // 更新执行历史
-        String stepSummary = String.format("""
-                === 第 %d 步完整记录 ===
-                【分析阶段】%s
-                【执行阶段】%s
-                【监督阶段】%s
-                """, dynamicContext.getStep(), 
-                dynamicContext.getValue("analysisResult"), 
-                executionResult, 
-                supervisionResult);
-        
-        dynamicContext.getExecutionHistory().append(stepSummary);
-        
-        // 增加步骤计数
-        dynamicContext.setStep(dynamicContext.getStep() + 1);
-        
-        // 如果任务已完成或达到最大步数，进入总结阶段
-        if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
+            String supervisionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), executionResult);
+
+            // 获取对话客户端
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+
+            String supervisionResult = chatClient
+                    .prompt(supervisionPrompt)
+                    .advisors(a -> a
+                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
+                    .call().content();
+
+            assert supervisionResult != null;
+            parseSupervisionResult(dynamicContext, supervisionResult, requestParameter.getSessionId());
+
+            long latencyMs = System.currentTimeMillis() - startAt;
+            Map<String, Object> generationMetadata = new HashMap<>();
+            generationMetadata.put("node", "step3_quality_supervisor");
+            generationMetadata.put("latencyMs", latencyMs);
+            generationMetadata.put("step", dynamicContext.getStep());
+            observabilityService.logGeneration(
+                    traceId,
+                    spanId,
+                    aiAgentClientFlowConfigVO.getClientId(),
+                    supervisionPrompt,
+                    supervisionResult,
+                    generationMetadata
+            );
+
+            // 将监督结果保存到动态上下文中
+            dynamicContext.setValue("supervisionResult", supervisionResult);
+
+            String passStatus = extractPassStatus(supervisionResult);
+            Double passScore = mapPassScore(passStatus);
+            observabilityService.logScore(traceId, "quality_pass", passScore, passStatus, generationMetadata);
+
+            Double qualityScore = extractQualityScore(supervisionResult);
+            if (qualityScore != null) {
+                observabilityService.logScore(traceId, "quality_score", qualityScore, "quality score extracted from supervision result", generationMetadata);
+            }
+
+            // 根据监督结果决定是否需要重新执行
+            if (supervisionResult.contains("是否通过: FAIL")) {
+                log.info("❌ 质量检查未通过，需要重新执行");
+                dynamicContext.setCurrentTask("根据质量监督的建议重新执行任务");
+            } else if (supervisionResult.contains("是否通过: OPTIMIZE")) {
+                log.info("🔧 质量检查建议优化，继续改进");
+                dynamicContext.setCurrentTask("根据质量监督的建议优化执行结果");
+            } else {
+                log.info("✅ 质量检查通过");
+                dynamicContext.setCompleted(true);
+            }
+
+            // 更新执行历史
+            String stepSummary = String.format("""
+                    === 第 %d 步完整记录 ===
+                    【分析阶段】%s
+                    【执行阶段】%s
+                    【监督阶段】%s
+                    """, dynamicContext.getStep(),
+                    dynamicContext.getValue("analysisResult"),
+                    executionResult,
+                    supervisionResult);
+
+            dynamicContext.getExecutionHistory().append(stepSummary);
+
+            // 增加步骤计数
+            dynamicContext.setStep(dynamicContext.getStep() + 1);
+
+            // 如果任务已完成或达到最大步数，进入总结阶段
+            if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
+                observabilityService.endSpan(spanId, true, null);
+                return router(requestParameter, dynamicContext);
+            }
+
+            // 否则继续下一轮执行，返回到Step1AnalyzerNode
+            observabilityService.endSpan(spanId, true, null);
             return router(requestParameter, dynamicContext);
+        } catch (Exception e) {
+            observabilityService.endSpan(spanId, false, e.getMessage());
+            throw e;
         }
-        
-        // 否则继续下一轮执行，返回到Step1AnalyzerNode
-        return router(requestParameter, dynamicContext);
     }
 
     @Override
@@ -193,6 +239,41 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
         sendSupervisionResult(dynamicContext, supervisionResult, sessionId);
     }
     
+    private String extractPassStatus(String supervisionResult) {
+        if (supervisionResult.contains("是否通过: FAIL")) {
+            return "FAIL";
+        }
+        if (supervisionResult.contains("是否通过: OPTIMIZE")) {
+            return "OPTIMIZE";
+        }
+        return "PASS";
+    }
+
+    private Double mapPassScore(String passStatus) {
+        return switch (passStatus) {
+            case "FAIL" -> 0.0D;
+            case "OPTIMIZE" -> 0.5D;
+            default -> 1.0D;
+        };
+    }
+
+    private Double extractQualityScore(String supervisionResult) {
+        String[] lines = supervisionResult.split("\\n");
+        for (String line : lines) {
+            if (line.contains("质量评分:")) {
+                Matcher matcher = QUALITY_SCORE_PATTERN.matcher(line);
+                if (matcher.find()) {
+                    try {
+                        return Double.parseDouble(matcher.group(1));
+                    } catch (NumberFormatException ignore) {
+                        return null;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * 发送监督结果到流式输出
      */

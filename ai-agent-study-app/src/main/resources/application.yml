@@ -19,11 +19,11 @@ spring:
         model: nomic-embed-text
     # 添加 zhipu 配置
     openai:
-      base-url: https://open.bigmodel.cn/api/paas/v4/embeddings
+      base-url: https://open.bigmodel.cn/api/paas/v4
       api-key: f159764707384a1ca0b0a83fbd3ed065.YooCMBFpJSN0vUoN
       embedding-model: embedding-3  # zhipu 的嵌入模型
       chat:
-        model: deepseek-chat
+        model: glm-4-flash
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
@@ -112,6 +112,13 @@ redis:
       retry-interval: 1000
       ping-interval: 60000
       keep-alive: true
+
+langfuse:
+  enabled: true
+  host: http://1.12.53.53:3000
+  public-key: pk-lf-8d9708a3-dbda-4f1c-a3ba-0ce8ed1ff511
+  secret-key: sk-lf-aaae2872-e0f7-44c5-b611-4e2aea56334f
+  timeout-ms: 10000
 
 logging:
   level:
