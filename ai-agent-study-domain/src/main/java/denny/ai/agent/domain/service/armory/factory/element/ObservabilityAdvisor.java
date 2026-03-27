@@ -84,7 +84,8 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         generationMetadata.put("ragRetrievedHitCount", countRetrievedHits(retrievedDocuments));
 
         if (StringUtils.isNotBlank(traceId) && StringUtils.isNotBlank(spanId)) {
-            observabilityService.logGeneration(traceId, spanId, "chat-client", input, output, generationMetadata);
+            Map<String, Object> tokenUsage = extractTokenUsage(chatClientResponse);
+            observabilityService.logGeneration(traceId, spanId, "chat-client", input, output, generationMetadata, tokenUsage);
             observabilityService.endSpan(spanId, true, null);
         }
 
@@ -188,5 +189,48 @@ public class ObservabilityAdvisor implements BaseAdvisor {
                 .map(String::trim)
                 .filter(StringUtils::isNotBlank)
                 .count();
+    }
+
+    private Map<String, Object> extractTokenUsage(ChatClientResponse response) {
+        Map<String, Object> usage = new HashMap<>();
+        if (response == null || response.chatResponse() == null || response.chatResponse().getMetadata() == null) {
+            return usage;
+        }
+
+        Object promptTokens = response.chatResponse().getMetadata().get("promptTokens");
+        Object completionTokens = response.chatResponse().getMetadata().get("completionTokens");
+        Object totalTokens = response.chatResponse().getMetadata().get("totalTokens");
+        putIfNumberOrNumericString(promptTokens, usage, "promptTokens");
+        putIfNumberOrNumericString(completionTokens, usage, "completionTokens");
+        putIfNumberOrNumericString(totalTokens, usage, "totalTokens");
+
+        Object usageObj = response.chatResponse().getMetadata().get("usage");
+        if (usageObj instanceof Map<?, ?> usageMap) {
+            putIfNumberOrNumericString(usageMap, usage, "input_tokens", "promptTokens");
+            putIfNumberOrNumericString(usageMap, usage, "output_tokens", "completionTokens");
+            putIfNumberOrNumericString(usageMap, usage, "total_tokens", "totalTokens");
+        }
+        return usage;
+    }
+
+    private void putIfNumberOrNumericString(Object value, Map<String, Object> target, String targetKey) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Number) {
+            target.put(targetKey, value);
+            return;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.matches("^-?\\d+$")) {
+            target.put(targetKey, Long.parseLong(text));
+        }
+    }
+
+    private void putIfNumberOrNumericString(Map<?, ?> source, Map<String, Object> target, String sourceKey, String targetKey) {
+        if (source == null) {
+            return;
+        }
+        putIfNumberOrNumericString(source.get(sourceKey), target, targetKey);
     }
 }

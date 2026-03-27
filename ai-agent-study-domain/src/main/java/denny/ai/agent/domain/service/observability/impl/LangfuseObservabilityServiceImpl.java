@@ -76,7 +76,7 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
     }
 
     @Override
-    public void logGeneration(String traceId, String spanId, String model, String prompt, String output, Map<String, Object> metadata) {
+    public void logGeneration(String traceId, String spanId, String model, String prompt, String output, Map<String, Object> metadata, Map<String, Object> tokenUsage) {
         if (!isEnabled()) return;
 
         Map<String, Object> payload = new HashMap<>();
@@ -90,6 +90,9 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
         payload.put("input", prompt);
         payload.put("output", output);
         payload.put("metadata", metadata);
+        if (tokenUsage != null && !tokenUsage.isEmpty()) {
+            payload.put("usage", tokenUsage);
+        }
 
         sendEvent("generation-create", payload);
     }

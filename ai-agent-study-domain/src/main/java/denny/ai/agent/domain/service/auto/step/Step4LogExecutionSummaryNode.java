@@ -114,13 +114,15 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
                 generationMetadata.put("completed", isCompleted);
                 generationMetadata.put("summaryLength", summaryResult.length());
                 generationMetadata.put("historyLength", dynamicContext.getExecutionHistory().length());
+                Map<String, Object> tokenUsage = new HashMap<>();
                 observabilityService.logGeneration(
                         traceId,
                         spanId,
                         aiAgentClientFlowConfigVO.getClientId(),
                         summaryPrompt,
                         summaryResult,
-                        generationMetadata
+                        generationMetadata,
+                        tokenUsage
                 );
             }
 

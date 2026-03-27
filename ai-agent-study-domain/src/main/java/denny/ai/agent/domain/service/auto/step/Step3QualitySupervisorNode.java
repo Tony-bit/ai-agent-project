@@ -75,13 +75,15 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
             generationMetadata.put("supervisionLength", supervisionResult.length());
             generationMetadata.put("passStatus", extractPassStatus(supervisionResult));
             generationMetadata.put("qualityScore", extractQualityScore(supervisionResult));
+            Map<String, Object> tokenUsage = new HashMap<>();
             observabilityService.logGeneration(
                     traceId,
                     spanId,
                     aiAgentClientFlowConfigVO.getClientId(),
                     supervisionPrompt,
                     supervisionResult,
-                    generationMetadata
+                    generationMetadata,
+                    tokenUsage
             );
 
             // 将监督结果保存到动态上下文中

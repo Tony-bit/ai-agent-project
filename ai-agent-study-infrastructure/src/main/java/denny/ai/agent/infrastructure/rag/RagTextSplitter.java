@@ -67,10 +67,23 @@ public class RagTextSplitter {
                 chunks.add(chunk);
                 
                 // 移动到下一个 chunk（考虑重叠）
-                start = end - chunkOverlap;
-                if (start >= text.length()) {
+                // 关键修复：短文本场景下 end - chunkOverlap 可能为负数，需做边界保护，避免 substring 下标越界。
+                int nextStart = end - chunkOverlap;
+
+                // 如果已经到达文本末尾，直接结束
+                if (end >= text.length()) {
                     break;
                 }
+
+                // 防止 nextStart 回退或不前进导致死循环/负下标
+                if (nextStart <= start) {
+                    nextStart = end;
+                }
+                if (nextStart < 0) {
+                    nextStart = 0;
+                }
+
+                start = nextStart;
                 chunkIndex++;
             }
         }

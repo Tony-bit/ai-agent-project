@@ -83,13 +83,15 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             generationMetadata.put("analysisLength", analysisResult.length());
             generationMetadata.put("taskStatus", extractTaskStatus(analysisResult));
             generationMetadata.put("progress", extractProgress(analysisResult));
+            Map<String, Object> tokenUsage = new HashMap<>();
             observabilityService.logGeneration(
                     traceId,
                     spanId,
                     aiAgentClientFlowConfigVO.getClientId(),
                     analysisPrompt,
                     analysisResult,
-                    generationMetadata
+                    generationMetadata,
+                    tokenUsage
             );
 
             // 将分析结果保存到动态上下文中，供下一步使用

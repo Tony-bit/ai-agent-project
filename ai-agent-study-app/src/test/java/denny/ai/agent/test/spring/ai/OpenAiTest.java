@@ -1,6 +1,8 @@
 package denny.ai.agent.test.spring.ai;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson2.JSONObject;
+import denny.ai.agent.config.RagRetrievalEvalScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -11,12 +13,12 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -24,11 +26,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.Resource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +54,12 @@ public class OpenAiTest {
     @Value("classpath:data/article-prompt-words.txt")
     private Resource articlePromptWordsResource;
 
+    @Value("classpath:data/file1.text")
+    private Resource reimbursementDocFileResource;
+
+    @Value("classpath:data/file2.text")
+    private Resource reimbursementEvalCaseFileResource;
+
     @Autowired
     private OpenAiChatModel openAiChatModel;
 
@@ -58,6 +68,12 @@ public class OpenAiTest {
 
     @Autowired
     private ObservabilityService observabilityService;
+
+    @Autowired
+    private IRagKnowledgeRepository ragKnowledgeRepository;
+
+    @Autowired
+    private RagRetrievalEvalScheduler ragRetrievalEvalScheduler;
 
     private final TokenTextSplitter tokenTextSplitter = new TokenTextSplitter();
 
@@ -126,13 +142,24 @@ public class OpenAiTest {
             generationMetadata.put("latencyMs", latencyMs);
             generationMetadata.put("source", "OpenAiTest#test_langfuse_observability_closed_loop");
 
+            Map<String, Object> tokenUsage = new HashMap<>();
+            if (response != null && response.getMetadata() != null) {
+                Object promptTokens = response.getMetadata().get("promptTokens");
+                Object completionTokens = response.getMetadata().get("completionTokens");
+                Object totalTokens = response.getMetadata().get("totalTokens");
+                if (promptTokens != null) tokenUsage.put("promptTokens", promptTokens);
+                if (completionTokens != null) tokenUsage.put("completionTokens", completionTokens);
+                if (totalTokens != null) tokenUsage.put("totalTokens", totalTokens);
+            }
+
             observabilityService.logGeneration(
                     traceId,
                     spanId,
                     "deepseek-chat",
                     userMessage,
                     output,
-                    generationMetadata
+                    generationMetadata,
+                    tokenUsage
             );
 
             // 测试用固定评分，方便在 Langfuse 上确认 score 链路
@@ -210,6 +237,83 @@ public class OpenAiTest {
         pgVectorStore.accept(documentSplitterList);
 
         log.info("上传完成");
+    }
+
+    @Test
+    public void importMockReimbursementDocs() throws Exception {
+        String userId = "eval-expense-v1";
+
+        List<String> lines = java.nio.file.Files.readAllLines(
+                reimbursementDocFileResource.getFile().toPath(),
+                StandardCharsets.UTF_8
+        );
+
+        int successCount = 0;
+        for (String line : lines) {
+            String row = line == null ? "" : line.trim();
+            if (row.isEmpty()) {
+                continue;
+            }
+            if (row.endsWith(",")) {
+                row = row.substring(0, row.length() - 1);
+            }
+
+            JSONObject item = JSONObject.parseObject(row);
+            String docId = item.getString("doc_id");
+            String title = item.getString("title");
+            String summary = item.getString("summary");
+            String tags = String.valueOf(item.getJSONArray("tags"));
+            String department = item.getString("department");
+            String effectiveDate = item.getString("effective_date");
+
+            String fileName = String.format("%s-%s.md", docId, title);
+            String content = String.format("""
+                    # %s
+                    
+                    - 文档ID: %s
+                    - 标题: %s
+                    - 生效日期: %s
+                    - 归口部门: %s
+                    - 标签: %s
+                    
+                    ## 摘要
+                    %s
+                    """,
+                    title,
+                    docId,
+                    title,
+                    effectiveDate,
+                    department,
+                    tags,
+                    summary
+            );
+
+            MockMultipartFile file = new MockMultipartFile(
+                    "file",
+                    fileName,
+                    "text/markdown",
+                    content.getBytes(StandardCharsets.UTF_8)
+            );
+            String result = ragKnowledgeRepository.uploadAndIndex(userId, file, fileName);
+            log.info("mock文档导入：docId={}, fileName={}, result={}", docId, fileName, result);
+            successCount++;
+        }
+
+        List<String> evalCases = java.nio.file.Files.readAllLines(
+                reimbursementEvalCaseFileResource.getFile().toPath(),
+                StandardCharsets.UTF_8
+        );
+        long caseCount = evalCases.stream().map(String::trim).filter(s -> !s.isEmpty()).count();
+        log.info("评测集文件检测完成：file2.text 共 {} 条case（本次仅导入file1文档）", caseCount);
+
+        log.info("mock报销文档导入完成，userId={}, count={}", userId, successCount);
+    }
+
+    @Test
+    public void testQuery() {
+        log.info("开始测试可靠性集");
+        ragRetrievalEvalScheduler.runManualEval();
+        log.info("完成测试可靠性集");
     }
 
     @Test

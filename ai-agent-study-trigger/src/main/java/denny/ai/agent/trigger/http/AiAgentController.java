@@ -50,6 +50,7 @@ public class AiAgentController implements IAiAgentService {
     @Resource
     private QwenService qwenService;
 
+
     @RequestMapping(value = "auto_agent", method = RequestMethod.POST)
     public ResponseBodyEmitter autoAgent(@RequestBody AutoAgentRequestDTO request, HttpServletResponse response) {
         log.info("AutoAgent文本流式执行请求开始，请求信息：{}", JSON.toJSONString(request));

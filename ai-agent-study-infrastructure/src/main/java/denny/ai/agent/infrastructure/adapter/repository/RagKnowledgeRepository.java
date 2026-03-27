@@ -13,6 +13,7 @@ import denny.ai.agent.infrastructure.rag.RagEmbeddingService;
 import denny.ai.agent.infrastructure.rag.RagTextSplitter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.cache.Cache;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -64,6 +65,7 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             }
             sb.append("内容: ").append(Optional.ofNullable(d.getContent()).orElse("")).append("\n\n");
         }
+        
         return sb.toString();
     }
 

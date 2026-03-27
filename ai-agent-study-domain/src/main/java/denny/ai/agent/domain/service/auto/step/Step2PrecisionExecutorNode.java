@@ -113,13 +113,15 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             generationMetadata.put("executionLength", executionResult.length());
             generationMetadata.put("analysisLength", analysisResult.length());
             generationMetadata.put("isRagTask", taskType == 3);
+            Map<String, Object> tokenUsage = new HashMap<>();
             observabilityService.logGeneration(
                     traceId,
                     spanId,
                     aiAgentClientFlowConfigVO.getClientId(),
                     executionPrompt,
                     executionResult,
-                    generationMetadata
+                    generationMetadata,
+                    tokenUsage
             );
 
             // 将执行结果保存到动态上下文中，供下一步使用

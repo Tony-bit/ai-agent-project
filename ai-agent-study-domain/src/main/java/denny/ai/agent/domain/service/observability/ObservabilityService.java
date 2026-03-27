@@ -16,7 +16,8 @@ public interface ObservabilityService {
                        String model,
                        String prompt,
                        String output,
-                       Map<String, Object> metadata);
+                       Map<String, Object> metadata,
+                       Map<String, Object> tokenUsage);
 
     void logScore(String traceId,
                   String scoreName,
