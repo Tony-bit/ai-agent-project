@@ -104,6 +104,16 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                 log.info("✅ 任务分析显示已完成！");
             }
 
+            // 检查是否需要信息补全（意图识别场景）
+            if (analysisResult.contains("信息补全要求:") ||
+                    analysisResult.contains("需要补充信息") ||
+                    analysisResult.contains("需要用户补全信息")) {
+                dynamicContext.setValue("intentRecognitionRequired", true);
+                log.info("🎯 检测到意图识别场景：需要用户补充信息");
+                // 保存需要补全的信息
+                dynamicContext.setValue("missingInfoPrompt", extractMissingInfoPrompt(analysisResult));
+            }
+
             observabilityService.endSpan(spanId, true, null);
             return router(requestParameter, dynamicContext);
         } catch (Exception e) {
@@ -114,13 +124,43 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        // 如果需要意图识别（信息补全），直接路由到第四个节点
+        if (Boolean.TRUE.equals(dynamicContext.getValue("intentRecognitionRequired"))) {
+            return getBean("step4LogExecutionSummaryNode");
+        }
+
         // 如果任务已完成或达到最大步数，进入总结阶段
         if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
             return getBean("step4LogExecutionSummaryNode");
         }
-        
+
         // 否则继续执行下一步
         return getBean("step2PrecisionExecutorNode");
+    }
+
+    /**
+     * 从分析结果中提取需要补全的信息
+     */
+    private String extractMissingInfoPrompt(String analysisResult) {
+        StringBuilder missingInfo = new StringBuilder();
+        boolean inMissingSection = false;
+
+        String[] lines = analysisResult.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.contains("信息补全要求:") || line.contains("需要补充信息")) {
+                inMissingSection = true;
+                missingInfo.append(line).append("\n");
+            } else if (inMissingSection) {
+                if (line.startsWith("下一步策略:") || line.startsWith("完成度评估:") || line.startsWith("任务状态:")) {
+                    // 遇到下一个section，停止收集
+                    break;
+                }
+                missingInfo.append(line).append("\n");
+            }
+        }
+
+        return missingInfo.length() > 0 ? missingInfo.toString().trim() : null;
     }
 
     private void parseAnalysisResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String analysisResult, String sessionId) {

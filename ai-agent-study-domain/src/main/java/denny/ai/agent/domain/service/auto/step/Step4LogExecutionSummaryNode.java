@@ -28,6 +28,13 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n📊 === 执行第 {} 步 ===", dynamicContext.getStep());
 
+        // 检查是否为意图识别场景（需要用户补充信息）
+        if (Boolean.TRUE.equals(dynamicContext.getValue("intentRecognitionRequired"))) {
+            log.info("\n🎯 检测到意图识别场景：需要用户补充信息");
+            handleIntentRecognition(requestParameter, dynamicContext);
+            return "intent recognition completed!";
+        }
+
         // 第四阶段：执行总结
         log.info("\n📊 阶段4: 执行总结分析");
         
@@ -53,21 +60,222 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
      */
     private void logExecutionSummary(int maxSteps, StringBuilder executionHistory, boolean isCompleted) {
         log.info("\n📊 === 动态多轮执行总结 ====");
-        
+
         int actualSteps = Math.min(maxSteps, executionHistory.toString().split("=== 第").length - 1);
         log.info("📈 总执行步数: {} 步", actualSteps);
-        
+
         if (isCompleted) {
             log.info("✅ 任务完成状态: 已完成");
         } else {
             log.info("⏸️ 任务完成状态: 未完成（达到最大步数限制）");
         }
-        
+
         // 计算执行效率
         double efficiency = isCompleted ? 100.0 : (double) actualSteps / maxSteps * 100;
         log.info("📊 执行效率: {}%", efficiency);
     }
-    
+
+    /**
+     * 处理意图识别场景：生成信息补全提示
+     */
+    private void handleIntentRecognition(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        String traceId = dynamicContext.getTraceId();
+        Map<String, Object> spanMetadata = new HashMap<>();
+        spanMetadata.put("node", "step4_intent_recognition");
+        spanMetadata.put("step", dynamicContext.getStep());
+        spanMetadata.put("sessionId", requestParameter.getSessionId());
+        String spanId = StringUtils.isNotBlank(traceId)
+                ? observabilityService.startSpan(traceId, "step4_intent_recognition", spanMetadata)
+                : "";
+
+        try {
+            // 从上下文中获取分析结果中的缺失信息描述
+            String analysisResult = dynamicContext.getValue("analysisResult");
+            String missingInfoPrompt = dynamicContext.getValue("missingInfoPrompt");
+
+            // 获取意图识别客户端配置（使用 RESPONSE_ASSISTANT 作为意图识别的大模型）
+            AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap()
+                    .get(AiClientTypeEnumVO.RESPONSE_ASSISTANT.getCode());
+
+            // 使用大模型生成用户友好的信息补全提示
+            String intentPrompt = buildIntentPrompt(aiAgentClientFlowConfigVO, requestParameter, analysisResult, missingInfoPrompt);
+
+            // 获取对话客户端
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+
+            long startAt = System.currentTimeMillis();
+            String userFriendlyPrompt = chatClient
+                    .prompt(intentPrompt)
+                    .advisors(a -> a
+                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50)
+                            .param("trace_id", traceId))
+                    .call().content();
+
+            assert userFriendlyPrompt != null;
+            log.info("\n🎯 意图识别 - 用户友好提示: {}", userFriendlyPrompt);
+
+            long latencyMs = System.currentTimeMillis() - startAt;
+            if (StringUtils.isNotBlank(traceId) && StringUtils.isNotBlank(spanId)) {
+                Map<String, Object> generationMetadata = new HashMap<>();
+                generationMetadata.put("node", "step4_intent_recognition");
+                generationMetadata.put("latencyMs", latencyMs);
+                generationMetadata.put("step", dynamicContext.getStep());
+                generationMetadata.put("promptLength", userFriendlyPrompt.length());
+                Map<String, Object> tokenUsage = new HashMap<>();
+                observabilityService.logGeneration(
+                        traceId,
+                        spanId,
+                        aiAgentClientFlowConfigVO.getClientId(),
+                        intentPrompt,
+                        userFriendlyPrompt,
+                        generationMetadata,
+                        tokenUsage
+                );
+            }
+
+            // 保存意图识别结果到上下文
+            dynamicContext.setValue("intentRecognitionResult", userFriendlyPrompt);
+
+            // 发送意图识别结果给前端（作为普通的对话回复）
+            sendSummaryResult(dynamicContext, userFriendlyPrompt, requestParameter.getSessionId());
+
+            if (StringUtils.isNotBlank(traceId)) {
+                Map<String, Object> traceMetadata = new HashMap<>();
+                traceMetadata.put("node", "step4_intent_recognition");
+                traceMetadata.put("intentType", "information_request");
+                traceMetadata.put("step", dynamicContext.getStep());
+                traceMetadata.put("sessionId", requestParameter.getSessionId());
+                observabilityService.endTrace(traceId, userFriendlyPrompt, traceMetadata);
+            }
+
+            if (StringUtils.isNotBlank(spanId)) {
+                observabilityService.endSpan(spanId, true, null);
+            }
+
+        } catch (Exception e) {
+            log.error("处理意图识别时出现异常: {}", e.getMessage(), e);
+            if (StringUtils.isNotBlank(traceId)) {
+                observabilityService.endTrace(traceId, "", null);
+            }
+            if (StringUtils.isNotBlank(spanId)) {
+                observabilityService.endSpan(spanId, false, e.getMessage());
+            }
+            // 发送错误结果给前端
+            sendSummaryResult(dynamicContext, "系统繁忙，请稍后再试", requestParameter.getSessionId());
+        }
+    }
+
+    /**
+     * 构建意图识别 Prompt
+     */
+    private String buildIntentPrompt(AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO,
+                                      ExecuteCommandEntity requestParameter,
+                                      String analysisResult,
+                                      String missingInfoPrompt) {
+        // 如果有专门的意图识别 Prompt 模板，使用它
+        if (aiAgentClientFlowConfigVO != null && aiAgentClientFlowConfigVO.getStepPrompt() != null) {
+            return String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
+                    requestParameter.getMessage(),
+                    analysisResult != null ? analysisResult : "");
+        }
+
+        // 默认 Prompt 模板 - 优化版：直接提取并输出"下一步策略"中的具体补全要求
+        String nextStepStrategy = extractNextStepStrategy(analysisResult);
+        String specificRequirement = extractSpecificRequirement(nextStepStrategy);
+
+        return String.format("""
+                **用户原始问题:**
+                %s
+
+                **分析结果:**
+                %s
+
+                **任务要求:**
+                基于上述分析结果，直接向用户输出需要补充的信息提示。
+
+                %s
+
+                请直接生成给用户的提示语，格式如下：
+                【需要用户补全信息】<具体的补全要求，包含需要询问用户的具体内容>
+
+                示例：
+                输入：天气查询缺少地点信息
+                输出：【需要用户补全信息】为了帮您查询天气，请告诉我您想查询哪个城市的天气？
+                """,
+                requestParameter.getMessage(),
+                analysisResult != null ? analysisResult : "",
+                StringUtils.isNotBlank(specificRequirement)
+                        ? "**\"下一步策略\"中要求的补全内容：**\n" + specificRequirement
+                        : "");
+    }
+
+    /**
+     * 从分析结果中提取"下一步策略"部分的内容
+     */
+    private String extractNextStepStrategy(String analysisResult) {
+        if (analysisResult == null || analysisResult.isBlank()) {
+            return "";
+        }
+
+        StringBuilder strategy = new StringBuilder();
+        boolean inStrategySection = false;
+
+        String[] lines = analysisResult.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.contains("下一步策略:")) {
+                inStrategySection = true;
+                strategy.append(line).append("\n");
+            } else if (inStrategySection) {
+                // 遇到下一个section，停止收集
+                if (line.startsWith("完成度评估:") || line.startsWith("任务状态:")) {
+                    break;
+                }
+                strategy.append(line).append("\n");
+            }
+        }
+
+        return strategy.toString().trim();
+    }
+
+    /**
+     * 从"下一步策略"中提取具体的补全要求
+     */
+    private String extractSpecificRequirement(String nextStepStrategy) {
+        if (nextStepStrategy == null || nextStepStrategy.isBlank()) {
+            return "";
+        }
+
+        // 提取"下一步策略"中提到的具体补全内容
+        // 例如：要求用户提供城市名称、需要用户提供XX等
+        StringBuilder requirement = new StringBuilder();
+
+        String[] lines = nextStepStrategy.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            // 跳过标题行
+            if (line.startsWith("下一步策略:")) {
+                continue;
+            }
+            // 收集包含具体补全要求的行
+            if (line.contains("需要用户提供") ||
+                    line.contains("需要用户提供") ||
+                    line.contains("必须提供") ||
+                    line.contains("请提供") ||
+                    line.contains("请告诉我") ||
+                    line.contains("请输入") ||
+                    line.contains("需要明确") ||
+                    line.contains("缺少") ||
+                    line.contains("需要补充") ||
+                    (line.contains("才能") && line.contains("调用"))) {
+                requirement.append(line).append("\n");
+            }
+        }
+
+        return requirement.toString().trim();
+    }
+
     /**
      * 生成最终总结报告
      */

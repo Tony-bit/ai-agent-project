@@ -13,11 +13,12 @@ import denny.ai.agent.infrastructure.rag.RagEmbeddingService;
 import denny.ai.agent.infrastructure.rag.RagTextSplitter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.ibatis.cache.Cache;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
@@ -37,6 +38,24 @@ import java.util.stream.Collectors;
 public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
     private static final int RRF_K = 60;
+
+    @Value("${rag.retrieval.pre-filter.enable:true}")
+    private boolean preFilterEnable;
+
+    @Value("${rag.retrieval.pre-filter.min-similarity:0.15}")
+    private double minSimilarityScore;
+
+    @Value("${rag.retrieval.pre-filter.min-keyword-overlap:1}")
+    private int minKeywordOverlap;
+
+    @Value("${rag.retrieval.post-filter.enable:true}")
+    private boolean postFilterEnable;
+
+    @Value("${rag.retrieval.post-filter.min-rerank-score:0.2}")
+    private double minRerankScore;
+
+    @Value("${rag.retrieval.post-filter.min-effective-docs:1}")
+    private int minEffectiveDocs;
 
     private final PgVectorStore pgVectorStore;
     private final RagKnowledgeEsGateway esGateway;
@@ -124,6 +143,15 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
                 esList.add(sd);
             }
 
+            if (preFilterEnable) {
+                int beforeVector = vectorList.size();
+                int beforeEs = esList.size();
+                vectorList = applyVectorPreFilter(vectorList, question);
+                esList = applyEsPreFilter(esList, question);
+                log.info("RAG 预过滤完成，userId={}, vector {}->{}, es {}->{}",
+                        userId, beforeVector, vectorList.size(), beforeEs, esList.size());
+            }
+
             Map<String, RagSimpleDoc> merged = new LinkedHashMap<>();
 
             for (RagSimpleDoc d : vectorList) {
@@ -169,8 +197,23 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
 
                 sorted = rrfCandidates.stream()
                         .sorted(Comparator.comparing(RagSimpleDoc::getRerankScore).reversed())
-                        .limit(topK)
                         .collect(Collectors.toList());
+
+                if (postFilterEnable) {
+                    int beforePostFilter = sorted.size();
+                    sorted = sorted.stream()
+                            .filter(doc -> doc.getRerankScore() >= minRerankScore)
+                            .collect(Collectors.toList());
+                    log.info("RAG 重排后过滤完成，userId={}, minRerankScore={}, {}->{}",
+                            userId, minRerankScore, beforePostFilter, sorted.size());
+                    if (sorted.size() < minEffectiveDocs) {
+                        log.info("RAG 过滤后有效文档不足，直接返回空，userId={}, minEffectiveDocs={}, actual={}",
+                                userId, minEffectiveDocs, sorted.size());
+                        return Collections.emptyList();
+                    }
+                }
+
+                sorted = sorted.stream().limit(topK).collect(Collectors.toList());
             } catch (Exception ceEx) {
                 log.warn("Cross-Encoder 重排失败，降级使用 RRF 结果，userId={}, question={}", userId, question, ceEx);
                 sorted = rrfCandidates.stream().limit(topK).collect(Collectors.toList());
@@ -183,6 +226,45 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
             log.error("RAG 混合检索发生异常，userId={}, question={}", userId, question, e);
             return Collections.emptyList();
         }
+    }
+
+    private List<RagSimpleDoc> applyVectorPreFilter(List<RagSimpleDoc> docs, String question) {
+        return docs.stream()
+                .filter(doc -> doc.getScore() >= minSimilarityScore)
+                .filter(doc -> keywordOverlap(question, doc.getTitle() + " " + doc.getContent()) >= minKeywordOverlap)
+                .collect(Collectors.toList());
+    }
+
+    private List<RagSimpleDoc> applyEsPreFilter(List<RagSimpleDoc> docs, String question) {
+        return docs.stream()
+                .filter(doc -> keywordOverlap(question, doc.getTitle() + " " + doc.getContent()) >= minKeywordOverlap)
+                .collect(Collectors.toList());
+    }
+
+    private int keywordOverlap(String query, String text) {
+        Set<String> queryTokens = toTokens(query);
+        Set<String> textTokens = toTokens(text);
+        if (queryTokens.isEmpty() || textTokens.isEmpty()) {
+            return 0;
+        }
+        int overlap = 0;
+        for (String token : queryTokens) {
+            if (textTokens.contains(token)) {
+                overlap++;
+            }
+        }
+        return overlap;
+    }
+
+    private Set<String> toTokens(String text) {
+        if (!StringUtils.hasText(text)) {
+            return Collections.emptySet();
+        }
+        return Arrays.stream(text.toLowerCase().split("[^\\p{IsAlphabetic}\\p{IsDigit}\\u4e00-\\u9fa5]+"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .filter(token -> token.length() >= 2)
+                .collect(Collectors.toSet());
     }
 
     private List<Document> retrieveVectorDocs(String userId, String question, int recallSize) {

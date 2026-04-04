@@ -3,6 +3,7 @@ package denny.ai.agent.domain.service.auto.step;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.adapter.repository.IAgentRepository;
+import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
@@ -39,6 +40,9 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     @Resource
     protected ObservabilityService observabilityService;
+
+    @Resource
+    protected IRagKnowledgeRepository ragKnowledgeRepository;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";

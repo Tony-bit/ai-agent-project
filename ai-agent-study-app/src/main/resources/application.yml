@@ -85,6 +85,15 @@ rag:
       api-key: sk-b1050a5b1a7e41bcaddc968acdf637a6
       model: qwen3-rerank
       timeout-ms: 8000
+  retrieval:
+    pre-filter:
+      enable: true
+      min-similarity: 0.15
+      min-keyword-overlap: 1
+    post-filter:
+      enable: true
+      min-rerank-score: 0.2
+      min-effective-docs: 1
   embedding:
     config:
       base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
