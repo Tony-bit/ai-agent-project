@@ -231,7 +231,8 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
     private List<RagSimpleDoc> applyVectorPreFilter(List<RagSimpleDoc> docs, String question) {
         return docs.stream()
                 .filter(doc -> doc.getScore() >= minSimilarityScore)
-                .filter(doc -> keywordOverlap(question, doc.getTitle() + " " + doc.getContent()) >= minKeywordOverlap)
+                // 关键词重叠匹配过滤，这个先不做
+//                .filter(doc -> keywordOverlap(question, doc.getTitle() + " " + doc.getContent()) >= minKeywordOverlap)
                 .collect(Collectors.toList());
     }
 
@@ -260,11 +261,18 @@ public class RagKnowledgeRepository implements IRagKnowledgeRepository {
         if (!StringUtils.hasText(text)) {
             return Collections.emptySet();
         }
-        return Arrays.stream(text.toLowerCase().split("[^\\p{IsAlphabetic}\\p{IsDigit}\\u4e00-\\u9fa5]+"))
+        Set<String> tokens = new LinkedHashSet<>();
+        Arrays.stream(text.toLowerCase().split("[^\\p{IsAlphabetic}\\p{IsDigit}\\u4e00-\\u9fa5]+"))
                 .map(String::trim)
                 .filter(StringUtils::hasText)
                 .filter(token -> token.length() >= 2)
-                .collect(Collectors.toSet());
+                .forEach(tokens::add);
+        // 连续中文整句不会被空白切开，会与「短句+空格」文档零重叠；补二字串与文档侧对齐
+        String cjkOnly = text.replaceAll("[^\\u4e00-\\u9fa5]", "");
+        for (int i = 0; i + 2 <= cjkOnly.length(); i++) {
+            tokens.add(cjkOnly.substring(i, i + 2));
+        }
+        return tokens;
     }
 
     private List<Document> retrieveVectorDocs(String userId, String question, int recallSize) {

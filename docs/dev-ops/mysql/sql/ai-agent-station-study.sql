@@ -314,7 +314,7 @@ CREATE TABLE `ai_client_system_prompt` (
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_prompt_id` (`prompt_id`)
+  UNIQUE KEY `uk_prompt_id_status` (`prompt_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='系统提示词配置表';
 
 LOCK TABLES `ai_client_system_prompt` WRITE;

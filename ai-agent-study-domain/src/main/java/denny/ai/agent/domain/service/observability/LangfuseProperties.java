@@ -18,4 +18,19 @@ public class LangfuseProperties {
     private String secretKey;
 
     private int timeoutMs = 3000;
+
+    /**
+     * 事件缓冲队列容量，达到此数量时强制 flush
+     */
+    private int queueCapacity = 500;
+
+    /**
+     * 定时 flush 间隔（毫秒），默认 2 秒
+     */
+    private long flushIntervalMs = 2000;
+
+    /**
+     * 单次批量 flush 的最大事件数
+     */
+    private int maxBatchSize = 50;
 }

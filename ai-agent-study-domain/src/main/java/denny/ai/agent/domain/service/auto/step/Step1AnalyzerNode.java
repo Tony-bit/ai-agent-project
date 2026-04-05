@@ -105,12 +105,14 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             }
 
             // 检查是否需要信息补全（意图识别场景）
-            if (analysisResult.contains("信息补全要求:") ||
-                    analysisResult.contains("需要补充信息") ||
-                    analysisResult.contains("需要用户补全信息")) {
+            String intentConfidence = extractIntentConfidence(analysisResult);
+            dynamicContext.setValue("intentConfidence", intentConfidence);
+            log.info("🎯 意图置信度: {}", intentConfidence);
+
+            // 只有当置信度为"低"时才要求补全信息
+            if ("低".equals(intentConfidence)) {
                 dynamicContext.setValue("intentRecognitionRequired", true);
-                log.info("🎯 检测到意图识别场景：需要用户补充信息");
-                // 保存需要补全的信息
+                log.info("🎯 置信度低于阈值，需要用户补充信息");
                 dynamicContext.setValue("missingInfoPrompt", extractMissingInfoPrompt(analysisResult));
             }
 
@@ -136,6 +138,30 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
 
         // 否则继续执行下一步
         return getBean("step2PrecisionExecutorNode");
+    }
+
+    /**
+     * 从分析结果中提取意图置信度
+     */
+    private String extractIntentConfidence(String analysisResult) {
+        for (String line : analysisResult.split("\\n")) {
+            String trimmed = line.trim().replaceAll("^\\*+", "").replaceAll("\\*+$", "");
+            if (trimmed.contains("意图置信度评估") || trimmed.contains("意图置信度:")) {
+                String value;
+                int colonIdx = trimmed.indexOf(":");
+                if (colonIdx >= 0) {
+                    value = trimmed.substring(colonIdx + 1).trim();
+                } else {
+                    value = trimmed.replaceAll(".*意图置信度评估", "").trim();
+                }
+                value = value.replaceAll("[（(].*", "").trim();
+                if (value.contains("高")) return "高";
+                if (value.contains("中")) return "中";
+                if (value.contains("低")) return "低";
+                return value;
+            }
+        }
+        return null;
     }
 
     /**

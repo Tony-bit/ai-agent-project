@@ -8,6 +8,8 @@ import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -57,49 +59,40 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             }
             log.info("本任务类型为：{}", taskType);
 
-            String executionPrompt;
-            if (taskType == 3) {
-                String ragPromptTemplate = """
-                        你是一名专业的知识问答与任务执行助手，请基于以下知识文档回答用户问题并完成任务。
-                        如果文档中无法找到答案，请明确说明不知道，不要编造。
-
-                        【知识文档】
-                        {question_answer_context}
-
-                        【任务分析结果】
-                        %s
-
-                        【用户问题】
-                        %s
-
-                        请用中文给出清晰、结构化的执行方案或答案。
-                        """;
-
-                executionPrompt = String.format(
-                        ragPromptTemplate,
-                        analysisResult,
-                        requestParameter.getMessage()
-                );
-            } else {
-                // 非知识检索任务，保持原有执行 Prompt 逻辑
-                executionPrompt = String.format(
-                        aiAgentClientFlowConfigVO.getStepPrompt(),
-                        requestParameter.getMessage(),
-                        analysisResult
-                );
-            }
-
             // 获取对话客户端
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);
 
             long startAt = System.currentTimeMillis();
-            String executionResult = chatClient
-                    .prompt(executionPrompt)
-                    .advisors(a -> a
-                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096)
-                            .param("trace_id", traceId))
-                    .call().content();
+            String executionResult;
+            if (taskType == 3) {
+                // 知识检索任务：UserMessage 只放用户问题，AssistantMessage 放分析结果
+                // 这样 RagAnswerAdvisor 做检索时只拿用户问题，不会把 system 指令和分析结果都查一遍
+                executionResult = chatClient
+                        .prompt()
+                        .messages(
+                                new UserMessage(requestParameter.getMessage()),
+                                new AssistantMessage("【任务分析结果】\n" + analysisResult)
+                        )
+                        .advisors(a -> a
+                                .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                                .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096)
+                                .param("trace_id", traceId))
+                        .call().content();
+            } else {
+                // 非知识检索任务，保持原有逻辑
+                String executionPrompt = String.format(
+                        aiAgentClientFlowConfigVO.getStepPrompt(),
+                        requestParameter.getMessage(),
+                        analysisResult
+                );
+                executionResult = chatClient
+                        .prompt(executionPrompt)
+                        .advisors(a -> a
+                                .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                                .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 4096)
+                                .param("trace_id", traceId))
+                        .call().content();
+            }
 
             assert executionResult != null;
             parseExecutionResult(dynamicContext, executionResult, requestParameter.getSessionId());
@@ -114,11 +107,17 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             generationMetadata.put("analysisLength", analysisResult.length());
             generationMetadata.put("isRagTask", taskType == 3);
             Map<String, Object> tokenUsage = new HashMap<>();
+
+            // 构建输入文本用于日志记录：RAG 分支用用户问题 + 分析结果拼接，非 RAG 用完整的 executionPrompt
+            String logInput = (taskType == 3)
+                    ? requestParameter.getMessage() + "\n\n【任务分析结果】\n" + analysisResult
+                    : String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
+                            requestParameter.getMessage(), analysisResult);
             observabilityService.logGeneration(
                     traceId,
                     spanId,
                     aiAgentClientFlowConfigVO.getClientId(),
-                    executionPrompt,
+                    logInput,
                     executionResult,
                     generationMetadata,
                     tokenUsage
