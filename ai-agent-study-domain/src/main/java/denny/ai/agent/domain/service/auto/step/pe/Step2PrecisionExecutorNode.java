@@ -1,10 +1,11 @@
-package denny.ai.agent.domain.service.auto.step;
+package denny.ai.agent.domain.service.auto.step.pe;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
+import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -23,7 +24,7 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
+public class Step2PrecisionExecutorNode extends AbstractExecuteSupport {
 
 
     @Override
@@ -47,6 +48,10 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
             }
 
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
+            if (aiAgentClientFlowConfigVO == null) {
+                throw new IllegalStateException("未找到精准执行客户端配置，aiAgentId=" + requestParameter.getSessionId()
+                        + "，请确认智能体流程配置中已添加 PRECISION_EXECUTOR_CLIENT 类型的节点");
+            }
 
             int taskType = 0;
             // 根据分析任务类型，获取对应的客户端进行执行任务

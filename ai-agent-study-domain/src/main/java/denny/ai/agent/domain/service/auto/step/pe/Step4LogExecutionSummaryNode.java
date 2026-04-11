@@ -1,10 +1,11 @@
-package denny.ai.agent.domain.service.auto.step;
+package denny.ai.agent.domain.service.auto.step.pe;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
+import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -96,6 +97,10 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             // 获取意图识别客户端配置（使用 RESPONSE_ASSISTANT 作为意图识别的大模型）
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap()
                     .get(AiClientTypeEnumVO.RESPONSE_ASSISTANT.getCode());
+            if (aiAgentClientFlowConfigVO == null) {
+                throw new IllegalStateException("未找到响应助手客户端配置，aiAgentId=" + requestParameter.getSessionId()
+                        + "，请确认智能体流程配置中已添加 RESPONSE_ASSISTANT 类型的节点");
+            }
 
             // 使用大模型生成用户友好的信息补全提示
             String intentPrompt = buildIntentPrompt(aiAgentClientFlowConfigVO, requestParameter, analysisResult, missingInfoPrompt);
@@ -295,6 +300,10 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             log.info("\n--- 生成{}任务的最终答案 ---", isCompleted ? "已完成" : "未完成");
 
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.RESPONSE_ASSISTANT.getCode());
+            if (aiAgentClientFlowConfigVO == null) {
+                throw new IllegalStateException("未找到响应助手客户端配置，aiAgentId=" + requestParameter.getSessionId()
+                        + "，请确认智能体流程配置中已添加 RESPONSE_ASSISTANT 类型的节点");
+            }
 
             String summaryPrompt = getSummaryPrompt(aiAgentClientFlowConfigVO, requestParameter, dynamicContext, isCompleted);
 

@@ -58,4 +58,11 @@ public class AutoAgentRequestDTO implements Serializable {
      */
     private String url;
 
+    /**
+     * 智能体类型：
+     * - null / "default": 默认对话流程（分析 -> 执行 -> 监督 -> 总结）
+     * - "inspection": 智能巡检流程（直接执行巡检任务后结束）
+     */
+    private String agentType;
+
 }

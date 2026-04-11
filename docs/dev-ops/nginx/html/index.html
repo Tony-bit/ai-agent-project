@@ -444,7 +444,8 @@
         'completed_work': '已完成工作',
         'incomplete_reasons': '未完成原因',
         'evaluation': '效果评估',
-        'summary_overview': '总结概览'
+        'summary_overview': '总结概览',
+        'inspection_report': '巡检报告'
     };
 
     // 发送消息
@@ -588,13 +589,15 @@
 
     // 添加阶段消息
     function addStageMessage(type, subType, content, step) {
-        // 根据消息类型决定显示在哪个面板
+        // 根据消息类型决定显示在哪个面板（与 Step4 总结类似：终局产物进右侧）
         let targetContainer;
-        if (type === 'summary' || type === 'completed') {
-            // 总结和完成消息显示在右侧结果面板
+        const isFinalResult =
+            type === 'summary' ||
+            type === 'complete' ||
+            (type === 'supervision' && subType === 'inspection_report');
+        if (isFinalResult) {
             targetContainer = document.getElementById('resultMessages');
         } else {
-            // 其他消息（分析、执行、监督等）显示在左侧思考面板
             targetContainer = document.getElementById('thinkingMessages');
         }
 

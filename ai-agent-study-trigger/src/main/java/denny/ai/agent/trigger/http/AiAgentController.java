@@ -61,6 +61,29 @@ public class AiAgentController implements IAiAgentService {
                 .maxStep(request.getMaxStep())
                 .inputType(request.getInputType())
                 .userId(request.getUserId())
+                .agentType(request.getAgentType())
+                .build();
+        return processAutoAgentRequest(executeCommandEntity, response);
+    }
+
+    /**
+     * 智能巡检 Agent
+     * <p>
+     * 与 auto_agent 共用同一套执行引擎，通过 agentType=inspection 路由到 IntelligentInspection 节点，
+     * 巡检任务执行完成后直接结束流程。
+     *
+     * @param request 包含 message（完整 Prompt 配置）、sessionId、aiAgentId 等
+     */
+    @RequestMapping(value = "inspection", method = RequestMethod.POST)
+    public ResponseBodyEmitter inspection(@RequestBody AutoAgentRequestDTO request, HttpServletResponse response) {
+        log.info("智能巡检 Agent 请求开始，请求信息：{}", JSON.toJSONString(request));
+        ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
+                .aiAgentId(request.getAiAgentId())
+                .message(request.getMessage())
+                .sessionId(request.getSessionId())
+                .maxStep(1)
+                .userId(request.getUserId())
+                .agentType("inspection")
                 .build();
         return processAutoAgentRequest(executeCommandEntity, response);
     }
@@ -83,18 +106,14 @@ public class AiAgentController implements IAiAgentService {
             threadPoolExecutor.execute(() -> {
                 try {
                     autoAgentExecuteStrategy.execute(executeCommandEntity, emitter);
+                    // Strategy 内部会负责 complete emitter，这里不需要额外处理
                 } catch (Exception e) {
                     log.error("AutoAgent执行异常：{}", e.getMessage(), e);
                     try {
                         emitter.send("执行异常：" + e.getMessage());
+                        emitter.complete();
                     } catch (Exception ex) {
                         log.error("发送异常信息失败：{}", ex.getMessage(), ex);
-                    }
-                } finally {
-                    try {
-                        emitter.complete();
-                    } catch (Exception e) {
-                        log.error("完成流式输出失败：{}", e.getMessage(), e);
                     }
                 }
             });

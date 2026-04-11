@@ -18,6 +18,15 @@ import org.springframework.web.multipart.MultipartFile;
 @NoArgsConstructor
 public class ExecuteCommandEntity {
 
+    /**
+     * 智能体类型
+     * <p>
+     * - null / "default": 默认对话流程（分析 -> 执行 -> 监督 -> 总结）
+     * - "inspection": 智能巡检流程（直接执行巡检任务后结束）
+     */
+    public static final String AGENT_TYPE_DEFAULT = "default";
+    public static final String AGENT_TYPE_INSPECTION = "inspection";
+
     private String aiAgentId;
 
     private String message;
@@ -31,5 +40,10 @@ public class ExecuteCommandEntity {
     private MultipartFile file;
 
     private String userId;
+
+    /**
+     * 智能体类型，默认为 default
+     */
+    private String agentType;
 
 }

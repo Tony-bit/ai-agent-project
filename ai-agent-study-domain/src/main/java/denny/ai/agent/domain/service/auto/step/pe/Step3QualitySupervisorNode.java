@@ -1,10 +1,11 @@
-package denny.ai.agent.domain.service.auto.step;
+package denny.ai.agent.domain.service.auto.step.pe;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
+import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,6 +51,10 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
             }
 
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.QUALITY_SUPERVISOR_CLIENT.getCode());
+            if (aiAgentClientFlowConfigVO == null) {
+                throw new IllegalStateException("未找到质量监督客户端配置，aiAgentId=" + requestParameter.getSessionId()
+                        + "，请确认智能体流程配置中已添加 QUALITY_SUPERVISOR_CLIENT 类型的节点");
+            }
 
             String supervisionPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(), requestParameter.getMessage(), executionResult);
 

@@ -72,14 +72,27 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      */
     protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                 AutoAgentExecuteResultEntity result) {
+        log.info(">>> [sendSseResult] 调用开始: type={}, subType={}", result.getType(), result.getSubType());
+        log.info(">>> [sendSseResult] dynamicContext.dataObjects keys: {}", dynamicContext.getDataObjects().keySet());
+        log.info(">>> [sendSseResult] dynamicContext.hashCode: {}", System.identityHashCode(dynamicContext));
+
+        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+        if (emitter == null) {
+            log.error("【SSE致命错误】emitter为空！type={}, subType={}, sessionId={}",
+                    result.getType(), result.getSubType(), result.getSessionId());
+            log.error("【SSE致命错误】dynamicContext.dataObjects内容: {}", dynamicContext.getDataObjects());
+            return;
+        }
+
         try {
-            ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-            if (emitter != null) {
-                String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
-                emitter.send(sseData);
-            }
-        } catch (IOException e) {
-            log.error("发送SSE结果失败：{}", e.getMessage(), e);
+            String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
+            log.info(">>> 发送SSE数据: type={}, subType={}, sessionId={}, sseData长度={}",
+                    result.getType(), result.getSubType(), result.getSessionId(), sseData.length());
+            emitter.send(sseData);
+            log.info("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
+        } catch (Exception e) {
+            log.error("【SSE致命错误】发送SSE结果失败：type={}, subType={}, sessionId={}, error={}, exClass={}",
+                    result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName(), e);
         }
     }
 
