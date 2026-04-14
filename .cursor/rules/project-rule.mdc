@@ -1,0 +1,13 @@
+---
+description: 项目级开发规则
+alwaysApply: true
+---
+
+# 项目开发规范
+
+- 在开始任何代码修改前，必须先出具变更方案并等待用户确认，用户未确认前不得修改任何文件
+- 如果用户对方案有修改意见，等用户说完后再更新方案，再次等待确认
+- 只有用户明确说"可以"、"好"、"执行"等确认性词语后，才可以执行代码修改
+- mysql的mapper xml文件放在D:\Code\ai-agent-study\ai-agent-study-app\src\main\resources\mybatis\mapper
+- valobj对象存储路径为D:\Code\ai-agent-study\ai-agent-study-domain\src\main\java\denny\ai\agent\domain\model\valobj
+- entity实体存储路径为D:\Code\ai-agent-study\ai-agent-study-domain\src\main\java\denny\ai\agent\domain\model\entity
