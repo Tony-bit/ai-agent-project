@@ -1,0 +1,50 @@
+name: mem0-dev
+
+services:
+  mem0:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8888:8000"
+    env_file:
+      - .env
+    networks:
+      - mem0_network
+    volumes:
+      - ./history:/app/history
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+
+## 这里复用了现有的postgres，所以无需再启动
+
+#  postgres:
+#    image: ankane/pgvector:v0.5.1
+#    restart: on-failure
+#    shm_size: "128mb"
+#    networks:
+#      - mem0_network
+#    environment:
+#      - POSTGRES_USER=postgres
+#      - POSTGRES_PASSWORD=postgres
+#    healthcheck:
+#      test: ["CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres"]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 5
+#    volumes:
+#      - postgres_db:/var/lib/postgresql/data
+#    ports:
+#      - "15432:5432"
+
+volumes:
+  postgres_db:
+
+networks:
+  mem0_network:
+    driver: bridge
