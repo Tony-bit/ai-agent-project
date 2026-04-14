@@ -81,6 +81,11 @@
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
 
+        <!-- Mem0 记忆组件 -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-memory-mem0</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.amazonaws</groupId>

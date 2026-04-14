@@ -7,6 +7,7 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -284,7 +285,7 @@ public class AiAgentTest {
                 .args("-y", "@modelcontextprotocol/server-filesystem", "/Users/fuzhengwei/Desktop", "/Users/fuzhengwei/Desktop")
                 .build();
 
-        var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
+        var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams, new JacksonMcpJsonMapper(null)))
                 .requestTimeout(Duration.ofSeconds(10)).build();
 
         var init = mcpClient.initialize();

@@ -1,11 +1,13 @@
 package denny.ai.agent;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"denny.ai.agent", "denny.ai.agent.config"})
 @EnableScheduling
+@MapperScan({"denny.ai.agent.infrastructure.dao"})
 public class Application {
 
     public static void main(String[] args){

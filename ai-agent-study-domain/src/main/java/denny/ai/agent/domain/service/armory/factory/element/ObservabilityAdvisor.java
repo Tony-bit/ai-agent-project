@@ -1,7 +1,10 @@
 package denny.ai.agent.domain.service.armory.factory.element;
 
+import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
@@ -17,6 +20,7 @@ import java.util.Map;
 /**
  * 通用可观测 Advisor：统一记录输入输出、耗时、异常信息到 Langfuse。
  */
+@Slf4j
 public class ObservabilityAdvisor implements BaseAdvisor {
 
     private static final String TRACE_ID_KEY = "trace_id";
@@ -25,6 +29,13 @@ public class ObservabilityAdvisor implements BaseAdvisor {
     private static final String SESSION_ID_KEY = "chat_memory_conversation_id";
 
     private final ObservabilityService observabilityService;
+
+    private ChatMemoryPersistenceService chatMemoryPersistenceService;
+
+    @Autowired(required = false)
+    public void setChatMemoryPersistenceService(ChatMemoryPersistenceService chatMemoryPersistenceService) {
+        this.chatMemoryPersistenceService = chatMemoryPersistenceService;
+    }
 
     public ObservabilityAdvisor(ObservabilityService observabilityService) {
         this.observabilityService = observabilityService;
@@ -72,8 +83,15 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         long startAt = parseStartAt(context.get(START_AT_KEY));
         long latencyMs = startAt > 0 ? System.currentTimeMillis() - startAt : -1;
 
+        String sessionId = doGetSessionId(context);
         String input = extractPromptText(chatClientResponse, context);
         String output = extractOutputText(chatClientResponse);
+        String model = extractModelName(chatClientResponse);
+
+        // 从 context 中提取用户/智能体/客户端信息
+        String userId = asString(context.get("user_id"));
+        String agentId = asString(context.get("agent_id"));
+        String clientId = asString(context.get("client_id"));
 
         Map<String, Object> generationMetadata = new HashMap<>();
         generationMetadata.put("advisor", getName());
@@ -87,6 +105,26 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             Map<String, Object> tokenUsage = extractTokenUsage(chatClientResponse);
             observabilityService.logGeneration(traceId, spanId, "chat-client", input, output, generationMetadata, tokenUsage);
             observabilityService.endSpan(spanId, true, null);
+        }
+
+        // 持久化会话到 MySQL + Redis
+        if (chatMemoryPersistenceService != null && StringUtils.isNotBlank(input) && StringUtils.isNotBlank(output)) {
+            try {
+                chatMemoryPersistenceService.persistConversation(
+                        sessionId,
+                        userId,
+                        agentId,
+                        clientId,
+                        input,
+                        output,
+                        model,
+                        latencyMs,
+                        traceId
+                );
+            } catch (Exception e) {
+                // 持久化失败不影响主流程，降级处理
+                log.error("会话持久化失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
+            }
         }
 
         ChatResponse.Builder chatResponseBuilder = ChatResponse.builder().from(chatClientResponse.chatResponse());
@@ -164,6 +202,14 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             return "";
         }
         return response.chatResponse().getResult().getOutput().getText();
+    }
+
+    private String extractModelName(ChatClientResponse response) {
+        if (response == null || response.chatResponse() == null || response.chatResponse().getMetadata() == null) {
+            return "";
+        }
+        Object model = response.chatResponse().getMetadata().get("model");
+        return model == null ? "" : String.valueOf(model);
     }
 
     private long parseStartAt(Object value) {

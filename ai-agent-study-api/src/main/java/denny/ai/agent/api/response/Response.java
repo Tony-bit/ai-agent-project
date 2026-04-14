@@ -19,4 +19,15 @@ public class Response<T> implements Serializable {
     private String info;
     private T data;
 
+    public static Response<Void> ok() {
+        return Response.<Void>builder().code("200").info("success").data(null).build();
+    }
+
+    public static <T> Response<T> ok(T data) {
+        return Response.<T>builder().code("200").info("success").data(data).build();
+    }
+
+    public static Response<Void> error(String code, String info) {
+        return Response.<Void>builder().code(code).info(info).data(null).build();
+    }
 }

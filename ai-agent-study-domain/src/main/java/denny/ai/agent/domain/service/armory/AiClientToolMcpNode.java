@@ -11,6 +11,7 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.McpJsonMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.utils.StringUtils;
@@ -109,7 +110,8 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                         .env(stdio.getEnv())
                         .build();
 
-                var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
+                var mcpClient = McpClient.sync(
+                                new StdioClientTransport(stdioParams, McpJsonMapper.createDefault()))
                         .requestTimeout(Duration.ofSeconds(aiClientToolMcpVO.getRequestTimeout())).build();
                 var init_stdio = mcpClient.initialize();
 

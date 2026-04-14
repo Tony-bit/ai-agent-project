@@ -5,6 +5,7 @@ import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.service.armory.factory.element.ObservabilityAdvisor;
 import denny.ai.agent.domain.service.armory.factory.element.RagAnswerAdvisor;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
+import com.alibaba.cloud.ai.memory.mem0.advisor.Mem0ChatMemoryAdvisor;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -40,6 +41,16 @@ public enum AiClientAdvisorTypeEnumVO {
                             .maxMessages(chatMemory.getMaxMessages())
                             .build()
             ).build();
+        }
+    },
+
+    MEM0_MEMORY("Mem0Memory", "Mem0 长期记忆") {
+        @Override
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                     VectorStore vectorStore,
+                                     IRagKnowledgeRepository ragKnowledgeRepository,
+                                     ObservabilityService observabilityService) {
+            return Mem0ChatMemoryAdvisor.builder(vectorStore).build();
         }
     },
 

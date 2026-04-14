@@ -52,7 +52,13 @@ public class AiClientAdvisorVO {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class ChatMemory {
-        private int maxMessages;
+        /**
+         * 记忆类型：ChatMemory(内存滑动窗口) / Mem0Memory(Mem0长期记忆)
+         * 默认 ChatMemory
+         */
+        private String memoryType = "ChatMemory";
+
+        private int maxMessages = 10;
     }
 
     @Data

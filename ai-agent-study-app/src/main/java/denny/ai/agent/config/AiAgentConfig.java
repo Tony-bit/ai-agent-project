@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class AiAgentConfig {
 
     @Bean
-    public EmbeddingModel dashscopeEmbeddingModel(
+    public EmbeddingModel customDashscopeEmbeddingModel(
             @Value("${rag.embedding.config.base-url}") String apiUrl,
             @Value("${rag.embedding.config.api-key}") String apiKey,
             @Value("${rag.embedding.config.model:qwen3-vl-embedding}") String model,
@@ -26,7 +26,7 @@ public class AiAgentConfig {
 
     @Bean
     public PgVectorStore pgVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
-                                       @Qualifier("dashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
+                                      @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
                 .vectorTableName("vector_store")
                 .build();
