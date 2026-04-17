@@ -41,6 +41,10 @@
             <groupId>denny.ai.agent</groupId>
             <artifactId>ai-agent-study-domain</artifactId>
         </dependency>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-api</artifactId>
+        </dependency>
 
         <!-- 京东云 OSS（S3 兼容）上传依赖：AWS SDK v1 -->
         <dependency>

@@ -40,6 +40,10 @@
             <groupId>denny.ai.agent</groupId>
             <artifactId>ai-agent-study-domain</artifactId>
         </dependency>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-infrastructure</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

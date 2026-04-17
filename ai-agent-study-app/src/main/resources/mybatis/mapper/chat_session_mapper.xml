@@ -41,4 +41,33 @@
         WHERE session_id = #{sessionId}
     </select>
 
+    <!--
+        首次加载：获取最新的会话列表
+        利用 idx_create_time 索引，LIMIT 直接定位
+    -->
+    <select id="queryFirstPage" resultMap="ChatSessionMap">
+        SELECT id, session_id, user_id, agent_id, client_id, message_count,
+               first_query, last_response, status, create_time, update_time
+        FROM ai_chat_session
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+        游标分页：查询指定时间之前的所有会话
+        使用复合条件 (create_time, id) 利用索引跳跃
+        避免 OFFSET 带来的性能问题
+    -->
+    <select id="queryByCursor" resultMap="ChatSessionMap">
+        SELECT id, session_id, user_id, agent_id, client_id, message_count,
+               first_query, last_response, status, create_time, update_time
+        FROM ai_chat_session
+        WHERE user_id = #{userId}
+          AND (create_time &lt; #{cursorTime}
+               OR (create_time = #{cursorTime} AND id &lt; #{cursorId}))
+        ORDER BY create_time DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

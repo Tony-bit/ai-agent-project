@@ -29,4 +29,30 @@
         ORDER BY message_index ASC
     </select>
 
+    <!--
+        首次加载：获取最新的 N 条消息（倒序，后端反转返回正序）
+        利用 idx_session_id + message_index 复合索引
+    -->
+    <select id="queryLatestMessages" resultMap="ChatMessageMap">
+        SELECT id, session_id, message_index, role, content, model, latency_ms, trace_id, create_time
+        FROM ai_chat_message
+        WHERE session_id = #{sessionId}
+        ORDER BY message_index DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+        游标分页：查询指定索引之前的所有消息（更早的消息）
+        完全利用 idx_session_id 索引，无任何回表扫描
+        时间复杂度 O(limit) 而非 O(offset + limit)
+    -->
+    <select id="queryByCursor" resultMap="ChatMessageMap">
+        SELECT id, session_id, message_index, role, content, model, latency_ms, trace_id, create_time
+        FROM ai_chat_message
+        WHERE session_id = #{sessionId}
+          AND message_index &lt; #{cursorIndex}
+        ORDER BY message_index DESC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

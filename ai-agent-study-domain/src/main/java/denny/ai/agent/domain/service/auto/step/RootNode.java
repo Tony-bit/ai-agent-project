@@ -31,9 +31,6 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info(">>> [RootNode.doApply] 开始, dynamicContext.hashCode={}, dataObjects={}",
-                System.identityHashCode(dynamicContext), dynamicContext.getDataObjects().keySet());
-
         log.info("=== 动态多轮执行测试开始 ====");
         log.info("用户输入: {}", requestParameter.getMessage());
         log.info("最大执行步数: {}", requestParameter.getMaxStep());
@@ -59,7 +56,12 @@ public class RootNode extends AbstractExecuteSupport {
         Object emitterCheck = dynamicContext.getValue("emitter");
         log.info(">>> [RootNode.doApply] emitter检查: {}", emitterCheck != null ? "存在" : "NULL");
 
+        long startAt = System.currentTimeMillis();
         String result = router(requestParameter, dynamicContext);
+        long latencyMs = System.currentTimeMillis() - startAt;
+
+        // 持久化最终会话记录（路由完成后，统一在此处记录一次）
+        persistRootConversation(requestParameter, dynamicContext, latencyMs);
 
         log.info(">>> [RootNode.doApply] 路由后, dynamicContext.hashCode={}, dataObjects={}",
                 System.identityHashCode(dynamicContext), dynamicContext.getDataObjects().keySet());
@@ -73,6 +75,42 @@ public class RootNode extends AbstractExecuteSupport {
             return intelligentInspection;
         }
         return step1AnalyzerNode;
+    }
+
+    /**
+     * 持久化根节点的最终会话记录。
+     * <p>
+     * input 取用户原始请求，output 根据路由结果从 dynamicContext 中获取：
+     * - PE 流：从 finalSummary 获取最终回复
+     * - 巡检流：从 inspectionResult 获取巡检报告
+     */
+    private void persistRootConversation(ExecuteCommandEntity requestParameter,
+                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                         long latencyMs) {
+        String sessionId = requestParameter.getSessionId();
+        String userId = requestParameter.getUserId();
+        String agentId = requestParameter.getAiAgentId();
+        String input = requestParameter.getMessage();
+        String traceId = dynamicContext.getTraceId();
+
+        // PE 流：finalSummary（正常总结流）
+        String output = dynamicContext.getValue("finalSummary");
+        // PE 流：intentRecognitionResult（意图识别流）
+        if (output == null) {
+            output = dynamicContext.getValue("intentRecognitionResult");
+        }
+        // 巡检流：inspectionResult
+        if (output == null) {
+            output = dynamicContext.getValue("inspectionResult");
+        }
+        String clientId = "RESPONSE_ASSISTANT";
+
+        if (output == null) {
+            log.warn("RootNode 未找到可持久化的 output，跳过会话持久化: sessionId={}", sessionId);
+            return;
+        }
+
+        persistConversation(sessionId, userId, agentId, clientId, input, output, null, latencyMs, traceId);
     }
 
 }

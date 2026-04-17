@@ -216,6 +216,81 @@
             scrollbar-width: thin;
             scrollbar-color: #d1d5db transparent;
         }
+
+        /* 会话列表项样式 */
+        .session-item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .session-item:hover {
+            background-color: #f3f4f6;
+            border-color: #e5e7eb;
+        }
+
+        .session-item.active {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .session-item-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #1f2937;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .session-item-preview {
+            font-size: 11px;
+            color: #6b7280;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+
+        .session-item-time {
+            font-size: 10px;
+            color: #9ca3af;
+        }
+
+        .session-item-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-right: 4px;
+        }
+
+        .badge-user {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-ai {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* 历史消息样式 */
+        .history-message {
+            animation: messageSlideIn 0.3s ease-out;
+        }
+
+        .history-indicator {
+            font-size: 11px;
+            color: #9ca3af;
+            text-align: center;
+            padding: 8px 0;
+            margin-bottom: 8px;
+            border-bottom: 1px dashed #e5e7eb;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col bg-gray-50 font-sans">
@@ -257,17 +332,40 @@
 
 <div class="flex-1 flex overflow-hidden">
     <!-- 侧边栏 -->
-    <aside id="sidebar" class="w-64 bg-white border-r overflow-y-auto transition-all duration-300 ease-in-out shadow-sm custom-scrollbar">
+    <aside id="sidebar" class="w-72 bg-white border-r overflow-y-auto transition-all duration-300 ease-in-out shadow-sm custom-scrollbar">
         <div class="p-4">
-            <h2 class="font-bold mb-3 text-lg text-gray-800 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    对话历史
+                </h2>
+                <button id="refreshSessionListBtn" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-gray-100 rounded-md transition-colors" title="刷新会话列表">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
+            </div>
+            <!-- 加载状态 -->
+            <div id="sessionListLoading" class="hidden text-center py-4 text-gray-500">
+                <svg class="animate-spin h-5 w-5 mx-auto text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                对话历史
-            </h2>
+                <p class="text-xs mt-1">加载中...</p>
+            </div>
             <ul id="chatList" class="space-y-2">
                 <!-- 对话历史列表 -->
             </ul>
+            <!-- 无历史记录提示 -->
+            <div id="noHistoryTip" class="hidden text-center py-8 text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p class="text-sm">暂无历史对话</p>
+                <p class="text-xs mt-1">开始新的对话吧</p>
+            </div>
         </div>
     </aside>
 
@@ -397,9 +495,23 @@
     let sessionId = generateSessionId();
     document.getElementById('sessionId').textContent = sessionId;
 
+    // 模拟用户ID（实际项目中应从登录态获取）
+    const currentUserId = 'user_001';
+
     let isConnected = false;
     let eventSource = null;
     let currentStepMessages = new Map();
+
+    // 会话列表游标（用于分页加载）
+    let sessionCursorTime = null;
+    let sessionCursorId = null;
+    let isLoadingSessions = false;
+    let hasMoreSessions = true;
+
+    // 历史消息游标
+    let messageCursorIndex = null;
+    let hasMoreMessages = true;
+    let isLoadingMessages = false;
 
     // 配置marked选项
     marked.setOptions({
@@ -448,6 +560,423 @@
         'inspection_report': '巡检报告'
     };
 
+    // ========== 会话列表相关 ==========
+
+    // 格式化时间
+    function formatTime(dateStr) {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now - date;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        if (minutes < 1) return '刚刚';
+        if (minutes < 60) return `${minutes}分钟前`;
+        if (hours < 24) return `${hours}小时前`;
+        if (days < 7) return `${days}天前`;
+        return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    }
+
+    // 截断文本
+    function truncateText(text, maxLen) {
+        if (!text) return '新对话';
+        if (text.length <= maxLen) return text;
+        return text.substring(0, maxLen) + '...';
+    }
+
+    // 加载会话列表
+    async function loadSessionList(append = false) {
+        // 防止重复加载
+        if (isLoadingSessions) return;
+        // 如果不是追加模式且没有更多数据，直接返回
+        if (!append && !hasMoreSessions) {
+            document.getElementById('sessionListLoading').classList.add('hidden');
+            return;
+        }
+
+        isLoadingSessions = true;
+        if (!append) {
+            document.getElementById('sessionListLoading').classList.remove('hidden');
+        }
+
+        try {
+            // 构建查询参数
+            let url = `http://localhost:8090/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`;
+            if (sessionCursorTime && sessionCursorId && append) {
+                url += `&cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error('获取会话列表失败');
+
+            const result = await response.json();
+            if (result.code !== '200') throw new Error(result.info || '获取会话列表失败');
+
+            const data = result.data;
+
+            if (append) {
+                appendSessionsToList(data.sessions);
+            } else {
+                renderSessionList(data.sessions);
+            }
+
+            // 更新游标
+            hasMoreSessions = data.hasMore;
+            if (hasMoreSessions) {
+                sessionCursorTime = data.nextCursorTime;
+                sessionCursorId = data.nextCursorId;
+            }
+
+        } catch (error) {
+            console.error('加载会话列表失败:', error);
+        } finally {
+            isLoadingSessions = false;
+            document.getElementById('sessionListLoading').classList.add('hidden');
+        }
+    }
+
+    // 渲染会话列表
+    function renderSessionList(sessions) {
+        const chatList = document.getElementById('chatList');
+        const noHistoryTip = document.getElementById('noHistoryTip');
+
+        if (!sessions || sessions.length === 0) {
+            chatList.innerHTML = '';
+            noHistoryTip.classList.remove('hidden');
+            return;
+        }
+
+        noHistoryTip.classList.add('hidden');
+        chatList.innerHTML = '';
+
+        sessions.forEach(session => {
+            const item = createSessionItem(session);
+            chatList.appendChild(item);
+        });
+    }
+
+    // 追加会话到列表
+    function appendSessionsToList(sessions) {
+        const chatList = document.getElementById('chatList');
+        const noHistoryTip = document.getElementById('noHistoryTip');
+
+        if (!sessions || sessions.length === 0) return;
+
+        noHistoryTip.classList.add('hidden');
+
+        sessions.forEach(session => {
+            const item = createSessionItem(session);
+            chatList.appendChild(item);
+        });
+    }
+
+    // 创建会话列表项
+    function createSessionItem(session) {
+        const li = document.createElement('li');
+        li.className = 'session-item';
+        li.dataset.sessionId = session.sessionId;
+
+        const title = truncateText(session.firstQuery, 30);
+        const preview = truncateText(session.lastResponse, 40);
+        const time = formatTime(session.createTime);
+
+        li.innerHTML = `
+            <div class="session-item-title">${escapeHtml(title)}</div>
+            <div class="session-item-preview">
+                <span class="session-item-badge badge-user">问</span>${escapeHtml(preview)}
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="session-item-time">${time}</span>
+                ${session.messageCount ? `<span class="text-xs text-gray-400">${session.messageCount}条消息</span>` : ''}
+            </div>
+        `;
+
+        // 点击事件：加载该会话的历史消息
+        li.addEventListener('click', () => {
+            selectSession(session.sessionId, li);
+        });
+
+        return li;
+    }
+
+    // 选择会话
+    async function selectSession(selectedSessionId, element) {
+        // 更新选中状态
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        element.classList.add('active');
+
+        // 切换会话ID
+        sessionId = selectedSessionId;
+        document.getElementById('sessionId').textContent = sessionId;
+
+        // 重置消息游标
+        messageCursorIndex = null;
+        hasMoreMessages = true;
+
+        // 清空当前面板，加载历史消息
+        await loadSessionMessages(selectedSessionId, false);
+    }
+
+    // 加载会话消息
+    async function loadSessionMessages(targetSessionId, append = false) {
+        if (isLoadingMessages || (!append && !hasMoreMessages)) return;
+
+        isLoadingMessages = true;
+
+        // 如果是首次加载，显示加载状态
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        const resultDiv = document.getElementById('resultMessages');
+
+        if (!append) {
+            // 清空现有消息（保留欢迎消息）
+            thinkingDiv.innerHTML = `
+                <div class="history-indicator">📜 以下为历史对话记录</div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span class="text-white text-sm font-semibold">AI</span>
+                    </div>
+                    <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="text-sm text-primary-800">
+                            <strong>AI助手:</strong> 正在加载历史对话...
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultDiv.innerHTML = `
+                <div class="history-indicator">📜 以下为历史对话记录</div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span class="text-white text-sm font-semibold">AI</span>
+                    </div>
+                    <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="text-sm text-primary-800">
+                            <strong>AI助手:</strong> 正在加载历史对话...
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        try {
+            let url = `http://localhost:8090/api/v1/session/${encodeURIComponent(targetSessionId)}/messages`;
+            if (messageCursorIndex !== null) {
+                url += `?cursorIndex=${messageCursorIndex}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error('获取会话消息失败');
+
+            const result = await response.json();
+            if (result.code !== '200') throw new Error(result.info || '获取会话消息失败');
+
+            const data = result.data;
+
+            if (append) {
+                appendMessagesToPanels(data.messages);
+            } else {
+                renderMessagesToPanels(data.messages);
+            }
+
+            // 更新游标
+            hasMoreMessages = data.hasMore;
+            if (hasMoreMessages) {
+                messageCursorIndex = data.nextCursorIndex;
+            }
+
+            // 如果没有历史消息
+            if (!append && (!data.messages || data.messages.length === 0)) {
+                thinkingDiv.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                            <div class="text-sm text-primary-800">
+                                <strong>AI助手:</strong> 该会话暂无历史消息记录。
+                            </div>
+                        </div>
+                    </div>
+                `;
+                resultDiv.innerHTML = '';
+            }
+
+        } catch (error) {
+            console.error('加载会话消息失败:', error);
+            if (!append) {
+                thinkingDiv.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">!</span>
+                        </div>
+                        <div class="flex-1 bg-red-50 rounded-lg p-3">
+                            <div class="text-sm text-red-800">
+                                <strong>错误:</strong> ${error.message}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                resultDiv.innerHTML = '';
+            }
+        } finally {
+            isLoadingMessages = false;
+        }
+    }
+
+    // 渲染消息到面板
+    function renderMessagesToPanels(messages) {
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        const resultDiv = document.getElementById('resultMessages');
+
+        // 清空欢迎消息
+        thinkingDiv.innerHTML = messages.length > 0 ? '<div class="history-indicator">📜 以下为历史对话记录</div>' : '';
+        resultDiv.innerHTML = messages.length > 0 ? '<div class="history-indicator">📜 以下为历史对话记录</div>' : '';
+
+        messages.forEach(msg => {
+            if (msg.role === 'user') {
+                // 用户消息：同时显示在两个面板
+                const userHtml = `
+                    <div class="flex items-start gap-3 history-message">
+                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">您</span>
+                        </div>
+                        <div class="flex-1 bg-green-50 rounded-lg p-3">
+                            <div class="text-sm text-green-800">
+                                <strong>您:</strong> ${escapeHtml(msg.content)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                thinkingDiv.insertAdjacentHTML('beforeend', userHtml);
+                resultDiv.insertAdjacentHTML('beforeend', userHtml);
+            } else if (msg.role === 'assistant') {
+                // AI回复：区分显示
+                const isFinalResult = true; // 历史消息默认作为最终结果显示
+                const targetContainer = isFinalResult ? resultDiv : thinkingDiv;
+
+                const timeInfo = msg.createTime ? `<span class="text-xs text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
+                const modelInfo = msg.model ? `<span class="text-xs text-gray-400 ml-2">${msg.model}</span>` : '';
+                const latencyInfo = msg.latencyMs ? `<span class="text-xs text-gray-400 ml-2">${msg.latencyMs}ms</span>` : '';
+
+                const aiHtml = `
+                    <div class="flex items-start gap-3 history-message">
+                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                            <div class="text-sm text-primary-800">
+                                <strong>AI助手:</strong>
+                                ${timeInfo}${modelInfo}${latencyInfo}
+                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                targetContainer.insertAdjacentHTML('beforeend', aiHtml);
+            }
+        });
+
+        // 高亮代码块
+        thinkingDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+
+        // 滚动到底部
+        scrollToBottom();
+    }
+
+    // 追加消息到面板
+    function appendMessagesToPanels(messages) {
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        const resultDiv = document.getElementById('resultMessages');
+
+        messages.forEach(msg => {
+            if (msg.role === 'user') {
+                const userHtml = `
+                    <div class="flex items-start gap-3 history-message">
+                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">您</span>
+                        </div>
+                        <div class="flex-1 bg-green-50 rounded-lg p-3">
+                            <div class="text-sm text-green-800">
+                                <strong>您:</strong> ${escapeHtml(msg.content)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                thinkingDiv.insertAdjacentHTML('beforeend', userHtml);
+                resultDiv.insertAdjacentHTML('beforeend', userHtml);
+            } else if (msg.role === 'assistant') {
+                const resultDivLast = resultDiv.lastElementChild;
+                const timeInfo = msg.createTime ? `<span class="text-xs text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
+                const aiHtml = `
+                    <div class="flex items-start gap-3 history-message">
+                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                            <div class="text-sm text-primary-800">
+                                <strong>AI助手:</strong>
+                                ${timeInfo}
+                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                resultDiv.insertAdjacentHTML('beforeend', aiHtml);
+            }
+        });
+
+        resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+    }
+
+    // HTML转义
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 页面滚动加载更多历史会话
+    function setupSessionListScroll() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.addEventListener('scroll', () => {
+            const { scrollTop, scrollHeight, clientHeight } = sidebar;
+            // 当滚动到底部附近时，加载更多
+            if (scrollHeight - scrollTop - clientHeight < 100) {
+                if (!isLoadingSessions && hasMoreSessions) {
+                    loadSessionList(true);
+                }
+            }
+        });
+    }
+
+    // 页面滚动加载更多历史消息
+    function setupMessageScroll() {
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        thinkingDiv.addEventListener('scroll', () => {
+            // 当滚动到顶部时，加载更早的消息
+            if (thinkingDiv.scrollTop < 50) {
+                if (!isLoadingMessages && hasMoreMessages && sessionId) {
+                    loadSessionMessages(sessionId, true);
+                }
+            }
+        });
+    }
+
+    // ========== 原有功能 ==========
+
     // 发送消息
     function sendMessage() {
         const messageInput = document.getElementById('messageInput');
@@ -481,6 +1010,7 @@
             aiAgentId: document.getElementById('aiAgentSelect').value,
             message: message,
             sessionId: sessionId,
+            userId: currentUserId,
             maxStep: parseInt(document.getElementById('maxStepSelect').value)
         };
 
@@ -696,6 +1226,41 @@
         const resultChildren = Array.from(resultDiv.children);
         resultChildren.slice(1).forEach(child => child.remove());
 
+        // 恢复欢迎消息
+        thinkingDiv.innerHTML = `
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-sm font-semibold">AI</span>
+                </div>
+                <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                    <div class="text-sm text-primary-800">
+                        <strong>AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
+                    </div>
+                </div>
+            </div>
+        `;
+        resultDiv.innerHTML = `
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-sm font-semibold">AI</span>
+                </div>
+                <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                    <div class="text-sm text-primary-800">
+                        <strong>AI助手:</strong> 这里将显示AI的最终执行结果和总结。
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 清除选中状态
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.remove('active');
+        });
+
+        // 重置消息游标
+        messageCursorIndex = null;
+        hasMoreMessages = true;
+
         // 生成新的会话ID
         sessionId = generateSessionId();
         document.getElementById('sessionId').textContent = sessionId;
@@ -705,6 +1270,9 @@
 
         // 聚焦输入框
         document.getElementById('messageInput').focus();
+
+        // 刷新会话列表（将新会话添加到顶部）
+        loadSessionList(false);
     }
 
     // 清空所有对话
@@ -734,10 +1302,23 @@
 
     document.getElementById('newChatBtn').addEventListener('click', createNewChat);
     document.getElementById('clearAllChatsBtn').addEventListener('click', clearAllChats);
+    document.getElementById('refreshSessionListBtn').addEventListener('click', () => {
+        // 重置游标
+        sessionCursorTime = null;
+        sessionCursorId = null;
+        hasMoreSessions = true;
+        // 重新加载
+        loadSessionList(false);
+    });
 
-    // 页面加载完成后聚焦输入框
+    // 页面加载完成后
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
+        // 加载会话列表
+        loadSessionList(false);
+        // 设置滚动监听
+        setupSessionListScroll();
+        setupMessageScroll();
     });
 </script>
 </body>

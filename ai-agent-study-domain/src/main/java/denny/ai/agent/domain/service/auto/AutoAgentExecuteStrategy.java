@@ -1,9 +1,7 @@
 package denny.ai.agent.domain.service.auto;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.adapter.repository.IAgentRepository;
-import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
@@ -62,21 +60,17 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
         log.info("测试结果:{}", apply);
 
-        // 发送完成标识并关闭流
+        // 关闭 SSE 流（完成标识已在内部节点发送，此处不再重复发送）
         ResponseBodyEmitter emitter2 = dynamicContext.getValue("emitter");
         if (emitter2 == null) {
             log.error("【SSE致命错误】execute方法中的emitter为空！");
         } else {
             try {
-                AutoAgentExecuteResultEntity completeResult = AutoAgentExecuteResultEntity.createCompleteResult(executeCommandEntity.getSessionId());
-                String sseData = "data: " + JSON.toJSONString(completeResult) + "\n\n";
-                log.info(">>> [AutoAgentStrategy] 发送最终完成标识: {}", sseData);
-                emitter2.send(sseData);
-                log.info("<<< [AutoAgentStrategy] 完成标识发送成功，准备关闭流");
+                log.info(">>> [AutoAgentStrategy] 准备关闭SSE流");
                 emitter2.complete();
                 log.info("<<< [AutoAgentStrategy] SSE流已关闭");
             } catch (Exception e) {
-                log.error("【SSE致命错误】发送完成标识或关闭SSE流失败：{}", e.getMessage(), e);
+                log.error("【SSE致命错误】关闭SSE流失败：{}", e.getMessage(), e);
             }
         }
     }
