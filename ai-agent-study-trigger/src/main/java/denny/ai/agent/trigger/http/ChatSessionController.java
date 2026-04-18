@@ -32,9 +32,9 @@ public class ChatSessionController {
      */
     @GetMapping("/list")
     public Response<SessionListResult> getSessionList(
-            @RequestParam String userId,
-            @RequestParam(required = false) String cursorTime,
-            @RequestParam(required = false) String cursorId) {
+            @RequestParam(name = "userId") String userId,
+            @RequestParam(name = "cursorTime", required = false) String cursorTime,
+            @RequestParam(name = "cursorId", required = false) String cursorId) {
         log.info("获取会话列表: userId={}, cursorTime={}, cursorId={}", userId, cursorTime, cursorId);
         SessionListResult result = chatSessionQueryService.getSessionList(userId, cursorTime, cursorId);
         return Response.ok(result);

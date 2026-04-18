@@ -58,7 +58,7 @@ public class Mem0MemoryControllerTest {
     @Test
     public void testAddAndGetMemory() {
         String sessionId = UUID.randomUUID().toString().substring(0, 8);
-        String content = "这是一条测试记忆，内容ID=" + sessionId;
+        String content = "我喜欢吃鱼，内容ID=" + sessionId;
 
         // 1. 添加记忆（走 Mem0ServiceClient -> Mem0 REST API）
         Map<String, String> requestBody = new HashMap<>();
@@ -105,6 +105,98 @@ public class Mem0MemoryControllerTest {
         assertNotNull("data不应为null", response.getBody().getData());
 
         log.info("testGetMemories_NoData 测试通过, userId={}", randomUserId);
+    }
+
+    @Test
+    public void testSearchMemory() {
+        // 1. 先添加一条有辨识度的记忆
+        String sessionId = UUID.randomUUID().toString().substring(0, 8);
+        String uniqueKeyword = "mem0-search-test-" + sessionId;
+        String content = "这是一条专门用于搜索测试的记忆，关键词=" + uniqueKeyword;
+
+        Map<String, String> addRequestBody = new HashMap<>();
+        addRequestBody.put("userId", TEST_USER_ID);
+        addRequestBody.put("agentId", TEST_AGENT_ID);
+        addRequestBody.put("content", content);
+
+        HttpEntity<Map<String, String>> addRequest = new HttpEntity<>(addRequestBody);
+        ResponseEntity<Response> addResponse = restTemplate.exchange(
+                baseUrl() + "/api/v1/mem0/memories", HttpMethod.POST, addRequest, Response.class);
+
+        log.info("添加记忆响应: code={}, status={}", addResponse.getBody(), addResponse.getStatusCode());
+        assertEquals("添加记忆应返回200", HttpStatus.OK, addResponse.getStatusCode());
+
+        // 2. 语义搜索（不传 sessionId，全用户维度搜索）
+        String searchUrl = UriComponentsBuilder
+                .fromHttpUrl(baseUrl() + "/api/v1/mem0/search")
+                .queryParam("userId", TEST_USER_ID)
+                .queryParam("query", uniqueKeyword)
+                .queryParam("limit", 5)
+                .build().toUriString();
+
+        ResponseEntity<Response> searchResponse = restTemplate.getForEntity(searchUrl, Response.class);
+
+        log.info("搜索响应: code={}, status={}, data={}",
+                searchResponse.getBody(), searchResponse.getStatusCode(), searchResponse.getBody().getData());
+        assertEquals("搜索应返回200", HttpStatus.OK, searchResponse.getStatusCode());
+        assertNotNull("搜索结果data不应为null", searchResponse.getBody().getData());
+
+        log.info("testSearchMemory 测试通过, userId={}", TEST_USER_ID);
+    }
+
+    @Test
+    public void testSearchMemory_WithSessionId() {
+        // 1. 添加带 sessionId 的记忆
+        String sessionId = UUID.randomUUID().toString().substring(0, 8);
+        String uniqueKeyword = "mem0-session-search-" + sessionId;
+        String content = "这是一条带sessionId的搜索测试记忆，关键词=" + uniqueKeyword;
+
+        Map<String, String> addRequestBody = new HashMap<>();
+        addRequestBody.put("userId", TEST_USER_ID);
+        addRequestBody.put("agentId", TEST_AGENT_ID);
+        addRequestBody.put("content", content);
+
+        HttpEntity<Map<String, String>> addRequest = new HttpEntity<>(addRequestBody);
+        ResponseEntity<Response> addResponse = restTemplate.exchange(
+                baseUrl() + "/api/v1/mem0/memories", HttpMethod.POST, addRequest, Response.class);
+
+        log.info("添加记忆响应: code={}, status={}", addResponse.getBody(), addResponse.getStatusCode());
+        assertEquals("添加记忆应返回200", HttpStatus.OK, addResponse.getStatusCode());
+
+        // 2. 带 sessionId 搜索（应该只搜到当前 session 的记忆）
+        String searchUrl = UriComponentsBuilder
+                .fromHttpUrl(baseUrl() + "/api/v1/mem0/search")
+                .queryParam("userId", TEST_USER_ID)
+                .queryParam("query", uniqueKeyword)
+                .queryParam("sessionId", sessionId)
+                .queryParam("limit", 5)
+                .build().toUriString();
+
+        ResponseEntity<Response> searchResponse = restTemplate.getForEntity(searchUrl, Response.class);
+
+        log.info("带sessionId搜索响应: code={}, status={}, data={}",
+                searchResponse.getBody(), searchResponse.getStatusCode(), searchResponse.getBody().getData());
+        assertEquals("搜索应返回200", HttpStatus.OK, searchResponse.getStatusCode());
+        assertNotNull("搜索结果data不应为null", searchResponse.getBody().getData());
+
+        // 3. 用错误的 sessionId 搜索（不应命中上面的记忆）
+        String wrongSessionId = "wrong-session-" + UUID.randomUUID().toString().substring(0, 8);
+        String searchUrl2 = UriComponentsBuilder
+                .fromHttpUrl(baseUrl() + "/api/v1/mem0/search")
+                .queryParam("userId", TEST_USER_ID)
+                .queryParam("query", uniqueKeyword)
+                .queryParam("sessionId", wrongSessionId)
+                .queryParam("limit", 5)
+                .build().toUriString();
+
+        ResponseEntity<Response> searchResponse2 = restTemplate.getForEntity(searchUrl2, Response.class);
+
+        log.info("错误sessionId搜索响应: code={}, status={}, data={}",
+                searchResponse2.getBody(), searchResponse2.getStatusCode(), searchResponse2.getBody().getData());
+        assertEquals("搜索应返回200", HttpStatus.OK, searchResponse2.getStatusCode());
+        assertNotNull("data不应为null", searchResponse2.getBody().getData());
+
+        log.info("testSearchMemory_WithSessionId 测试通过, userId={}, sessionId={}", TEST_USER_ID, sessionId);
     }
 
     @Test

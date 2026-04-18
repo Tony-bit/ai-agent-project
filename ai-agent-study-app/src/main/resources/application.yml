@@ -38,7 +38,7 @@ spring:
           llm:
             provider: deepseek
             config:
-              api-key: ${DEEPSEEK_API_KEY:}
+              api-key: ${DEEPSEEK_API_KEY:sk-a0df0f93a5ac475e8c73c6e3495cfc05}
               temperature: 0.2
 #              ai-base-url: https://api.deepseek.com/chat/completions
               model: deepseek-chat

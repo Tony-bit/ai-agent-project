@@ -2,6 +2,7 @@ package denny.ai.agent.trigger.http;
 
 import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
 import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
+import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerResp;
 import denny.ai.agent.api.response.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -76,20 +77,22 @@ public class Mem0MemoryController {
     /**
      * 语义搜索记忆
      */
-//    @GetMapping("/search")
-//    public Response<List<Document>> searchMemory(
-//            @RequestParam String userId,
-//            @RequestParam String query,
-//            @RequestParam(defaultValue = "10") int limit) {
-//        log.info("Mem0 语义搜索, userId={}, query={}", userId, query);
-//        Mem0ServerRequest.SearchRequest request = Mem0ServerRequest.SearchRequest.builder()
-//                .query(query)
-//                .userId(userId)
-//                .limit(limit)
-//                .build();
-//        List<Document> documents = vectorStore.similaritySearch(request);
-//        return Response.ok(documents);
-//    }
+    @GetMapping("/search")
+    public Response<Mem0ServerResp> searchMemory(
+            @RequestParam String userId,
+            @RequestParam String query,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Mem0 语义搜索, userId={}, query={}, sessionId={}", userId, query, sessionId);
+        Mem0ServerRequest.SearchRequest request = Mem0ServerRequest.SearchRequest.mem0Builder()
+                .query(query)
+                .userId(userId)
+                .runId(sessionId != null && !sessionId.isBlank() ? sessionId : null)
+                .topK(limit)
+                .build();
+        Mem0ServerResp result = mem0ServiceClient.searchMemories(request);
+        return Response.ok(result);
+    }
 
     /**
      * 清空用户全部记忆

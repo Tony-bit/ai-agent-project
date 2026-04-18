@@ -1,33 +1,22 @@
-package denny.ai.agent.config;
+package denny.ai.agent.domain.model.valobj;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * 会话记忆配置
+ * 跨会话长期记忆配置属性
+ * <p>
+ * 在 domain 层定义配置接口，在 app 层通过 @Bean 注册实例，
+ * 避免 domain 层直接依赖 app 层的配置类。
+ * </p>
  *
  * @author denny
  */
 @Data
 @Component
 @ConfigurationProperties(prefix = "chat.memory")
-public class ChatMemoryProperties {
-
-    /**
-     * 是否启用持久化
-     */
-    private boolean enabled = true;
-
-    /**
-     * Redis 缓存 TTL（小时）
-     */
-    private int redisTtlHours = 24;
-
-    /**
-     * Redis 最大缓存消息条数
-     */
-    private int maxCacheSize = 20;
+public class CrossSessionMemoryProperties {
 
     /**
      * 是否在会话初始化时注入跨会话记忆

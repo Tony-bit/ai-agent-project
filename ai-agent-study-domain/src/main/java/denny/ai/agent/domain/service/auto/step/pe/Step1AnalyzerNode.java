@@ -1,13 +1,18 @@
 package denny.ai.agent.domain.service.auto.step.pe;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
+import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
+import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerResp;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.Resource;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,6 +29,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class Step1AnalyzerNode extends AbstractExecuteSupport {
 
+    @Resource
+    private Mem0ServiceClient mem0ServiceClient;
+
+    @Resource
+    private CrossSessionMemoryProperties crossSessionMemoryProperties;
+
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n🎯 === 执行第 {} 步 ===", dynamicContext.getStep());
@@ -37,6 +48,26 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             String traceId = observabilityService.startTrace(requestParameter.getSessionId(), requestParameter.getMessage(), metadata);
             dynamicContext.setTraceId(traceId);
             log.info("📡 Langfuse trace initialized, traceId={}", traceId);
+        }
+
+        // ========== 跨会话记忆注入 ==========
+        if (crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
+            try {
+                Mem0ServerRequest.SearchRequest searchRequest = Mem0ServerRequest.SearchRequest.mem0Builder()
+                        .query("用户相关信息和偏好")
+                        .userId(requestParameter.getUserId())
+                        .topK(crossSessionMemoryProperties.getCrossSessionMemoryTopK())
+                        .build();
+                Mem0ServerResp resp = mem0ServiceClient.searchMemories(searchRequest);
+                String formattedMemories = formatMem0Result(resp);
+                dynamicContext.setValue("crossSessionMemories", formattedMemories);
+                log.info("已注入跨会话记忆到上下文, userId={}, hasMemory={}",
+                        requestParameter.getUserId(), !formattedMemories.isEmpty());
+            } catch (Exception e) {
+                log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
+                        requestParameter.getUserId(), e.getMessage());
+                dynamicContext.setValue("crossSessionMemories", "");
+            }
         }
 
         // 获取配置信息
@@ -63,7 +94,8 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                     dynamicContext.getStep(),
                     dynamicContext.getMaxStep(),
                     !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
-                    dynamicContext.getCurrentTask()
+                    dynamicContext.getCurrentTask(),
+                    dynamicContext.getValue("crossSessionMemories")
             );
 
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
@@ -310,6 +342,25 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             }
         }
         return null;
+    }
+
+    /**
+     * 将 Mem0ServerResp 格式化为 Prompt 上下文字符串
+     */
+    private String formatMem0Result(Mem0ServerResp resp) {
+        if (resp == null || resp.getResults() == null || resp.getResults().isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n\n[用户跨会话长期记忆]\n");
+        int i = 1;
+        for (Mem0ServerResp.Mem0Results item : resp.getResults()) {
+            sb.append(i++).append(". ").append(item.getMemory());
+            if (item.getMetadata() != null && !item.getMetadata().isEmpty()) {
+                sb.append(" (metadata: ").append(item.getMetadata()).append(")");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
 }
