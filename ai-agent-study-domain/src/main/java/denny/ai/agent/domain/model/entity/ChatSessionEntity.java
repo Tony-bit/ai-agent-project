@@ -36,6 +36,8 @@ public class ChatSessionEntity {
 
     private Integer status;
 
+    private Integer addMemory;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;
@@ -43,4 +45,8 @@ public class ChatSessionEntity {
     public static final int STATUS_ACTIVE = 1;
 
     public static final int STATUS_CLOSED = 0;
+
+    public static final int ADD_MEMORY_NO = 0;
+
+    public static final int ADD_MEMORY_YES = 1;
 }

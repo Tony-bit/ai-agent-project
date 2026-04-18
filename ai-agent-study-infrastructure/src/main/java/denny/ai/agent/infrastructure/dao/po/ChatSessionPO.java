@@ -28,6 +28,8 @@ public class ChatSessionPO {
 
     private Integer status;
 
+    private Integer addMemory;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

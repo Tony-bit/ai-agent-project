@@ -32,7 +32,18 @@ public interface IChatSessionDao {
      * 查询指定时间之前的所有会话
      */
     List<ChatSessionPO> queryByCursor(@Param("userId") String userId,
-                                       @Param("cursorTime") LocalDateTime cursorTime,
-                                       @Param("cursorId") Long cursorId,
-                                       @Param("limit") int limit);
+                                      @Param("cursorTime") LocalDateTime cursorTime,
+                                      @Param("cursorId") Long cursorId,
+                                      @Param("limit") int limit);
+
+    /**
+     * 查询 addMemory=0 的会话（待同步到记忆）
+     */
+    List<ChatSessionPO> queryByAddMemoryUnsynced(@Param("userId") String userId,
+                                                   @Param("sessionId") String sessionId);
+
+    /**
+     * 批量更新 addMemory=1
+     */
+    void batchUpdateAddMemory(@Param("sessionIdList") List<String> sessionIdList);
 }

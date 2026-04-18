@@ -12,6 +12,7 @@
         <result column="first_query" property="firstQuery"/>
         <result column="last_response" property="lastResponse"/>
         <result column="status" property="status"/>
+        <result column="add_memory" property="addMemory"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
@@ -19,10 +20,10 @@
     <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.ChatSessionPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_chat_session (
             session_id, user_id, agent_id, client_id, message_count,
-            first_query, last_response, status, create_time, update_time
+            first_query, last_response, status, add_memory, create_time, update_time
         ) VALUES (
             #{sessionId}, #{userId}, #{agentId}, #{clientId}, #{messageCount},
-            #{firstQuery}, #{lastResponse}, #{status}, #{createTime}, #{updateTime}
+            #{firstQuery}, #{lastResponse}, #{status}, 0, #{createTime}, #{updateTime}
         )
     </insert>
 
@@ -69,5 +70,24 @@
         ORDER BY create_time DESC, id DESC
         LIMIT #{limit}
     </select>
+
+    <select id="queryByAddMemoryUnsynced" resultMap="ChatSessionMap">
+        SELECT id, session_id, user_id, agent_id, client_id, message_count,
+               first_query, last_response, status, add_memory, create_time, update_time
+        FROM ai_chat_session
+        WHERE user_id = #{userId}
+          AND session_id = #{sessionId}
+          AND add_memory = 0
+        ORDER BY create_time ASC
+    </select>
+
+    <update id="batchUpdateAddMemory">
+        UPDATE ai_chat_session
+        SET add_memory = 1, update_time = NOW()
+        WHERE session_id IN
+        <foreach collection="sessionIdList" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+    </update>
 
 </mapper>
