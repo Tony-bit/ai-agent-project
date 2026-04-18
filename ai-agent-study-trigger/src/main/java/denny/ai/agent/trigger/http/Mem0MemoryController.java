@@ -4,18 +4,11 @@ import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
 import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
 import denny.ai.agent.api.response.Response;
 import lombok.extern.slf4j.Slf4j;
-import com.alibaba.cloud.ai.memory.mem0.advisor.Mem0ChatMemoryAdvisor;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-
-import static com.alibaba.cloud.ai.memory.mem0.advisor.Mem0ChatMemoryAdvisor.USER_ID;
 
 /**
  * Mem0 长期记忆 HTTP 接口层
@@ -30,24 +23,21 @@ import static com.alibaba.cloud.ai.memory.mem0.advisor.Mem0ChatMemoryAdvisor.USE
 public class Mem0MemoryController {
 
     private final Mem0ServiceClient mem0ServiceClient;
-    private final VectorStore vectorStore;
-    private ChatClient chatClient;
 
-    public Mem0MemoryController(Mem0ServiceClient mem0ServiceClient, VectorStore vectorStore) {
+    public Mem0MemoryController(Mem0ServiceClient mem0ServiceClient) {
         this.mem0ServiceClient = mem0ServiceClient;
-        this.vectorStore = vectorStore;
     }
 
     /**
      * 初始化 ChatClient（延迟注入，避免循环依赖）
      */
-    @org.springframework.context.annotation.Lazy
-    @org.springframework.beans.factory.annotation.Autowired
-    public void setChatClient(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder
-                .defaultAdvisors(Mem0ChatMemoryAdvisor.builder(vectorStore).build())
-                .build();
-    }
+//    @org.springframework.context.annotation.Lazy
+//    @org.springframework.beans.factory.annotation.Autowired
+//    public void setChatClient(ChatClient.Builder chatClientBuilder) {
+//        this.chatClient = chatClientBuilder
+//                .defaultAdvisors(Mem0ChatMemoryAdvisor.builder(vectorStore).build())
+//                .build();
+//    }
 
     /**
      * 添加记忆
@@ -70,17 +60,17 @@ public class Mem0MemoryController {
      * 查询用户所有记忆
      */
     @GetMapping("/memories")
-    public Response<List<Document>> getMemories(
+    public Response<?> getMemories(
             @RequestParam String userId,
             @RequestParam(required = false) String agentId) {
         log.info("Mem0 查询所有记忆, userId={}, agentId={}", userId, agentId);
-        SearchRequest searchRequest = SearchRequest.builder()
-                .query("*")
-                .topK(100)
-                .filterExpression(String.valueOf(Map.of("user_id", userId)))
-                .build();
-        List<Document> documents = vectorStore.similaritySearch(searchRequest);
-        return Response.ok(documents);
+        try {
+            Object resp = mem0ServiceClient.getAllMemories(userId, agentId, null);
+            return Response.ok(resp);
+        } catch (Exception e) {
+            log.error("Mem0 查询记忆失败, userId={}", userId, e);
+            return Response.error("500", "查询记忆失败: " + e.getMessage());
+        }
     }
 
     /**

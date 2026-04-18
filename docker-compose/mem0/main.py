@@ -23,7 +23,7 @@ POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
 POSTGRES_COLLECTION_NAME = os.environ.get("POSTGRES_COLLECTION_NAME", "memories")
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("AI_DASHSCOPE_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "/app/history/history.db")
 
@@ -60,14 +60,22 @@ DEFAULT_CONFIG = {
     "history_db_path": HISTORY_DB_PATH,
 }
 
-
-MEMORY_INSTANCE = None
-
 app = FastAPI(
     title="Mem0 REST APIs",
     description="A REST API for managing and searching memories for your AI Agents and Apps.",
     version="1.0.0",
 )
+
+MEMORY_INSTANCE = None
+
+
+@app.on_event("startup")
+def init_memory():
+    """FastAPI 启动时初始化 Mem0 Memory 实例，避免首次请求时 MEMORY_INSTANCE 仍为 None"""
+    global MEMORY_INSTANCE
+    logging.info("Initializing Mem0 Memory instance...")
+    MEMORY_INSTANCE = Memory.from_config(DEFAULT_CONFIG)
+    logging.info("Mem0 Memory instance initialized successfully.")
 
 
 class Message(BaseModel):

@@ -16,7 +16,7 @@ spring:
     alibaba:
       mem0:
         client:
-          base-url: http://127.0.0.1:8888
+          base-url: http://127.0.0.1:8889
           timeout-seconds: 120
         server:
           version: v0.1.116
@@ -29,17 +29,18 @@ spring:
               user: ${POSTGRES_USER:postgres}
               password: ${POSTGRES_PASSWORD:123}
               collection-name: ${POSTGRES_COLLECTION_NAME:memories}
-          graph-store:
-            provider: neo4j
-            config:
-              url: ${NEO4J_URI:bolt://localhost:7687}
-              username: ${NEO4J_USERNAME:neo4j}
-              password: ${NEO4J_PASSWORD:mem0graph}
+#          graph-store:
+#            provider: neo4j
+#            config:
+#              url: ${NEO4J_URI:bolt://localhost:7687}
+#              username: ${NEO4J_USERNAME:neo4j}
+#              password: ${NEO4J_PASSWORD:mem0graph}
           llm:
             provider: deepseek
             config:
               api-key: ${DEEPSEEK_API_KEY:}
               temperature: 0.2
+#              ai-base-url: https://api.deepseek.com/chat/completions
               model: deepseek-chat
           embedder:
             provider: openai
@@ -63,7 +64,7 @@ spring:
     pgvector:
       driver-class-name: org.postgresql.Driver
       username: postgres
-      password: 123
+      password: postgres
       url: jdbc:postgresql://localhost:15432/ai-rag-knowledge
       type: com.zaxxer.hikari.HikariDataSource
       # hikari连接池配置
