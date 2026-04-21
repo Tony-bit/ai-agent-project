@@ -52,8 +52,8 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        // 总结节点是最后一个节点，返回null表示执行结束
-        return defaultStrategyHandler;
+        // Step4 完成后，跳转会话结束判断节点
+        return getBean("sessionEndJudgementNode");
     }
     
     /**

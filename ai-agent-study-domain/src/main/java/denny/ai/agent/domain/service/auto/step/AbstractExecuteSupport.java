@@ -57,7 +57,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     }
 
-    protected ChatClient getChatClientByClientId(String clientId, Integer taskType) {
+    public ChatClient getChatClientByClientId(String clientId, Integer taskType) {
         String key = AiAgentEnumVO.AI_CLIENT.getBeanName(clientId) + "taskType" + taskType;
         ChatClient chatClient = armoryObjectRegistry.get(key);
         if (chatClient == null) {

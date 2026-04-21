@@ -1,6 +1,8 @@
 package denny.ai.agent.infrastructure.service;
 
+import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.chatsession.ISessionEndDetectionService;
+import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -94,6 +96,9 @@ public class SessionEndDetectionServiceImpl implements ISessionEndDetectionServi
     @Resource
     private SessionActivityTracker sessionActivityTracker;
 
+    @Resource
+    private ISessionMemoryPersistenceService sessionMemoryPersistenceService;
+
     @Override
     public boolean isSessionEnded(String sessionId, String userId, String lastMessage) {
         // ========== 第一层：关键词正则匹配 ==========
@@ -169,7 +174,8 @@ public class SessionEndDetectionServiceImpl implements ISessionEndDetectionServi
      * @param message 用户消息
      * @return true = 命中结束词，false = 未命中
      */
-    boolean matchEndKeyword(String message) {
+    @Override
+    public boolean matchEndKeyword(String message) {
         if (message == null || message.isBlank()) {
             return false;
         }
@@ -220,21 +226,31 @@ public class SessionEndDetectionServiceImpl implements ISessionEndDetectionServi
         }
     }
 
-    /**
-     * 解析 LLM 返回的 JSON 响应
-     *
-     * @param response LLM 返回的原始文本
-     * @return true = ended，false = 未结束
-     */
-    boolean parseLlmResponse(String response) {
+    @Override
+    public boolean parseLlmResponse(String response) {
         log.debug("LLM 判断结果: response={}", response);
         if (response == null) {
             return false;
         }
-        // 兼容 "ended":true 和 "ended": true（有空格）两种格式
         if (response.contains("\"ended\":true") || response.contains("\"ended\": true")) {
             return true;
         }
         return false;
     }
+
+    @Override
+    public void recordActivity(String userId, String sessionId, String lastMessage) {
+        sessionActivityTracker.recordActivity(userId, sessionId, lastMessage);
+    }
+
+    @Override
+    public void syncSessionToMemory(String userId, String sessionId) {
+        sessionMemoryPersistenceService.syncSessionToMemory(userId, sessionId);
+    }
+
+    @Override
+    public void removeActivity(String userId, String sessionId) {
+        sessionActivityTracker.removeActivity(userId, sessionId);
+    }
+
 }

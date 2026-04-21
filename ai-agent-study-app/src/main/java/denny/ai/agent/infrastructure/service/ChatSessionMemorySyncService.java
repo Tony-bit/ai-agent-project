@@ -2,6 +2,7 @@ package denny.ai.agent.infrastructure.service;
 
 import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
 import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
+import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
 import denny.ai.agent.infrastructure.dao.IChatSessionDao;
 import denny.ai.agent.infrastructure.dao.po.ChatSessionPO;
 import jakarta.annotation.Resource;
@@ -22,7 +23,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Service
-public class ChatSessionMemorySyncService {
+public class ChatSessionMemorySyncService implements ISessionMemoryPersistenceService {
 
     @Resource
     private IChatSessionDao chatSessionDao;
@@ -36,6 +37,7 @@ public class ChatSessionMemorySyncService {
      * @param userId    用户ID
      * @param sessionId 会话ID
      */
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void syncSessionToMemory(String userId, String sessionId) {
         // 1. 查询 addMemory=0 的会话
