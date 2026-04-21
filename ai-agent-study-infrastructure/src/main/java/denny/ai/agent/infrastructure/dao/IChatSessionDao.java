@@ -46,4 +46,12 @@ public interface IChatSessionDao {
      * 批量更新 addMemory=1
      */
     void batchUpdateAddMemory(@Param("sessionIdList") List<String> sessionIdList);
+
+    /**
+     * 查询会话最近活动时间（update_time）
+     *
+     * @param sessionId 会话ID
+     * @return 最近活动时间，未查到返回 null
+     */
+    LocalDateTime queryLastActivityTime(@Param("sessionId") String sessionId);
 }

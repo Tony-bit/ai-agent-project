@@ -90,4 +90,11 @@
         </foreach>
     </update>
 
+    <select id="queryLastActivityTime" resultType="java.time.LocalDateTime">
+        SELECT update_time
+        FROM ai_chat_session
+        WHERE session_id = #{sessionId}
+        LIMIT 1
+    </select>
+
 </mapper>
