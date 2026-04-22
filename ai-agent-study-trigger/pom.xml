@@ -44,6 +44,14 @@
             <groupId>denny.ai.agent</groupId>
             <artifactId>ai-agent-study-infrastructure</artifactId>
         </dependency>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-trading-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-trading-domain</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

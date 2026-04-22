@@ -6,6 +6,7 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
+import denny.ai.agent.trading.domain.node.IntentRoutingNode;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,9 @@ import java.util.Objects;
 @Slf4j
 @Service("executeRootNode")
 public class RootNode extends AbstractExecuteSupport {
+
+    @Resource
+    private IntentRoutingNode intentRoutingNode;
 
     @Resource
     private Step1AnalyzerNode step1AnalyzerNode;
@@ -71,10 +75,16 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        // 巡检 Agent（aiAgentId = "5"）走独立流程
         if (Objects.equals(requestParameter.getAiAgentId(), "5")) {
             return intelligentInspection;
         }
-        return step1AnalyzerNode;
+
+        // 默认路由到意图路由节点，前置于 Step1AnalyzerNode
+        // IntentRoutingNode 会根据意图识别结果决定：
+        // - 股票分析意图 -> 路由到 TradingRootNode
+        // - 普通对话意图 -> 返回 null，框架继续流转
+        return intentRoutingNode;
     }
 
     /**
@@ -102,6 +112,10 @@ public class RootNode extends AbstractExecuteSupport {
         // 巡检流：inspectionResult
         if (output == null) {
             output = dynamicContext.getValue("inspectionResult");
+        }
+        // 交易 Agent 流：tradingFinalDecision
+        if (output == null) {
+            output = dynamicContext.getValue("tradingFinalDecision");
         }
         String clientId = "RESPONSE_ASSISTANT";
 

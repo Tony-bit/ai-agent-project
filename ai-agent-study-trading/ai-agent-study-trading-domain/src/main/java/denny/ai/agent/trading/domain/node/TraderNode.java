@@ -1,0 +1,211 @@
+package denny.ai.agent.trading.domain.node;
+
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.fastjson.JSON;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
+import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
+import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
+import denny.ai.agent.trading.domain.prompt.TraderPromptTemplate;
+import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.stereotype.Service;
+
+import jakarta.annotation.Resource;
+
+/**
+ * 交易员节点。
+ * <p>
+ * 职责：
+ * 1. 汇总 TradingContextVO 中所有分析师报告 + InvestmentDebateVO 的辩论结论
+ * 2. 调用 ChatClient 生成 InvestmentPlanVO
+ * 3. 将结果写入 TradingContextVO.investmentPlan
+ * 4. SSE 发送 trader_plan 事件
+ */
+@Slf4j
+@Service
+public class TraderNode extends AbstractExecuteSupport {
+
+    public static final String TRADING_CONTEXT_KEY = "trading_context";
+    public static final String TRADING_STEP_KEY = "trading_step";
+
+    @Resource
+    private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Override
+    protected String doApply(ExecuteCommandEntity requestParameter,
+                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        log.info("=== 交易员节点执行开始 ===");
+
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        if (context == null) {
+            log.error("交易上下文为空");
+            return "error: no trading context";
+        }
+
+        String ticker = context.getStockInfo().getTicker();
+
+        sendTraderEvent(dynamicContext, "trader_start", "交易员开始制定投资计划...");
+
+        // 构建分析摘要
+        String analysisSummary = buildAnalysisSummary(context);
+
+        // 调用 LLM 生成投资计划
+        String planJson = generateInvestmentPlan(ticker, analysisSummary, dynamicContext);
+
+        // 解析并更新上下文
+        parseAndUpdatePlan(context, planJson);
+
+        sendTraderEvent(dynamicContext, "trader_plan", JSON.toJSONString(context.getInvestmentPlan()));
+
+        log.info("交易员节点执行完成: ticker={}, action={}",
+                ticker, context.getInvestmentPlan() != null ? context.getInvestmentPlan().getAction() : "N/A");
+
+        dynamicContext.setValue(TRADING_STEP_KEY, "risk_management");
+
+        return "trader_plan_completed";
+    }
+
+    @Override
+    public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
+            ExecuteCommandEntity requestParameter,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        return null;
+    }
+
+    /**
+     * 构建分析摘要。
+     */
+    private String buildAnalysisSummary(TradingContextVO context) {
+        StringBuilder sb = new StringBuilder();
+        String ticker = context.getStockInfo().getTicker();
+        java.math.BigDecimal price = context.getStockInfo().getCurrentPrice();
+
+        sb.append("股票代码: ").append(ticker).append("\n");
+        sb.append("当前价格: ").append(price).append("\n\n");
+
+        // 分析师报告
+        if (context.getFundamentalReport() != null) {
+            sb.append("【基本面分析】\n");
+            sb.append("评分: ").append(context.getFundamentalReport().getRating()).append("/5\n");
+            sb.append("总结: ").append(context.getFundamentalReport().getSummary()).append("\n\n");
+        }
+
+        if (context.getTechnicalReport() != null) {
+            sb.append("【技术面分析】\n");
+            sb.append("评分: ").append(context.getTechnicalReport().getRating()).append("/5\n");
+            sb.append("趋势信号: ").append(context.getTechnicalReport().getTrendSignal()).append("\n");
+            sb.append("总结: ").append(context.getTechnicalReport().getSummary()).append("\n\n");
+        }
+
+        if (context.getSentimentReport() != null) {
+            sb.append("【情绪面分析】\n");
+            sb.append("评分: ").append(context.getSentimentReport().getRating()).append("/5\n");
+            sb.append("情绪得分: ").append(context.getSentimentReport().getSentimentScore()).append("\n");
+            sb.append("总结: ").append(context.getSentimentReport().getSummary()).append("\n\n");
+        }
+
+        if (context.getNewsReport() != null) {
+            sb.append("【新闻面分析】\n");
+            sb.append("评分: ").append(context.getNewsReport().getRating()).append("/5\n");
+            sb.append("整体情绪: ").append(context.getNewsReport().getOverallSentiment()).append("\n");
+            sb.append("总结: ").append(context.getNewsReport().getSummary()).append("\n\n");
+        }
+
+        // 辩论结论
+        if (context.getInvestmentDebate() != null) {
+            sb.append("【投资辩论结论】\n");
+            sb.append("综合评分: ").append(context.getInvestmentDebate().getOverallScore()).append("\n");
+            sb.append("辩论结论: ").append(context.getInvestmentDebate().getConclusion()).append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * 调用 LLM 生成投资计划。
+     */
+    private String generateInvestmentPlan(String ticker, String analysisSummary,
+                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        String prompt = TraderPromptTemplate.TRADER_PROMPT.formatted(ticker, analysisSummary);
+
+        ChatClient chatClient = getChatClientByClientId("default", 0);
+
+        long startAt = System.currentTimeMillis();
+        String response = chatClient.prompt().user(prompt).call().content();
+        long latencyMs = System.currentTimeMillis() - startAt;
+
+        log.info("交易员 LLM 响应耗时: {}ms", latencyMs);
+
+        return response;
+    }
+
+    /**
+     * 解析并更新投资计划。
+     */
+    private void parseAndUpdatePlan(TradingContextVO context, String llmResponse) {
+        try {
+            // 尝试从响应中提取 JSON
+            String jsonStr = extractJson(llmResponse);
+            com.alibaba.fastjson.JSONObject json = JSON.parseObject(jsonStr);
+
+            TradingContextVO.InvestmentPlanVO plan = TradingContextVO.InvestmentPlanVO.builder()
+                    .action(getStringOrDefault(json, "action", "HOLD"))
+                    .positionRatio(getDoubleOrDefault(json, "positionRatio", 0.0))
+                    .entryPriceRange(getStringOrDefault(json, "entryPriceRange", ""))
+                    .stopLossPrice(getStringOrDefault(json, "stopLossPrice", ""))
+                    .takeProfitPrice(getStringOrDefault(json, "takeProfitPrice", ""))
+                    .holdingPeriod(getStringOrDefault(json, "holdingPeriod", ""))
+                    .riskRewardRatio(getDoubleOrDefault(json, "riskRewardRatio", 0.0))
+                    .build();
+
+            context.setInvestmentPlan(plan);
+            log.info("投资计划解析成功: action={}, positionRatio={}", plan.getAction(), plan.getPositionRatio());
+        } catch (Exception e) {
+            log.error("解析投资计划失败: {}", llmResponse, e);
+            // 降级：设置为持有
+            TradingContextVO.InvestmentPlanVO fallbackPlan = TradingContextVO.InvestmentPlanVO.builder()
+                    .action("HOLD")
+                    .positionRatio(0.0)
+                    .build();
+            context.setInvestmentPlan(fallbackPlan);
+        }
+    }
+
+    private String extractJson(String response) {
+        String trimmed = response.trim();
+        int jsonStart = trimmed.indexOf("{");
+        int jsonEnd = trimmed.lastIndexOf("}");
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            return trimmed.substring(jsonStart, jsonEnd + 1);
+        }
+        return "{}";
+    }
+
+    private String getStringOrDefault(com.alibaba.fastjson.JSONObject json, String key, String defaultValue) {
+        return json.containsKey(key) ? json.getString(key) : defaultValue;
+    }
+
+    private Double getDoubleOrDefault(com.alibaba.fastjson.JSONObject json, String key, Double defaultValue) {
+        return json.containsKey(key) ? json.getDouble(key) : defaultValue;
+    }
+
+    /**
+     * 发送交易员事件。
+     */
+    private void sendTraderEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                               String subType, String content) {
+        AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
+                .type("trader")
+                .subType(subType)
+                .step(dynamicContext.getStep())
+                .content(content)
+                .completed(false)
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        sendSseResult(dynamicContext, event);
+    }
+}
