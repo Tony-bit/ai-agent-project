@@ -1,8 +1,11 @@
 package denny.ai.agent.trading.infra.provider;
 
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
+import denny.ai.agent.trading.infra.calculator.TechnicalIndicatorCalculator;
 import denny.ai.agent.trading.infra.config.TradingDataSourceProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,9 +17,14 @@ import org.springframework.stereotype.Component;
 public class ProviderFactory {
 
     private final TradingDataSourceProperties properties;
+    private final TechnicalIndicatorCalculator indicatorCalculator;
 
-    public ProviderFactory(TradingDataSourceProperties properties) {
+    public ProviderFactory(TradingDataSourceProperties properties,
+                           @Autowired(required = false) TechnicalIndicatorCalculator indicatorCalculator) {
         this.properties = properties;
+        this.indicatorCalculator = indicatorCalculator != null
+                ? indicatorCalculator
+                : new TechnicalIndicatorCalculator();
     }
 
     /**
@@ -25,22 +33,38 @@ public class ProviderFactory {
      * @return IStockDataProvider 实现实例
      */
     @ConditionalOnMissingBean(IStockDataProvider.class)
-    public IStockDataProvider getProvider() {
+    @Bean
+    public IStockDataProvider stockDataProvider() {
+        return getProvider();
+    }
+
+    private IStockDataProvider getProvider() {
         String provider = properties.getProvider();
-        if ("yahoo-finance".equalsIgnoreCase(provider)) {
-            return createYahooFinanceProvider();
+        if ("tushare".equalsIgnoreCase(provider)) {
+            return createTushareProvider();
         }
-        // 默认返回 Mock Provider（Phase 1-5）
         return createMockProvider();
+    }
+
+    // ======== 新增：新浪新闻 Provider ========
+    @ConditionalOnMissingBean(INewsSearchProvider.class)
+    @Bean
+    public INewsSearchProvider sinaNewsSearchProvider() {
+        return new SinaNewsDataProvider();
     }
 
     private IStockDataProvider createMockProvider() {
         return new MockStockDataProvider();
     }
 
-    private IStockDataProvider createYahooFinanceProvider() {
-        // Phase 6 实现：return new YahooFinanceStockDataProvider();
-        throw new UnsupportedOperationException(
-                "YahooFinanceStockDataProvider 尚未实现，请先完成 Phase 6 T6-01 任务");
+    private IStockDataProvider createTushareProvider() {
+        String token = properties.getTushareToken();
+        if (token == null || token.isBlank()) {
+            throw new IllegalStateException(
+                    "Tushare Token 未配置，请设置 spring.ai.trading.data-source.tushare-token");
+        }
+        TushareApiClient apiClient = new TushareApiClient(token);
+        INewsSearchProvider newsSearchProvider = new SinaNewsDataProvider();
+        return new TushareStockDataProvider(apiClient, indicatorCalculator, newsSearchProvider);
     }
 }

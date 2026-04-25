@@ -6,7 +6,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -18,10 +17,8 @@ import static org.mockito.Mockito.*;
  * 测试覆盖：
  * 1. 正则层 - matchEndKeyword 方法
  * 2. 滑动窗口层 - checkBySlidingWindow 方法
- * 3. LLM 层 - parseLlmResponse / checkByLlm 方法
- * 4. isSessionEnded - 三层集成测试（通过 spy 控制 LLM 返回值）
- * <p>
- * 不覆盖：需要真实 API 调用的 LLM 集成测试
+ * 3. parseLlmResponse - LLM 响应解析（节点层调用）
+ * </p>
  *
  * @author denny
  */
@@ -35,9 +32,6 @@ public class SessionEndDetectionServiceImplTest {
 
     @Mock
     private SessionActivityTracker sessionActivityTracker;
-
-    @Mock
-    private ChatClient chatClient;
 
     // ========== 第一层：正则层测试 ==========
 
@@ -375,7 +369,7 @@ public class SessionEndDetectionServiceImplTest {
         assertTrue("user-002 会话已超时", result2);
     }
 
-    // ========== 第二层：LLM 层测试（直接测试响应解析） ==========
+    // ========== LLM 响应解析测试（节点层调用） ==========
 
     /**
      * LLM 解析：返回包含 "ended":true 的 JSON，应判定为已结束
@@ -427,109 +421,5 @@ public class SessionEndDetectionServiceImplTest {
     public void testParseLlmResponse_noEndedKeyword() {
         assertFalse("不含 ended 关键字应返回 false",
                 sessionEndDetectionService.parseLlmResponse("{\"result\": \"ok\"}"));
-    }
-
-    /**
-     * LLM 层：lastMessage 为空，应直接返回 false，不调 LLM
-     */
-    @Test
-    public void testCheckByLlm_emptyMessage() {
-        assertFalse("null 应返回 false", sessionEndDetectionService.checkByLlm(null));
-        assertFalse("空字符串应返回 false", sessionEndDetectionService.checkByLlm(""));
-        assertFalse("纯空格应返回 false", sessionEndDetectionService.checkByLlm("   "));
-        verifyNoInteractions(chatClient);
-    }
-
-    /**
-     * LLM 层：LLM 调用异常，应返回 false（降级）
-     */
-    @Test
-    public void testCheckByLlm_llmException() {
-        lenient().when(chatClient.prompt()).thenThrow(new RuntimeException("网络超时"));
-
-        boolean result = sessionEndDetectionService.checkByLlm("好的，明白了");
-
-        assertFalse("LLM 调用异常应降级返回 false", result);
-    }
-
-    // ========== isSessionEnded 集成测试（通过 spy 控制 LLM 返回值） ==========
-
-    /**
-     * 集成测试：命中正则层，应直接返回 true，不走 LLM 和滑动窗口
-     */
-    @Test
-    public void testIsSessionEnded_matchKeyword() {
-        boolean result = sessionEndDetectionService.isSessionEnded("session-123", "user-001", "好的，明白了");
-        assertTrue("命中结束关键词应返回 true", result);
-        verifyNoInteractions(sessionActivityTracker);
-        verifyNoInteractions(chatClient);
-    }
-
-    /**
-     * 集成测试：未命中正则，LLM 判断为结束，应返回 true
-     */
-    @Test
-    public void testIsSessionEnded_llmEnded() {
-        // "问题解决了" 不在正则结束词列表开头，不命中正则
-        assertFalse(sessionEndDetectionService.matchEndKeyword("问题解决了"));
-
-        // spy 控制 checkByLlm 返回 true
-        doReturn(true).when(sessionEndDetectionService).checkByLlm(anyString());
-
-        boolean result = sessionEndDetectionService.isSessionEnded("session-123", "user-001", "问题解决了");
-
-        assertTrue("LLM 判断为已结束应返回 true", result);
-        verify(sessionEndDetectionService).checkByLlm("问题解决了");
-        verifyNoInteractions(sessionActivityTracker);
-    }
-
-    /**
-     * 集成测试：未命中正则，LLM 判断为未结束，滑动窗口超时，应返回 true
-     */
-    @Test
-    public void testIsSessionEnded_llmNotEndButSlidingWindowExpired() {
-        // "请再解释一下" 不命中任何正则
-        assertFalse(sessionEndDetectionService.matchEndKeyword("请再解释一下"));
-
-        doReturn(false).when(sessionEndDetectionService).checkByLlm(anyString());
-        doNothing().when(sessionActivityTracker).recordActivity(anyString(), anyString(), any());
-        when(sessionActivityTracker.isExpired(anyString(), anyString())).thenReturn(true);
-
-        boolean result = sessionEndDetectionService.isSessionEnded("session-123", "user-001", "请再解释一下");
-
-        assertTrue("滑动窗口超时应返回 true", result);
-        verify(sessionEndDetectionService).checkByLlm("请再解释一下");
-        verify(sessionActivityTracker).isExpired(eq("user-001"), eq("session-123"));
-    }
-
-    /**
-     * 集成测试：未命中正则，LLM 异常降级，滑动窗口未超时，应返回 false
-     */
-    @Test
-    public void testIsSessionEnded_llmExceptionSlidingWindowActive() {
-        // "请再详细说明" 不命中任何正则
-        assertFalse(sessionEndDetectionService.matchEndKeyword("请再详细说明"));
-
-        doThrow(new RuntimeException("超时")).when(sessionEndDetectionService).checkByLlm(anyString());
-        doNothing().when(sessionActivityTracker).recordActivity(anyString(), anyString(), any());
-        when(sessionActivityTracker.isExpired(anyString(), anyString())).thenReturn(false);
-
-        boolean result = sessionEndDetectionService.isSessionEnded("session-123", "user-001", "请再详细说明");
-
-        assertFalse("LLM 异常且滑动窗口未超时应返回 false", result);
-    }
-
-    /**
-     * 集成测试：三步都未结束，应返回 false
-     */
-    @Test
-    public void testIsSessionEnded_allNotEnd() {
-        doReturn(false).when(sessionEndDetectionService).checkByLlm(anyString());
-        doNothing().when(sessionActivityTracker).recordActivity(anyString(), anyString(), any());
-        when(sessionActivityTracker.isExpired(anyString(), anyString())).thenReturn(false);
-
-        boolean result = sessionEndDetectionService.isSessionEnded("session-123", "user-001", "请问如何优化性能");
-
-        assertFalse("三步都未结束应返回 false", result);
     }
 }

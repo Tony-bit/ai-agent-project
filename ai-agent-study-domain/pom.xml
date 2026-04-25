@@ -99,10 +99,10 @@
             <groupId>denny.ai.agent</groupId>
             <artifactId>ai-agent-study-types</artifactId>
         </dependency>
-        <dependency>
-            <groupId>denny.ai.agent</groupId>
-            <artifactId>ai-agent-study-trading-domain</artifactId>
-        </dependency>
+        <!-- <dependency> -->
+        <!--     <groupId>denny.ai.agent</groupId> -->
+        <!--     <artifactId>ai-agent-study-trading-domain</artifactId> -->
+        <!-- </dependency> -->
 
     </dependencies>
 

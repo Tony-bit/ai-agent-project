@@ -13,9 +13,27 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class TradingDataSourceProperties {
 
     /**
-     * 数据源类型: mock / yahoo-finance / alpha-vantage
+     * 数据源类型: mock / tushare
      */
     private String provider = "mock";
+
+    /**
+     * Tushare 个人 Token，从 tushare.pro 注册获取
+     */
+    private String tushareToken;
+
+    // ======== 新增：新浪财经新闻配置 ========
+    /**
+     * 是否启用新浪财经新闻搜索，默认 true。
+     * 禁用后 getNews() 返回空列表。
+     */
+    private boolean sinaNewsEnabled = true;
+
+    /**
+     * 新闻搜索单次请求最大条数，默认 50。
+     * 新浪接口每次最多返回 20 条，实际返回条数受此值和翻页策略共同限制。
+     */
+    private int sinaNewsPageSize = 50;
 
     /**
      * 缓存配置子对象

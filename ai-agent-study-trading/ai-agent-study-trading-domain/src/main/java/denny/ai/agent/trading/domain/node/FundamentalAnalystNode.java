@@ -1,22 +1,21 @@
 package denny.ai.agent.trading.domain.node;
 
-import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
-
-import jakarta.annotation.Resource;
 
 /**
  * 基本面分析师节点。
@@ -26,13 +25,13 @@ import jakarta.annotation.Resource;
  * 2. 使用 ChatClient + System Prompt 生成分析报告
  * 3. 生成 FundamentalReportVO 并写入 TradingContextVO
  * 4. 通过 sendSseResult() 发送流式进度事件
+ * 5. 末尾调用 TradingDriver.getCurrent().analystComplete() 驱动状态机
  */
 @Slf4j
 @Service
 public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     @Resource
     private IStockDataProvider dataProvider;
@@ -41,11 +40,10 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 基本面分析师节点执行开始 ===");
 
-        // 获取交易上下文
         TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
         if (context == null || context.getStockInfo() == null) {
             log.error("交易上下文或股票信息为空");
@@ -55,31 +53,26 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         StockInfoVO stockInfo = context.getStockInfo();
         String ticker = stockInfo.getTicker();
 
-        // 发送开始事件
         sendAnalystEvent(dynamicContext, "analyst_start", "基本面分析开始: " + ticker);
 
-        // 获取基本面数据
         FundamentalDataVO fundamentalData = dataProvider.getFundamentalData(ticker);
 
         log.info("获取基本面数据: ticker={}, pe={}, roe={}, grossMargin={}",
                 ticker, fundamentalData.getPeRatio(), fundamentalData.getRoe(), fundamentalData.getGrossMargin());
 
-        // 发送进度事件
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取基本面数据，开始分析...");
 
-        // 调用 LLM 生成分析报告
         FundamentalReportVO report = generateReport(stockInfo, fundamentalData, dynamicContext);
 
-        // 发送报告完成事件
         sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
 
-        // 将报告写入上下文
         context.setFundamentalReport(report);
 
         log.info("基本面分析完成: ticker={}, rating={}", ticker, report.getRating());
 
-        // 更新步骤状态
-        dynamicContext.setValue(TRADING_STEP_KEY, "analyst_collection");
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().analystComplete();
+        }
 
         return "fundamental_analysis_completed";
     }
@@ -88,13 +81,9 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
             ExecuteCommandEntity requestParameter,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        // 返回 null，由 TradingRootNode 的 router 决定下一个节点
         return null;
     }
 
-    /**
-     * 使用 LLM 生成基本面分析报告。
-     */
     private FundamentalReportVO generateReport(StockInfoVO stockInfo,
                                              FundamentalDataVO data,
                                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
@@ -121,15 +110,9 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
         log.info("基本面分析 LLM 响应耗时: {}ms", latencyMs);
 
-        // 解析 LLM 响应生成报告
         return parseReport(response, data);
     }
 
-    /**
-     * 解析 LLM 响应生成报告对象。
-     * <p>
-     * 优先尝试 JSON 解析获取 rating，解析失败时回退到启发式计算。
-     */
     private FundamentalReportVO parseReport(String llmResponse, FundamentalDataVO rawData) {
         Integer jsonRating = parseJsonRating(llmResponse);
         int rating = (jsonRating != null) ? jsonRating : calculateRating(rawData);
@@ -143,12 +126,27 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
                 .build();
     }
 
-    /**
-     * 从 LLM 响应中解析 JSON rating。
-     */
+    private java.util.List<String> extractKeyFindings(String llmResponse, FundamentalDataVO rawData) {
+        java.util.List<String> findings = new java.util.ArrayList<>();
+        try {
+            String json = extractJson(llmResponse);
+            if (json != null) {
+                com.alibaba.fastjson.JSONObject obj = JSON.parseObject(json);
+                if (obj != null && obj.containsKey("keyFindings")) {
+                    return obj.getJSONArray("keyFindings").toJavaList(String.class);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to parse keyFindings from LLM response: {}", e.getMessage());
+        }
+        findings.add("营收增长: " + formatField(rawData.getRevenueGrowth()));
+        findings.add("净利润增长: " + formatField(rawData.getNetIncomeGrowth()));
+        findings.add("ROE: " + formatField(rawData.getRoe()));
+        return findings;
+    }
+
     private Integer parseJsonRating(String llmResponse) {
         try {
-            // 查找 JSON 代码块
             String json = extractJson(llmResponse);
             if (json == null) return null;
 
@@ -166,9 +164,6 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         return null;
     }
 
-    /**
-     * 从文本中提取 JSON 块。
-     */
     private String extractJson(String text) {
         if (text == null) return null;
         int start = text.indexOf("{");
@@ -179,9 +174,6 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         return null;
     }
 
-    /**
-     * 从 LLM 响应中提取摘要文本。
-     */
     private String extractSummary(String llmResponse) {
         if (llmResponse == null) return "";
         String json = extractJson(llmResponse);
@@ -197,37 +189,29 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         return llmResponse;
     }
 
-    /**
-     * 根据财务数据计算评分。
-     */
     private int calculateRating(FundamentalDataVO data) {
         int score = 0;
 
-        // ROE 评分
         if (data.getRoe() != null) {
             if (data.getRoe() > 0.20) score += 2;
             else if (data.getRoe() > 0.10) score += 1;
         }
 
-        // 毛利率评分
         if (data.getGrossMargin() != null) {
             if (data.getGrossMargin() > 0.40) score += 2;
             else if (data.getGrossMargin() > 0.20) score += 1;
         }
 
-        // 净利润率评分
         if (data.getNetMargin() != null) {
             if (data.getNetMargin() > 0.20) score += 2;
             else if (data.getNetMargin() > 0.10) score += 1;
         }
 
-        // 营收增长评分
         if (data.getRevenueGrowth() != null) {
             if (data.getRevenueGrowth() > 0.15) score += 2;
             else if (data.getRevenueGrowth() > 0.05) score += 1;
         }
 
-        // 限制评分范围 1-5
         return Math.max(1, Math.min(5, (score / 2) + 2));
     }
 
@@ -256,9 +240,6 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         return warnings;
     }
 
-    /**
-     * 发送分析师事件。
-     */
     private void sendAnalystEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                  String subType, String content) {
         AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()

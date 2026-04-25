@@ -38,6 +38,12 @@ public class StockAnalysisRequestVO {
     private int maxDebateRounds = 2;
 
     /**
+     * 风控辩论轮次，默认 1
+     */
+    @Builder.Default
+    private int maxRiskRounds = 1;
+
+    /**
      * 会话 ID，用于关联历史上下文
      */
     private String sessionId;
@@ -49,6 +55,7 @@ public class StockAnalysisRequestVO {
         return StockAnalysisRequestVO.builder()
                 .ticker(ticker)
                 .maxDebateRounds(2)
+                .maxRiskRounds(1)
                 .build();
     }
 
@@ -60,6 +67,7 @@ public class StockAnalysisRequestVO {
                 .ticker(ticker)
                 .tradeDate(tradeDate)
                 .maxDebateRounds(2)
+                .maxRiskRounds(1)
                 .build();
     }
 }

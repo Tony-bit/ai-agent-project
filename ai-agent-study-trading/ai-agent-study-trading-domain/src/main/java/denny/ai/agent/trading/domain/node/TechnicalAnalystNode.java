@@ -1,14 +1,15 @@
 package denny.ai.agent.trading.domain.node;
 
-import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
@@ -24,19 +25,12 @@ import java.util.List;
 
 /**
  * 技术分析师节点。
- * <p>
- * 职责：
- * 1. 调用 IStockDataProvider 获取 K 线数据和技术指标
- * 2. 使用 ChatClient + System Prompt 生成分析报告
- * 3. 生成 TechnicalReportVO 并写入 TradingContextVO
- * 4. 通过 sendSseResult() 发送流式进度事件
  */
 @Slf4j
 @Service
 public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -47,7 +41,7 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 技术分析师节点执行开始 ===");
 
@@ -62,7 +56,6 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "技术分析开始: " + ticker);
 
-        // 获取 K 线数据（最近 60 个交易日）
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusDays(90);
         List<OHLCVBarVO> bars = dataProvider.getHistoricalBars(ticker,
@@ -70,14 +63,12 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取 K 线数据 " + bars.size() + " 条");
 
-        // 获取技术指标
         TechnicalIndicatorsVO indicators = dataProvider.getTechnicalIndicators(ticker,
                 startDate.format(DATE_FMT), endDate.format(DATE_FMT));
 
         log.info("获取技术指标: ticker={}, RSI6={}, MACD={}",
                 ticker, indicators.getRsi6(), indicators.getMacd());
 
-        // 生成分析报告
         TechnicalReportVO report = generateReport(stockInfo, bars, indicators, dynamicContext);
 
         sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
@@ -87,7 +78,9 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
         log.info("技术分析完成: ticker={}, rating={}, trend={}",
                 ticker, report.getRating(), report.getTrendSignal());
 
-        dynamicContext.setValue(TRADING_STEP_KEY, "analyst_collection");
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().analystComplete();
+        }
 
         return "technical_analysis_completed";
     }
@@ -103,7 +96,6 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
                                            List<OHLCVBarVO> bars,
                                            TechnicalIndicatorsVO indicators,
                                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        // 计算布林带位置
         String bollPosition = calculateBollingerPosition(indicators);
 
         String prompt = AnalystPromptTemplate.TECHNICAL_ANALYST_PROMPT.formatted(
@@ -144,10 +136,9 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
     }
 
     private String determineTrendSignal(TechnicalIndicatorsVO indicators) {
-        BigDecimal price = indicators.getMa5(); // 使用当前价格
+        BigDecimal price = indicators.getMa5();
         BigDecimal bollUpper = indicators.getBollUpper();
         BigDecimal bollLower = indicators.getBollLower();
-        BigDecimal bollMiddle = indicators.getBollMiddle();
 
         if (price == null || bollUpper == null || bollLower == null || bollLower.compareTo(bollUpper) >= 0) {
             return "震荡";
@@ -167,36 +158,32 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
     private int calculateRating(TechnicalIndicatorsVO indicators, String trendSignal) {
         int score = 0;
 
-        // RSI 评分
         Double rsi6 = indicators.getRsi6();
         if (rsi6 != null) {
             if (rsi6 >= 30 && rsi6 <= 70) {
-                score += 2; // 正常区间
+                score += 2;
             } else if (rsi6 < 30) {
-                score += 1; // 超卖，可能反弹
+                score += 1;
             } else {
-                score += 1; // 超买
+                score += 1;
             }
         }
 
-        // MACD 评分
         BigDecimal macdHist = indicators.getMacdHistogram();
         if (macdHist != null) {
             if (macdHist.compareTo(BigDecimal.ZERO) > 0) {
-                score += 2; // 金叉
+                score += 2;
             } else {
-                score += 1; // 死叉
+                score += 1;
             }
         }
 
-        // 均线排列评分
         BigDecimal ma5 = indicators.getMa5();
         BigDecimal ma20 = indicators.getMa20();
         if (ma5 != null && ma20 != null && ma5.compareTo(ma20) > 0) {
             score += 2;
         }
 
-        // 趋势评分
         if ("上涨".equals(trendSignal)) {
             score += 2;
         } else if ("震荡".equals(trendSignal)) {
@@ -237,11 +224,8 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
         return patterns;
     }
 
-    /**
-     * 计算布林带位置。
-     */
     private String calculateBollingerPosition(TechnicalIndicatorsVO indicators) {
-        BigDecimal price = indicators.getMa5(); // 使用当前价格
+        BigDecimal price = indicators.getMa5();
         BigDecimal bollUpper = indicators.getBollUpper();
         BigDecimal bollLower = indicators.getBollLower();
 

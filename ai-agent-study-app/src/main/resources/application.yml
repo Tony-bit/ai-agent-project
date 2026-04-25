@@ -7,6 +7,18 @@ spring:
   config:
     import: optional:classpath:config.yml
   ai:
+    trading:
+      data-source:
+        provider: tushare
+        tushare-token: ${TUSHARE_TOKEN:e054d234d3479bb5c6e7e1146c361d511a7cd9c8bb6de49d37b385c0}
+        sina-news-enabled: true            # 新增：是否启用新浪财经新闻搜索，默认 true
+        sina-news-page-size: 50            # 新增：新闻搜索最大返回条数，默认 50
+        cache:
+          historical-bars-ttl: 86400
+          fundamental-data-ttl: 3600
+          sentiment-ttl: 1800
+          stock-info-ttl: 300
+          news-ttl: 1800                   # 新增：新闻数据缓存 TTL，30 分钟
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:dummy-key}
     agent:

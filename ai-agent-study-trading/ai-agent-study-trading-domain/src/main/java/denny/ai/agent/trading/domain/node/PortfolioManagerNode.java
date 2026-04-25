@@ -8,8 +8,8 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
-import denny.ai.agent.trading.api.vo.ConfidenceEnum;
 import denny.ai.agent.trading.api.vo.TradeDecisionEnum;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.PortfolioManagerPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
@@ -20,26 +20,18 @@ import jakarta.annotation.Resource;
 
 /**
  * 组合经理节点。
- * <p>
- * 职责：
- * 1. 读取 RiskDebateVO 中所有风控意见
- * 2. 调用 ChatClient（deep_think_model）进行最终审批
- * 3. 可能调整 InvestmentPlanVO（降低仓位/收紧止损）
- * 4. 输出最终交易决策写入 TradingContextVO.finalDecision
- * 5. SSE 发送 final_decision 事件
  */
 @Slf4j
 @Service
 public class PortfolioManagerNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 组合经理节点执行开始 ===");
 
@@ -53,13 +45,10 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
         sendFinalEvent(dynamicContext, "portfolio_manager_start", "组合经理开始最终审批...");
 
-        // 构建风控摘要
         String riskSummary = buildRiskSummary(context);
 
-        // 调用 LLM 进行最终决策
         String decisionJson = generateFinalDecision(ticker, context, riskSummary, dynamicContext);
 
-        // 解析并更新最终决策
         parseAndUpdateFinalDecision(context, decisionJson);
 
         sendFinalEvent(dynamicContext, "final_decision", JSON.toJSONString(context.getFinalDecision()));
@@ -67,10 +56,13 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         log.info("组合经理决策完成: ticker={}, decision={}",
                 ticker, context.getFinalDecision() != null ? context.getFinalDecision().getDecision() : "N/A");
 
-        // 保存最终决策用于持久化
         dynamicContext.setValue("tradingFinalDecision", JSON.toJSONString(context.getFinalDecision()));
 
-        dynamicContext.setValue(TRADING_STEP_KEY, "complete");
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().sendSseResult("final", "final_completed",
+                    "交易分析完成，最终决策: " +
+                    (context.getFinalDecision() != null ? context.getFinalDecision().getDecision() : "N/A"), true);
+        }
 
         return "portfolio_manager_completed";
     }
@@ -82,9 +74,6 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         return null;
     }
 
-    /**
-     * 构建风控摘要。
-     */
     private String buildRiskSummary(TradingContextVO context) {
         StringBuilder sb = new StringBuilder();
 
@@ -104,9 +93,6 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         return sb.length() > 0 ? sb.toString() : "No risk debate available.";
     }
 
-    /**
-     * 调用 LLM 生成最终决策。
-     */
     private String generateFinalDecision(String ticker, TradingContextVO context,
                                      String riskSummary,
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
@@ -128,9 +114,6 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         return response;
     }
 
-    /**
-     * 解析并更新最终决策。
-     */
     private void parseAndUpdateFinalDecision(TradingContextVO context, String llmResponse) {
         try {
             String jsonStr = extractJson(llmResponse);
@@ -148,7 +131,6 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
                     decision.getDecision(), decision.getConfidence(), decision.getOverallRating());
         } catch (Exception e) {
             log.error("解析最终决策失败: {}", llmResponse, e);
-            // 降级：设置为持有
             TradingContextVO.FinalTradeDecisionVO fallback = TradingContextVO.FinalTradeDecisionVO.builder()
                     .decision("HOLD")
                     .confidence("LOW")

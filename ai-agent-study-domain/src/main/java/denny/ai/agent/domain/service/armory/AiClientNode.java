@@ -8,11 +8,14 @@ import denny.ai.agent.domain.model.valobj.AiClientVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import io.modelcontextprotocol.client.McpSyncClient;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +29,9 @@ import java.util.Map;
 @Slf4j
 @Service
 public class AiClientNode extends AbstractArmorySupport {
+
+    @Resource
+    private ApplicationContext applicationContext;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -58,8 +64,12 @@ public class AiClientNode extends AbstractArmorySupport {
             }
             advisors.sort(AnnotationAwareOrderComparator.INSTANCE);
 
+            // 从 Spring 容器加载所有 Trading ToolCallbacks
+            ToolCallback[] tradingToolCallbacks = loadTradingToolCallbacks();
+
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
+                    .defaultToolCallbacks(tradingToolCallbacks)
                     .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
                     .defaultAdvisors(advisors.toArray(new Advisor[]{}))
                     .build();
@@ -81,5 +91,29 @@ public class AiClientNode extends AbstractArmorySupport {
 
     protected String dataName() {
         return AiAgentEnumVO.AI_CLIENT.getDataName();
+    }
+
+    /**
+     * 从 Spring 容器加载所有 Trading 相关的 ToolCallback Bean。
+     * 容器中所有 ToolCallback 类型的 Bean（由 TradingToolCallbackProvider 注册）都会被自动加载。
+     */
+    private ToolCallback[] loadTradingToolCallbacks() {
+        try {
+            Map<String, ToolCallback> toolCallbackBeans = applicationContext.getBeansOfType(ToolCallback.class);
+            if (toolCallbackBeans.isEmpty()) {
+                log.info("未找到 Trading ToolCallback Bean，跳过注册");
+                return new ToolCallback[0];
+            }
+            ToolCallback[] callbacks = toolCallbackBeans.values().toArray(new ToolCallback[0]);
+            log.info("已加载 {} 个 Trading ToolCallbacks: {}",
+                    callbacks.length,
+                    java.util.Arrays.stream(callbacks)
+                            .map(cb -> cb.getToolDefinition().name())
+                            .toList());
+            return callbacks;
+        } catch (Exception e) {
+            log.warn("加载 Trading ToolCallbacks 失败，跳过: {}", e.getMessage());
+            return new ToolCallback[0];
+        }
     }
 }

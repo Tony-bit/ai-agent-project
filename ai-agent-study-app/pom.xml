@@ -117,6 +117,10 @@
             <groupId>denny.ai.agent</groupId>
             <artifactId>ai-agent-study-infrastructure</artifactId>
         </dependency>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-trading-infra</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

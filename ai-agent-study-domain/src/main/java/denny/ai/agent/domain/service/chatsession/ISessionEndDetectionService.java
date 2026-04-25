@@ -8,16 +8,6 @@ package denny.ai.agent.domain.service.chatsession;
 public interface ISessionEndDetectionService {
 
     /**
-     * 判断会话是否已结束（完整三层兜底）
-     *
-     * @param sessionId    会话ID
-     * @param userId       用户ID
-     * @param lastMessage  最后一条用户消息
-     * @return true = 会话已结束，false = 会话未结束
-     */
-    boolean isSessionEnded(String sessionId, String userId, String lastMessage);
-
-    /**
      * 正则关键词快速匹配（第一层判断）
      *
      * @param message 用户消息

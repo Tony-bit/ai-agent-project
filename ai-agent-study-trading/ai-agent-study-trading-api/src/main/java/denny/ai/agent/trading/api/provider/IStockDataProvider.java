@@ -8,7 +8,7 @@ import java.util.List;
  * 股票数据 Provider 接口。
  * <p>
  * 定义获取股票数据的标准方法，Phase 1-5 使用 {@link denny.ai.agent.trading.infra.provider.MockStockDataProvider} 返回 Mock 数据，
- * Phase 6 替换为 {@code YahooFinanceStockDataProvider} 获取真实数据。
+ * Phase 6 替换为 {@code TushareStockDataProvider} 获取真实数据。
  * <p>
  * 接口不变，实现可替换。
  */

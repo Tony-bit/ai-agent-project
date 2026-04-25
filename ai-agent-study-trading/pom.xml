@@ -19,6 +19,7 @@
 
     <modules>
         <module>ai-agent-study-trading-api</module>
+        <module>ai-agent-study-trading-domain</module>
         <module>ai-agent-study-trading-infra</module>
     </modules>
 
@@ -31,13 +32,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Yahoo Finance API（Phase 6 使用） -->
-            <dependency>
-                <groupId>com.yahoofinance-api</groupId>
-                <artifactId>yahoofinance</artifactId>
-                <version>1.0.2</version>
-            </dependency>
-
             <!-- TA4J 技术分析库（Phase 6 使用） -->
             <dependency>
                 <groupId>org.ta4j</groupId>

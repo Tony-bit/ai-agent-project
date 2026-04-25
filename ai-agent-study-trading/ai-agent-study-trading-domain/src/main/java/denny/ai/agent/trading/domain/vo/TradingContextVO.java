@@ -125,6 +125,11 @@ public class TradingContextVO {
         private String bearOpinion;
 
         /**
+         * 最新发言者（BULL/BEAR/RESEARCH_MANAGER）
+         */
+        private String latestSpeaker;
+
+        /**
          * 综合评分，-2~2（负=偏空，正=偏多）
          */
         private Double overallScore;
@@ -183,6 +188,29 @@ public class TradingContextVO {
          */
         public boolean isDebateComplete() {
             return this.currentRound >= this.maxRounds || !this.needMoreDebate;
+        }
+
+        /**
+         * 获取总交锋次数（多头论点 + 空头论点之和）
+         */
+        public int getTotalExchangeCount() {
+            int bullCount = (this.bullHistory == null) ? 0 : this.bullHistory.size();
+            int bearCount = (this.bearHistory == null) ? 0 : this.bearHistory.size();
+            return bullCount + bearCount;
+        }
+
+        /**
+         * 设置最新发言者
+         */
+        public void setLatestSpeaker(String speaker) {
+            this.latestSpeaker = speaker;
+        }
+
+        /**
+         * 获取最新发言者
+         */
+        public String getLatestSpeaker() {
+            return this.latestSpeaker;
         }
 
         /**
@@ -253,6 +281,16 @@ public class TradingContextVO {
     @AllArgsConstructor
     public static class RiskDebateVO {
         /**
+         * 最大风控辩论轮次
+         */
+        private int maxRounds;
+
+        /**
+         * 最新发言者（AGGRESSIVE/CONSERVATIVE/NEUTRAL）
+         */
+        private String latestSpeaker;
+
+        /**
          * 识别到的风险项
          */
         private java.util.List<String> riskItems;
@@ -299,6 +337,16 @@ public class TradingContextVO {
          * 经调整后的计划
          */
         private InvestmentPlanVO adjustedPlan;
+
+        /**
+         * 获取总交锋次数（激进 + 保守 + 中性历史之和）
+         */
+        public int getTotalExchangeCount() {
+            int aggressiveCount = (this.aggressiveHistory == null) ? 0 : this.aggressiveHistory.size();
+            int conservativeCount = (this.conservativeHistory == null) ? 0 : this.conservativeHistory.size();
+            int neutralCount = (this.neutralHistory == null) ? 0 : this.neutralHistory.size();
+            return aggressiveCount + conservativeCount + neutralCount;
+        }
     }
 
     /**

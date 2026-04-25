@@ -34,10 +34,16 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- Yahoo Finance API -->
+        <!-- Spring Boot Web（用于 RestTemplate） -->
         <dependency>
-            <groupId>com.yahoofinance-api</groupId>
-            <artifactId>YahooFinanceAPI</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring AI（预存 TradingToolCallbacks 依赖 ToolCallback API） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
         </dependency>
 
         <!-- Lombok -->

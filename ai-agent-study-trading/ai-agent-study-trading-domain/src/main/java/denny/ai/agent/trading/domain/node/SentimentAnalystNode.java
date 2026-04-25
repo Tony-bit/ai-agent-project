@@ -9,6 +9,7 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
@@ -16,25 +17,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 情绪分析师节点。
- * <p>
- * 职责：
- * 1. 调用 IStockDataProvider.getSentiment() 获取情绪数据
- * 2. 使用 ChatClient + System Prompt 生成分析报告
- * 3. 生成 SentimentReportVO 并写入 TradingContextVO
- * 4. 通过 sendSseResult() 发送流式进度事件
  */
 @Slf4j
 @Service
 public class SentimentAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     @Resource
     private IStockDataProvider dataProvider;
@@ -43,7 +36,7 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 情绪分析师节点执行开始 ===");
 
@@ -58,7 +51,6 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "情绪分析开始: " + ticker);
 
-        // 获取情绪数据
         SentimentDataVO sentimentData = dataProvider.getSentiment(ticker);
 
         log.info("获取情绪数据: ticker={}, overallScore={}, fearGreedIndex={}",
@@ -66,7 +58,6 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取情绪数据，开始分析...");
 
-        // 生成分析报告
         SentimentReportVO report = generateReport(stockInfo, sentimentData, dynamicContext);
 
         sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
@@ -76,7 +67,9 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
         log.info("情绪分析完成: ticker={}, rating={}, sentimentScore={}",
                 ticker, report.getRating(), report.getSentimentScore());
 
-        dynamicContext.setValue(TRADING_STEP_KEY, "analyst_collection");
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().analystComplete();
+        }
 
         return "sentiment_analysis_completed";
     }
@@ -130,7 +123,6 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
     private int calculateRating(SentimentDataVO sentimentData) {
         int score = 0;
 
-        // 综合情绪评分
         Double overallScore = sentimentData.getOverallScore();
         if (overallScore != null) {
             if (overallScore > 0.6) score += 3;
@@ -138,17 +130,15 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
             else if (overallScore > 0.2) score += 1;
         }
 
-        // 恐惧贪婪指数
         Integer fearGreedIndex = sentimentData.getFearGreedIndex();
         if (fearGreedIndex != null) {
             if (fearGreedIndex >= 40 && fearGreedIndex <= 60) {
-                score += 2; // 中性区间
+                score += 2;
             } else {
                 score += 1;
             }
         }
 
-        // 多空比例
         Double bullRatio = sentimentData.getBullRatio();
         if (bullRatio != null && bullRatio > 0.6) {
             score += 1;

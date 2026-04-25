@@ -35,6 +35,11 @@ public class TradingAnalysisRequestDTO implements Serializable {
     private Integer maxDebateRounds = 2;
 
     /**
+     * 最大风控辩论轮次（可选，默认1）
+     */
+    private Integer maxRiskRounds = 1;
+
+    /**
      * 会话 ID（可选，用于记忆上下文）
      */
     private String sessionId;

@@ -1,12 +1,12 @@
 package denny.ai.agent.trading.domain.node;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.RiskAnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
@@ -24,13 +24,12 @@ import java.util.ArrayList;
 public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 保守风控分析师节点执行开始 ===");
 
@@ -62,6 +61,10 @@ public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
 
         log.info("保守风控分析师分析完成");
 
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().riskDebateComplete();
+        }
+
         return "conservative_risk_completed";
     }
 
@@ -77,7 +80,7 @@ public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
         String prompt = RiskAnalystPromptTemplate.CONSERVATIVE_ANALYST_PROMPT.formatted(
                 context.getStockInfo().getTicker(),
                 context.getStockInfo().getCurrentPrice(),
-                context.getInvestmentPlan() != null ? JSON.toJSONString(context.getInvestmentPlan()) : "{}"
+                context.getInvestmentPlan() != null ? com.alibaba.fastjson.JSON.toJSONString(context.getInvestmentPlan()) : "{}"
         );
 
         ChatClient chatClient = getChatClientByClientId("default", 0);

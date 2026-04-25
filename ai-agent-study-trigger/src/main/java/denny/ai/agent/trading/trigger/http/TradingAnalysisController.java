@@ -3,16 +3,20 @@ package denny.ai.agent.trading.trigger.http;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
+import denny.ai.agent.trading.domain.config.TradingStarter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
+import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 股票分析独立 HTTP 端点。
@@ -32,17 +36,17 @@ import java.util.concurrent.ThreadPoolExecutor;
 })
 public class TradingAnalysisController {
 
-    private final ThreadPoolExecutor threadPoolExecutor;
+    private final TradingStarter tradingStarter;
 
-    public TradingAnalysisController(ThreadPoolExecutor threadPoolExecutor) {
-        this.threadPoolExecutor = threadPoolExecutor;
+    public TradingAnalysisController(TradingStarter tradingStarter) {
+        this.tradingStarter = tradingStarter;
     }
 
     /**
      * 股票分析独立端点。
      *
-     * @param request     分析请求参数
-     * @param response    HTTP 响应
+     * @param request  分析请求参数
+     * @param response HTTP 响应
      * @return SSE 流式响应
      */
     @RequestMapping(value = "/analysis", method = RequestMethod.POST,
@@ -54,12 +58,10 @@ public class TradingAnalysisController {
                 request.getSelectedAnalysts(),
                 request.getMaxDebateRounds());
 
-        // 参数校验
         if (request.getTicker() == null || request.getTicker().isBlank()) {
             return buildErrorEmitter(response, "股票代码不能为空");
         }
 
-        // 设置 SSE 响应头
         try {
             response.setContentType("text/event-stream");
             response.setCharacterEncoding("UTF-8");
@@ -70,11 +72,9 @@ public class TradingAnalysisController {
             log.error("设置响应头失败: {}", e.getMessage());
         }
 
-        // 创建 SSE 发射器
         ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
 
-        // 异步执行
-        threadPoolExecutor.execute(() -> {
+        CompletableFuture.runAsync(() -> {
             try {
                 sendStartEvent(emitter, request);
                 executeAnalysis(request, emitter);
@@ -100,42 +100,37 @@ public class TradingAnalysisController {
         return emitter;
     }
 
-    /**
-     * 执行股票分析。
-     * <p>
-     * 这里直接触发 TradingRootNode 的分析链路。
-     * 实际接入方式：构建 ExecuteCommandEntity，通过 autoAgentExecuteStrategy 执行，
-     * 或者直接调用 TradingRootNode（需在 domain 层暴露入口）。
-     *
-     * 当前实现：通过 DynamicContext 注入 trading_request，触发整个链路。
-     */
-    private void executeAnalysis(TradingAnalysisRequestDTO request, ResponseBodyEmitter emitter) throws Exception {
-        // 构建交易请求对象
+    private void executeAnalysis(TradingAnalysisRequestDTO request, ResponseBodyEmitter emitter) {
+        String ticker = request.getTicker().toUpperCase().trim();
+        String sessionId = request.getSessionId() != null ? request.getSessionId() : UUID.randomUUID().toString();
+
         StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
-                .ticker(request.getTicker().toUpperCase().trim())
+                .ticker(ticker)
                 .tradeDate(request.getTradeDate())
-                .selectedAnalysts(request.getSelectedAnalysts() != null
+                .selectedAnalysts(request.getSelectedAnalysts() != null && !request.getSelectedAnalysts().isEmpty()
                         ? request.getSelectedAnalysts()
                         : List.of(AnalystTypeEnum.FUNDAMENTAL, AnalystTypeEnum.TECHNICAL,
                                 AnalystTypeEnum.SENTIMENT, AnalystTypeEnum.NEWS))
                 .maxDebateRounds(request.getMaxDebateRounds() != null ? request.getMaxDebateRounds() : 2)
-                .sessionId(request.getSessionId())
+                .maxRiskRounds(request.getMaxRiskRounds() != null ? request.getMaxRiskRounds() : 1)
+                .sessionId(sessionId)
                 .build();
 
-        // 构建执行命令
-        ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
-                .message("请分析股票 " + tradingRequest.getTicker())
-                .sessionId(tradingRequest.getSessionId())
-                .maxStep(20)
-                .agentType("trading")
-                .build();
+        log.info("交易请求构建完成: ticker={}, analysts={}", tradingRequest.getTicker(), tradingRequest.getSelectedAnalysts());
 
-        // 将交易请求注入到上下文中，供 IntentRoutingNode 识别
-        // 注意：实际触发链路由 autoAgentExecuteStrategy 决定
-        // 此处通过 agentType=trading 路由到 TradingRootNode
-        sendEvent(emitter, "progress", "正在初始化分析链路...");
-        sendEvent(emitter, "progress", "请使用 /api/v1/agent/auto_agent 端点，agentType=trading，message=分析股票 " + tradingRequest.getTicker());
-        sendEvent(emitter, "complete", "请使用 POST /api/v1/agent/auto_agent 触发完整链路");
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        dynamicContext.setValue("emitter", emitter);
+        dynamicContext.setValue("step", 1);
+
+        BiConsumerSseSender sseSender = new BiConsumerSseSender(emitter, dynamicContext);
+
+        try {
+            tradingStarter.start(tradingRequest, dynamicContext, sseSender);
+        } catch (Exception e) {
+            log.error("交易分析执行异常: ticker={}, error={}", ticker, e.getMessage(), e);
+            sendEvent(emitter, "error", "分析失败: " + e.getMessage());
+        }
     }
 
     private void sendStartEvent(ResponseBodyEmitter emitter, TradingAnalysisRequestDTO request) {
@@ -176,6 +171,35 @@ public class TradingAnalysisController {
             return errorEmitter;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * SSE 发送器适配器，将 BiConsumer 转换为 SSE 格式发送
+     */
+    private static class BiConsumerSseSender implements java.util.function.BiConsumer<String, Object> {
+        private final ResponseBodyEmitter emitter;
+        private final DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext;
+
+        BiConsumerSseSender(ResponseBodyEmitter emitter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+            this.emitter = emitter;
+            this.dynamicContext = dynamicContext;
+        }
+
+        @Override
+        public void accept(String type, Object event) {
+            try {
+                String eventData;
+                if (event instanceof AutoAgentExecuteResultEntity entity) {
+                    entity.setStep(dynamicContext.getValue("step") != null ? (Integer) dynamicContext.getValue("step") : 0);
+                    eventData = JSON.toJSONString(entity);
+                } else {
+                    eventData = JSON.toJSONString(event);
+                }
+                emitter.send("event: " + type + "\ndata: " + eventData + "\n\n");
+            } catch (Exception e) {
+                log.warn("SSE 发送失败，断连或客户端异常: {}", e.getMessage());
+            }
         }
     }
 }

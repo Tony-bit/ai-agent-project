@@ -1,6 +1,5 @@
 package denny.ai.agent.trading.api.vo;
 
-import com.alibaba.fastjson.annotation.JSONField;
 import lombok.Builder;
 import lombok.Data;
 

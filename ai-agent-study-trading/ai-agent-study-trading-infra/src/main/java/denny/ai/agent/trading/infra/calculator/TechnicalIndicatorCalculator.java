@@ -2,8 +2,8 @@ package denny.ai.agent.trading.infra.calculator;
 
 import denny.ai.agent.trading.api.vo.OHLCVBarVO;
 import denny.ai.agent.trading.api.vo.TechnicalIndicatorsVO;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -13,6 +13,8 @@ import java.util.List;
  * 技术指标计算器。
  * <p>
  * 基于 OHLCV 数据计算各种技术指标。
+ * <p>
+ * 注意：测试环境请确保 logback-classic 依赖可用。
  */
 @Slf4j
 @Component

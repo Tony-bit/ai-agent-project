@@ -9,6 +9,7 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
+import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
@@ -16,25 +17,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 新闻分析师节点。
- * <p>
- * 职责：
- * 1. 调用 IStockDataProvider.getNews() 获取新闻数据
- * 2. 使用 ChatClient + System Prompt 生成分析报告
- * 3. 生成 NewsReportVO 并写入 TradingContextVO
- * 4. 通过 sendSseResult() 发送流式进度事件
  */
 @Slf4j
 @Service
 public class NewsAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
-    public static final String TRADING_STEP_KEY = "trading_step";
 
     @Resource
     private IStockDataProvider dataProvider;
@@ -43,7 +36,7 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
     private ArmoryObjectRegistry armoryObjectRegistry;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter,
+    public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 新闻分析师节点执行开始 ===");
 
@@ -58,14 +51,12 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "新闻分析开始: " + ticker);
 
-        // 获取新闻数据（最近 10 条）
         List<NewsItemVO> newsItems = dataProvider.getNews(ticker, 10);
 
         log.info("获取新闻数据: ticker={}, count={}", ticker, newsItems.size());
 
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取 " + newsItems.size() + " 条新闻，开始分析...");
 
-        // 生成分析报告
         NewsReportVO report = generateReport(stockInfo, newsItems, dynamicContext);
 
         sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
@@ -74,7 +65,9 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         log.info("新闻分析完成: ticker={}, rating={}", ticker, report.getRating());
 
-        dynamicContext.setValue(TRADING_STEP_KEY, "analyst_collection");
+        if (TradingDriver.getCurrent() != null) {
+            TradingDriver.getCurrent().analystComplete();
+        }
 
         return "news_analysis_completed";
     }
@@ -146,7 +139,6 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         double avgSentiment = totalSentiment / count;
 
-        // 根据平均情绪得分计算评级
         if (avgSentiment > 0.5) return 5;
         else if (avgSentiment > 0.2) return 4;
         else if (avgSentiment > -0.2) return 3;

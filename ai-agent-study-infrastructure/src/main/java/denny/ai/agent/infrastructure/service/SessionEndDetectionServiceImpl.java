@@ -1,11 +1,9 @@
 package denny.ai.agent.infrastructure.service;
 
-import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.chatsession.ISessionEndDetectionService;
 import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,10 +12,9 @@ import java.util.regex.Pattern;
 /**
  * 会话结束检测服务实现
  * <p>
- * 三层兜底策略：
+ * 两层兜底策略：
  * 1. 关键词正则匹配（优先，快速）
- * 2. LLM 语义兜底（正则未命中时）
- * 3. 滑动窗口兜底（8 分钟无活动，内存追踪）
+ * 2. 滑动窗口兜底（8 分钟无活动，内存追踪）
  * </p>
  *
  * @author denny
@@ -60,70 +57,13 @@ public class SessionEndDetectionServiceImpl implements ISessionEndDetectionServi
             Pattern.compile("继续.*")
     );
 
-    /**
-     * LLM 判断提示词
-     * <p>
-     * 仅基于 lastMessage 判断，不查对话历史。
-     * 判断标准：显式结束语 → 结束；转折引出新问题 → 未结束；模糊场景 → 未结束（走滑动窗口兜底）
-     * </p>
-     */
-    private static final String LLM_PROMPT_TEMPLATE =
-            "## 任务\n" +
-            "判断以下用户消息是否表示对话已结束。\n\n" +
-            "## 判断标准（请严格遵循）\n" +
-            "### 视为结束（ended = true）\n" +
-            "- 用户明确表示接受/理解/满意：\"好的\"、\"明白了\"、\"知道了\"、\"谢谢\"、\"感谢\"、\"解决了\"、\"没问题\"、\"就这样\"、\"再见了\" 等\n" +
-            "- 用户说\"好的，明白了\"、\"好的，谢谢\"、\"好的，我试试\" 等\n" +
-            "- 用户只是随口道谢且无后续问题\n\n" +
-            "### 视为未结束（ended = false）\n" +
-            "- 用户说\"好的，但是xxx\"、\"好的，不过xxx\"、\"好的，另外xxx\"（转折引出新问题）\n" +
-            "- 用户提出了新问题或新需求\n" +
-            "- 用户对回答不满意或有疑问（\"不对\"、\"不是这样\"、\"但是怎么办\"）\n" +
-            "- 用户要求补充或完善（\"再详细说一下\"、\"还有吗\"）\n" +
-            "- 用户说\"继续问\"、\"再问一下\"、\"还有问题\"\n" +
-            "- 用户说\"好的，我先试试/看看/测试一下\"（暗示可能还会回来）\n" +
-            "- 用户仅回复表情、无实质内容\n" +
-            "- 语义模糊，无法明确判断为结束\n\n" +
-            "## 用户消息\n" +
-            "%s\n\n" +
-            "## 输出要求\n" +
-            "请严格只回答 JSON 格式，不要输出任何其他内容：\n" +
-            "{\"ended\": true 或 false, \"reason\": \"判断原因（中文，简洁）\"}";
-
-    @Resource
-    private ChatClient chatClient;
-
     @Resource
     private SessionActivityTracker sessionActivityTracker;
 
     @Resource
     private ISessionMemoryPersistenceService sessionMemoryPersistenceService;
 
-    @Override
-    public boolean isSessionEnded(String sessionId, String userId, String lastMessage) {
-        // ========== 第一层：关键词正则匹配 ==========
-        boolean matchedEnd = matchEndKeyword(lastMessage);
-        if (matchedEnd) {
-            log.info("会话 {} 关键词命中结束，判断为已结束, lastMessage={}", sessionId, lastMessage);
-            return true;
-        }
-
-        // ========== 第二层：LLM 兜底 ==========
-        try {
-            boolean llmEnded = checkByLlm(lastMessage);
-            if (llmEnded) {
-                log.info("会话 {} LLM 判断为已结束, lastMessage={}", sessionId, lastMessage);
-                return true;
-            }
-        } catch (Exception e) {
-            log.warn("会话 {} LLM 调用异常，降级到时间窗口判断, error={}", sessionId, e.getMessage());
-        }
-
-        // ========== 第三层：滑动窗口兜底 ==========
-        return checkBySlidingWindow(sessionId, userId, lastMessage);
-    }
-
-    // ========== 第三层：滑动窗口兜底 ==========
+    // ========== 滑动窗口兜底 ==========
 
     /**
      * 通过滑动窗口判断会话是否结束
@@ -198,32 +138,6 @@ public class SessionEndDetectionServiceImpl implements ISessionEndDetectionServi
         }
 
         return false;
-    }
-
-    // ========== 第二层：LLM 兜底 ==========
-
-    /**
-     * 通过 LLM 判断会话是否结束
-     *
-     * @param lastMessage 用户最后一条消息
-     * @return true = LLM 判断为已结束，false = LLM 判断为未结束或调用失败
-     */
-    boolean checkByLlm(String lastMessage) {
-        if (lastMessage == null || lastMessage.isBlank()) {
-            return false;
-        }
-
-        try {
-            String response = chatClient.prompt()
-                    .user(String.format(LLM_PROMPT_TEMPLATE, lastMessage))
-                    .call()
-                    .content();
-
-            return parseLlmResponse(response);
-        } catch (Exception e) {
-            log.warn("LLM 调用失败: error={}", e.getMessage());
-            return false;
-        }
     }
 
     @Override
