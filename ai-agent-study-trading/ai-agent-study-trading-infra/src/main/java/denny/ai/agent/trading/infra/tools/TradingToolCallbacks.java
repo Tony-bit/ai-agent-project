@@ -15,6 +15,8 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 
+
+
 /**
  * Trading 领域 ToolCallback 工厂类。
  * <p>
@@ -111,13 +113,13 @@ public class TradingToolCallbacks {
     public ToolCallback getStockNewsCallback() {
         return new AbstractToolCallback("get_stock_news",
                 "获取指定A股股票的近期新闻列表，包括新闻标题、来源、发布时间、摘要和情感得分。",
-                buildInputSchema(
-                        "ticker", "股票代码，6位数字，如 000001、600000",
-                        "limit", "返回条数上限，默认5条")) {
+                buildInputSchemaWithTypes(
+                        Map.of("ticker", new ParamDef("string", "股票代码，6位数字，如 000001、600000"),
+                               "limit", new ParamDef("integer", "返回条数上限，默认5条")))) {
             @Override
             protected String doExecute(Map<String, Object> input) {
                 String ticker = (String) input.get("ticker");
-                int limit = input.containsKey("limit") ? ((Number) input.get("limit")).intValue() : 5;
+                int limit = parseInteger(input.get("limit"), 5);
                 List<NewsItemVO> news = provider.getNews(ticker, limit);
                 return formatNews(news);
             }
@@ -182,6 +184,37 @@ public class TradingToolCallbacks {
         } catch (Exception e) {
             log.error("构建 inputSchema 失败: {}", e.getMessage());
             return "{}";
+        }
+    }
+
+    private String buildInputSchemaWithTypes(Map<String, ParamDef> params) {
+        try {
+            Map<String, Map<String, String>> properties = new java.util.LinkedHashMap<>();
+            List<String> required = new java.util.ArrayList<>();
+            for (Map.Entry<String, ParamDef> e : params.entrySet()) {
+                properties.put(e.getKey(), Map.of("type", e.getValue().type(), "description", e.getValue().description()));
+                required.add(e.getKey());
+            }
+            Map<String, Object> schema = Map.of(
+                    "type", "object",
+                    "properties", properties,
+                    "required", required
+            );
+            return objectMapper.writeValueAsString(schema);
+        } catch (Exception e) {
+            log.error("构建 inputSchema 失败: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    private int parseInteger(Object value, int defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException e) {
+            log.warn("无法将值 '{}' 解析为整数，使用默认值 {}", value, defaultValue);
+            return defaultValue;
         }
     }
 

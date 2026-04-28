@@ -83,7 +83,7 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
                 context.getInvestmentPlan() != null ? com.alibaba.fastjson.JSON.toJSONString(context.getInvestmentPlan()) : "{}"
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6010", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

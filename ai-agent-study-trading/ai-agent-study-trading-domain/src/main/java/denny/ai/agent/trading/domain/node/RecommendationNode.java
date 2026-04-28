@@ -8,7 +8,7 @@ import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.domain.config.TradingDriver;
-import denny.ai.agent.trading.domain.prompt.TraderPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.RecommendationPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -17,11 +17,11 @@ import org.springframework.stereotype.Service;
 import jakarta.annotation.Resource;
 
 /**
- * 交易员节点。
+ * 推荐节点。
  */
 @Slf4j
 @Service
-public class TraderNode extends AbstractExecuteSupport {
+public class RecommendationNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
 
@@ -31,7 +31,7 @@ public class TraderNode extends AbstractExecuteSupport {
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("=== 交易员节点执行开始 ===");
+        log.info("=== 推荐节点执行开始 ===");
 
         TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
         if (context == null) {
@@ -41,7 +41,7 @@ public class TraderNode extends AbstractExecuteSupport {
 
         String ticker = context.getStockInfo().getTicker();
 
-        sendTraderEvent(dynamicContext, "trader_start", "交易员开始制定投资计划...");
+        sendRecommendationEvent(dynamicContext, "recommendation_start", "推荐节点开始生成投资建议...");
 
         String analysisSummary = buildAnalysisSummary(context);
 
@@ -49,16 +49,16 @@ public class TraderNode extends AbstractExecuteSupport {
 
         parseAndUpdatePlan(context, planJson);
 
-        sendTraderEvent(dynamicContext, "trader_plan", JSON.toJSONString(context.getInvestmentPlan()));
+        sendRecommendationEvent(dynamicContext, "recommendation_plan", JSON.toJSONString(context.getInvestmentPlan()));
 
-        log.info("交易员节点执行完成: ticker={}, action={}",
+        log.info("推荐节点执行完成: ticker={}, action={}",
                 ticker, context.getInvestmentPlan() != null ? context.getInvestmentPlan().getAction() : "N/A");
 
         if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().traderComplete();
+            TradingDriver.getCurrent().recommendationComplete();
         }
 
-        return "trader_plan_completed";
+        return "recommendation_plan_completed";
     }
 
     @Override
@@ -114,15 +114,15 @@ public class TraderNode extends AbstractExecuteSupport {
 
     private String generateInvestmentPlan(String ticker, String analysisSummary,
                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = TraderPromptTemplate.TRADER_PROMPT.formatted(ticker, analysisSummary);
+        String prompt = RecommendationPromptTemplate.RECOMMENDATION_PROMPT.formatted(ticker, analysisSummary);
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6013", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("交易员 LLM 响应耗时: {}ms", latencyMs);
+        log.info("推荐 LLM 响应耗时: {}ms", latencyMs);
 
         return response;
     }
@@ -172,10 +172,10 @@ public class TraderNode extends AbstractExecuteSupport {
         return json.containsKey(key) ? json.getDouble(key) : defaultValue;
     }
 
-    private void sendTraderEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+    private void sendRecommendationEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                String subType, String content) {
         AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
-                .type("trader")
+                .type("recommendation")
                 .subType(subType)
                 .step(dynamicContext.getStep())
                 .content(content)

@@ -9,29 +9,29 @@ public class PortfolioManagerPromptTemplate {
      * 组合经理 Prompt。
      */
     public static final String PORTFOLIO_MANAGER_PROMPT = """
-            You are the portfolio manager making the final investment decision for %s.
+            ## 你是一位组合经理，正在为 %s 做出最终投资决策。
 
-            ## Investment Plan
+            ## 投资计划
             %s
 
-            ## Investment Debate Conclusion
+            ## 投资辩论结论
             %s
 
-            ## Risk Debate Summary
+            ## 风险辩论总结
             %s
 
-            ## Your Task
-            Make the final investment decision:
+            ## 你的任务
+            做出最终投资决策：
 
-            Return your response as JSON:
+            请以 JSON 格式返回结果：
             {
                 "decision": "BUY/SELL/HOLD/SKIP",
                 "confidence": "HIGH/MEDIUM/LOW",
                 "overallRating": <1.0-5.0>,
-                "reasoning": "<detailed reasoning for your decision>"
+                "reasoning": "<你决策的详细理由>"
             }
 
-            Consider all analyst opinions, debate conclusions, and risk assessments before making your decision.
+            请综合所有分析师意见、辩论结论和风险评估后再做出决策。
             """;
 
     private PortfolioManagerPromptTemplate() {

@@ -33,14 +33,14 @@ public enum TradingEvent {
     CONTINUE_DEBATE,
 
     /**
-     * RM 决定结束辩论（→ TRADER_DECISION）
+     * RM 决定结束辩论（→ RECOMMENDATION_DECISION）
      */
     DEBATE_FINISH,
 
     /**
-     * 交易员完成（TRADER_DECISION → RISK_MANAGEMENT）
+     * 推荐节点完成（RECOMMENDATION_DECISION → RISK_MANAGEMENT）
      */
-    TRADER_COMPLETE,
+    RECOMMENDATION_COMPLETE,
 
     /**
      * 风控节点完成（RISK_MANAGEMENT 自循环）

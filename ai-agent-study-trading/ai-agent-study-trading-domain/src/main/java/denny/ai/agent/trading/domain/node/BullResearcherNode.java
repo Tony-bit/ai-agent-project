@@ -96,7 +96,7 @@ public class BullResearcherNode extends AbstractExecuteSupport {
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         String prompt = DebatePromptTemplate.BULL_RESEARCHER_PROMPT.formatted(ticker, reportSummary);
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6006", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

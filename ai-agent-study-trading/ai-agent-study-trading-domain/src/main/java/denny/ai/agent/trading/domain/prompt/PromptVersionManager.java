@@ -174,7 +174,7 @@ public class PromptVersionManager {
         registerBuiltinPrompt("debate.bear", DebatePromptTemplate.BEAR_RESEARCHER_PROMPT);
         registerBuiltinPrompt("debate.manager", DebatePromptTemplate.RESEARCH_MANAGER_PROMPT);
 
-        registerBuiltinPrompt("trader.plan", TraderPromptTemplate.TRADER_PROMPT);
+        registerBuiltinPrompt("recommendation.plan", RecommendationPromptTemplate.RECOMMENDATION_PROMPT);
 
         registerBuiltinPrompt("risk.aggressive", RiskAnalystPromptTemplate.AGGRESSIVE_ANALYST_PROMPT);
         registerBuiltinPrompt("risk.conservative", RiskAnalystPromptTemplate.CONSERVATIVE_ANALYST_PROMPT);

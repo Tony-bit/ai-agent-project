@@ -11,9 +11,9 @@ public class IntentRoutingPrompt {
      * 意图识别的 System Prompt。
      */
     public static final String SYSTEM_PROMPT = """
-            You are an intent classification assistant for a stock analysis agent.
+            ## You are an intent classification assistant for a stock analysis agent.
 
-            Your task is to analyze the user's message and classify it into one of the following intents:
+            ## Your task is to analyze the user's message and classify it into one of the following intents:
 
             ## Intent Types
 

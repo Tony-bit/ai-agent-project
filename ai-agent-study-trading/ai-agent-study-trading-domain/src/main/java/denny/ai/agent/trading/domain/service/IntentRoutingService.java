@@ -24,36 +24,10 @@ import java.util.stream.Collectors;
 @Service
 public class IntentRoutingService {
 
-    private final ChatClient chatClient;
-
-    public IntentRoutingService(ChatClient defaultChatClient) {
-        this.chatClient = defaultChatClient;
-    }
-
-    /**
-     * 执行意图路由，识别用户消息的意图类型。
-     *
-     * @param userMessage 用户消息
-     * @return 意图路由结果
-     */
-    public IntentRoutingResult route(String userMessage) {
-        log.info("开始意图识别，用户消息: {}", userMessage);
-
-        String response = chatClient.prompt()
-                .system(IntentRoutingPrompt.SYSTEM_PROMPT)
-                .user(userMessage)
-                .call()
-                .content();
-
-        log.debug("意图识别 LLM 原始响应: {}", response);
-
-        return parseResponse(response);
-    }
-
     /**
      * 解析 LLM 响应为意图路由结果。
      */
-    private IntentRoutingResult parseResponse(String response) {
+    public IntentRoutingResult parseResponse(String response) {
         try {
             String jsonStr = extractJson(response);
             JSONObject json = JSON.parseObject(jsonStr);
@@ -125,50 +99,6 @@ public class IntentRoutingService {
                 yield analysts.isEmpty() ? null : analysts;
             }
         };
-    }
-
-    /**
-     * 解析股票分析请求参数。
-     *
-     * @param userMessage 用户消息
-     * @param intent     识别的意图
-     * @return 股票分析请求VO，若无法解析则返回 null
-     */
-    public StockAnalysisRequestVO parseStockRequest(String userMessage, IntentEnumVO intent) {
-        if (intent != IntentEnumVO.STOCK_ANALYSIS) {
-            return null;
-        }
-
-        IntentRoutingResult result = route(userMessage);
-
-        if (result.getTicker() == null || result.getTicker().equalsIgnoreCase("null")) {
-            log.warn("未识别到股票代码，用户消息: {}", userMessage);
-            return null;
-        }
-
-        return StockAnalysisRequestVO.builder()
-                .ticker(result.getTicker().toUpperCase())
-                .selectedAnalysts(result.getSelectedAnalysts())
-                .maxDebateRounds(2)
-                .build();
-    }
-
-    /**
-     * 生成确认问题（用于中置信度场景）。
-     *
-     * @param ticker       识别的股票代码
-     * @param analysisType 分析类型
-     * @return 确认问题文本
-     */
-    public String generateConfirmationQuestion(String ticker, String analysisType) {
-        String prompt = IntentRoutingPrompt.CONFIRMATION_PROMPT
-                .replace("{ticker}", ticker)
-                .replace("{analysisType}", analysisType);
-
-        return chatClient.prompt()
-                .user(prompt)
-                .call()
-                .content();
     }
 
     /**

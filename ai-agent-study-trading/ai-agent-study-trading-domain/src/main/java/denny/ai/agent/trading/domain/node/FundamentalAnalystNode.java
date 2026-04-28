@@ -91,18 +91,18 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
                 stockInfo.getTicker(),
                 stockInfo.getName(),
                 stockInfo.getCurrentPrice(),
-                stockInfo.getPeRatio(),
-                data.getRevenueGrowth(),
-                data.getNetIncomeGrowth(),
+                nullToDefault(stockInfo.getPeRatio()),
+                nullToDefault(data.getRevenueGrowth()),
+                nullToDefault(data.getNetIncomeGrowth()),
                 data.getRoe(),
                 data.getGrossMargin(),
                 data.getNetMargin(),
                 data.getDebtToEquity(),
                 data.getCurrentRatio(),
-                data.getFreeCashFlow()
+                nullToDefault(data.getFreeCashFlow())
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6002", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();
@@ -224,6 +224,10 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
             return String.format("%.2f", ((java.math.BigDecimal) value).doubleValue());
         }
         return value.toString();
+    }
+
+    private String nullToDefault(Object value) {
+        return value != null ? value.toString() : "N/A";
     }
 
     private java.util.List<String> extractRiskWarnings(String llmResponse, FundamentalDataVO data) {

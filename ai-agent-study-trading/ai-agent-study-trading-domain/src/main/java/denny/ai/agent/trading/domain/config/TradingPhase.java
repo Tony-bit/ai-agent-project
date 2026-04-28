@@ -23,9 +23,9 @@ public enum TradingPhase {
     INVESTMENT_DEBATE,
 
     /**
-     * 交易员决策阶段
+     * 推荐决策阶段
      */
-    TRADER_DECISION,
+    RECOMMENDATION_DECISION,
 
     /**
      * 风控阶段（含内部 round-robin）

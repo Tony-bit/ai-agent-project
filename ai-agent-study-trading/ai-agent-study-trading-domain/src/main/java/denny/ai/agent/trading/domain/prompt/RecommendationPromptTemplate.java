@@ -1,21 +1,21 @@
 package denny.ai.agent.trading.domain.prompt;
 
 /**
- * 交易员 Prompt 模板常量类。
+ * 推荐 Prompt 模板常量类。
  */
-public class TraderPromptTemplate {
+public class RecommendationPromptTemplate {
 
     /**
-     * 交易员 Prompt。
+     * 推荐 Prompt。
      */
-    public static final String TRADER_PROMPT = """
-            You are a professional stock trader analyzing %s.
+    public static final String RECOMMENDATION_PROMPT = """
+            ## You are a professional investment advisor analyzing %s.
 
             ## Analysis Summary
             %s
 
             ## Your Task
-            Based on the analysis above, provide an investment plan:
+            Based on the analysis above, provide an investment recommendation:
 
             Return your response as JSON:
             {
@@ -31,7 +31,7 @@ public class TraderPromptTemplate {
             Be specific and realistic. Consider all analyst opinions and debate conclusions.
             """;
 
-    private TraderPromptTemplate() {
+    private RecommendationPromptTemplate() {
         // 工具类禁止实例化
     }
 }

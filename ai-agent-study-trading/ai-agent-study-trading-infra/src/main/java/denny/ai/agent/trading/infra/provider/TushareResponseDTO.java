@@ -1,5 +1,6 @@
 package denny.ai.agent.trading.infra.provider;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import java.util.List;
 
@@ -19,6 +20,7 @@ import java.util.List;
  * </pre>
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TushareResponseDTO {
 
     /** 0=成功，非0=失败 */
@@ -27,10 +29,14 @@ public class TushareResponseDTO {
     private TushareData data;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TushareData {
-        /** 字段名列表，与 items 每行一一对应 */
+        /** ts_code: TS股票代码，symbol: 股票代码，name: 股票名称，area: 地域，industry: 所属行业，market: 市场类型，exchange: 交易所代码，list_date: 上市日期，list_status: 上市状态（L上市/D退市/G过会未交易/P暂停上市），is_hs: 是否沪深港通（N否/H沪股通/S深股通），具体以实际接口返回为准 */
         private List<String> fields;
-        /** 数据行列表，每行数据与 fields 对应 */
+
         private List<List<Object>> items;
+
+        /** true: 还有更多数据，false: 数据已全部返回，null: 不支持分页 */
+        private Boolean has_more;
     }
 }

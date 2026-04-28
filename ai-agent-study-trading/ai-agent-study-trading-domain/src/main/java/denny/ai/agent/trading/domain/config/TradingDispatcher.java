@@ -48,7 +48,7 @@ public class TradingDispatcher {
     @Resource private BullResearcherNode bullResearcherNode;
     @Resource private BearResearcherNode bearResearcherNode;
     @Resource private ResearchManagerNode researchManagerNode;
-    @Resource private TraderNode traderNode;
+    @Resource private RecommendationNode recommendationNode;
     @Resource private AggressiveRiskAnalystNode aggressiveRiskAnalystNode;
     @Resource private ConservativeRiskAnalystNode conservativeRiskAnalystNode;
     @Resource private NeutralRiskAnalystNode neutralRiskAnalystNode;
@@ -65,7 +65,7 @@ public class TradingDispatcher {
                 case INIT -> handleInit(event, stateContext);
                 case ANALYST_COLLECTION -> handleAnalystCollection(event, stateContext);
                 case INVESTMENT_DEBATE -> handleInvestmentDebate(event, stateContext);
-                case TRADER_DECISION -> handleTraderDecision(event, stateContext);
+                case RECOMMENDATION_DECISION -> handleRecommendationDecision(event, stateContext);
                 case RISK_MANAGEMENT -> handleRiskManagement(event, stateContext);
                 case FINAL_REPORT -> handleFinalReport(event, stateContext);
                 case ERROR -> { /* 终止状态，不处理 */ }
@@ -152,16 +152,16 @@ public class TradingDispatcher {
                 }, stateContext);
             }
             case DEBATE_FINISH -> {
-                stateContext.transitionTo(TradingPhase.TRADER_DECISION);
-                stateContext.sendSseResult("debate", "debate_complete", "辩论结束，进入交易员决策", false);
-                invokeTrader(stateContext);
+                stateContext.transitionTo(TradingPhase.RECOMMENDATION_DECISION);
+                stateContext.sendSseResult("debate", "debate_complete", "辩论结束，进入推荐决策", false);
+                invokeRecommendation(stateContext);
             }
             default -> log.warn("INVESTMENT_DEBATE 阶段收到意外事件: {}", event);
         }
     }
 
-    private void handleTraderDecision(TradingEvent event, TradingStateContext stateContext) {
-        if (event == TradingEvent.TRADER_COMPLETE) {
+    private void handleRecommendationDecision(TradingEvent event, TradingStateContext stateContext) {
+        if (event == TradingEvent.RECOMMENDATION_COMPLETE) {
             stateContext.transitionTo(TradingPhase.RISK_MANAGEMENT);
             stateContext.sendSseResult("risk", "risk_start", "风控阶段开始", false);
             stateContext.setLatestRiskSpeaker("AGGRESSIVE");
@@ -170,7 +170,7 @@ public class TradingDispatcher {
                 return null;
             }, stateContext);
         } else {
-            log.warn("TRADER_DECISION 阶段收到意外事件: {}", event);
+            log.warn("RECOMMENDATION_DECISION 阶段收到意外事件: {}", event);
         }
     }
 
@@ -284,13 +284,13 @@ public class TradingDispatcher {
         }, stateContext);
     }
 
-    private void invokeTrader(TradingStateContext stateContext) {
+    private void invokeRecommendation(TradingStateContext stateContext) {
         stateContext.getTradingContext().setRiskDebate(new TradingContextVO.RiskDebateVO());
         StockAnalysisRequestVO request = stateContext.getRequest();
         int maxRiskRounds = (request != null && request.getMaxRiskRounds() > 0) ? request.getMaxRiskRounds() : 1;
         stateContext.getTradingContext().getRiskDebate().setMaxRounds(maxRiskRounds);
         invokeNode(() -> {
-            traderNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+            recommendationNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
             return null;
         }, stateContext);
     }

@@ -98,7 +98,7 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
                 sentimentData.getLongTermScore()
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6004", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

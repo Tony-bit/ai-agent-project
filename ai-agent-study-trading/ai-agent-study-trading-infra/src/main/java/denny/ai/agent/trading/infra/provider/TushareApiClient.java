@@ -1,18 +1,14 @@
 package denny.ai.agent.trading.infra.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import lombok.extern.slf4j.Slf4j;
+import java.util.*;
 
 /**
  * Tushare API HTTP 客户端。
@@ -28,18 +24,11 @@ public class TushareApiClient {
     private RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 默认构造函数。
-     * 仅在需要时才创建默认 RestTemplate（延迟初始化）。
-     */
     public TushareApiClient(String token) {
         this.token = token;
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * 构造函数（允许注入 RestTemplate，测试时使用）。
-     */
     public TushareApiClient(String token, RestTemplate restTemplate) {
         this.token = token;
         this.restTemplate = restTemplate;
@@ -57,34 +46,63 @@ public class TushareApiClient {
     }
 
     /**
-     * 调用 Tushare API。
+     * 通用 Map 返回（保留，向下兼容）。
      *
-     * @param apiName 接口名称，如 "daily"、"stock_basic"
-     * @param params 查询参数
-     * @param fields 返回字段，逗号分隔，如 "trade_date,open,high,low,close,vol"
-     * @return 字段名→值的映射列表，调用失败时返回空列表
+     * @deprecated 建议使用 {@link #callGeneric(Class, String, Map, String)}
      */
+    @Deprecated
     public List<Map<String, String>> call(String apiName, Map<String, Object> params, String fields) {
         try {
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("api_name", apiName);
-            requestBody.put("token", token);
-            requestBody.put("params", params != null ? params : Collections.emptyMap());
-            requestBody.put("fields", fields != null ? fields : "");
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            String response = getRestTemplate().postForObject(BASE_URL, entity, String.class);
-            return parseResponse(response, fields);
+            String response = doPost(apiName, params, fields);
+            return parseToMapList(response);
         } catch (Exception e) {
             log.error("Tushare API 调用失败: api_name={}, error={}", apiName, e.getMessage());
             return Collections.emptyList();
         }
     }
 
-    private List<Map<String, String>> parseResponse(String response, String fields) {
+    /**
+     * 泛型调用，将响应映射到指定的 DTO。
+     * <p>
+     * 内部解析为 List&lt;Map&lt;String, String&gt;&gt;，然后通过 Jackson convertValue 映射到 DTO。
+     * DTO 类需标注 @JsonNaming(SnakeCaseStrategy.class) 以自动处理字段名映射。
+     *
+     * @param dtoClass DTO 子类类型，必须标注 @JsonNaming(SnakeCaseStrategy.class)
+     * @param <T>      DTO 类型
+     * @return DTO 列表
+     */
+    public <T> List<T> callGeneric(Class<T> dtoClass, String apiName,
+                                   Map<String, Object> params, String fields) {
+        try {
+            String response = doPost(apiName, params, fields);
+            List<Map<String, String>> mapList = parseToMapList(response);
+            List<T> result = new ArrayList<>(mapList.size());
+            for (Map<String, String> row : mapList) {
+                T dto = objectMapper.convertValue(row, dtoClass);
+                result.add(dto);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Tushare API 调用失败: api_name={}, error={}", apiName, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private String doPost(String apiName, Map<String, Object> params, String fields) {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("api_name", apiName);
+        requestBody.put("token", token);
+        requestBody.put("params", params != null ? params : Collections.emptyMap());
+        requestBody.put("fields", fields != null ? fields : "");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        return getRestTemplate().postForObject(BASE_URL, entity, String.class);
+    }
+
+    private List<Map<String, String>> parseToMapList(String response) {
         try {
             TushareResponseDTO dto = objectMapper.readValue(response, TushareResponseDTO.class);
 

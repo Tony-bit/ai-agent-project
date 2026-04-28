@@ -48,7 +48,7 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             log.info("📡 Langfuse trace initialized, traceId={}", traceId);
         }
 
-        // ========== 跨会话记忆注入 ==========
+        // 跨会话情景记忆注入
         if (crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
             try {
                 String formattedMemories = crossSessionMemoryCacheService.getCrossSessionMemories(requestParameter.getUserId());

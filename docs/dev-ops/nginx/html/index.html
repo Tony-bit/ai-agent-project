@@ -427,58 +427,147 @@
                 </div>
             </div>
 
-            <!-- 控制面板 -->
-            <div class="mb-4 flex flex-wrap items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <label for="aiAgentSelect" class="text-sm font-medium text-gray-700">智能体类型</label>
-                    <select id="aiAgentSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
-                        <option value="3">Auto Agent - 自动智能对话体-3</option>
-                        <option value="4">Auto Agent - 自动智能对话体-4</option>
-                        <option value="5">Auto Agent - 自动智能对话体-5</option>
-                    </select>
+            <!-- 模式切换 Tab -->
+            <div class="mb-4 flex items-center gap-2 p-1 bg-gray-100 rounded-lg w-fit">
+                <button id="tabGeneral" onclick="switchMode('general')"
+                        class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-primary-700 shadow-sm">
+                    通用对话
+                </button>
+                <button id="tabTrading" onclick="switchMode('trading')"
+                        class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800">
+                    金融分析
+                </button>
+            </div>
+
+            <!-- ========== 通用对话模式面板 ========== -->
+            <div id="panelGeneral">
+                <!-- 控制面板 -->
+                <div class="mb-4 flex flex-wrap items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <label for="aiAgentSelect" class="text-sm font-medium text-gray-700">智能体类型</label>
+                        <select id="aiAgentSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                            <option value="3">Auto Agent - 自动智能对话体-3</option>
+                            <option value="4">Auto Agent - 自动智能对话体-4</option>
+                            <option value="5">Auto Agent - 自动智能对话体-5</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label for="maxStepSelect" class="text-sm font-medium text-gray-700">最大执行步数</label>
+                        <select id="maxStepSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                            <option value="1">1步</option>
+                            <option value="2">2步</option>
+                            <option value="3">3步</option>
+                            <option value="5" selected>5步</option>
+                            <option value="10">10步</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label for="exampleSelect" class="text-sm font-medium text-gray-700">提问案例</label>
+                        <select id="exampleSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                            <option value="">请选择提问案例...</option>
+                            <option value="1+1">案例1；1+1</option>
+                            <option value="通过ES查询被限流的用户，给出被限流用户列表。">案例2；通过ES查询被限流的用户，给出被限流用户列表。</option>
+                            <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。">案例3；分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。</option>
+                            <option value="检索小傅哥的相关项目，列出一份学习计划">案例4；检索小傅哥的相关项目，列出一份学习计划</option>
+                            <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">案例5；根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <label for="maxStepSelect" class="text-sm font-medium text-gray-700">最大执行步数</label>
-                    <select id="maxStepSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
-                        <option value="1">1步</option>
-                        <option value="2">2步</option>
-                        <option value="3">3步</option>
-                        <option value="5" selected>5步</option>
-                        <option value="10">10步</option>
-                    </select>
-                </div>
-
-                <div class="flex items-center gap-2">
-                    <label for="exampleSelect" class="text-sm font-medium text-gray-700">提问案例</label>
-                    <select id="exampleSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
-                        <option value="">请选择提问案例...</option>
-                        <option value="1+1">案例1；1+1</option>
-                        <option value="通过ES查询被限流的用户，给出被限流用户列表。">案例2；通过ES查询被限流的用户，给出被限流用户列表。</option>
-                        <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。">案例3；分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。</option>
-                        <option value="检索小傅哥的相关项目，列出一份学习计划">案例4；检索小傅哥的相关项目，列出一份学习计划</option>
-                        <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">案例5；根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。</option>
-                    </select>
+                <!-- 输入框和发送按钮 -->
+                <div class="flex gap-3">
+                    <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
+                           class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400">
+                    <button id="sendBtn" onclick="sendMessage()"
+                            class="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200 font-medium flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        发送
+                    </button>
                 </div>
             </div>
 
-            <!-- 输入框和发送按钮 -->
-            <div class="flex gap-3">
-                <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
-                       class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400">
-                <button id="sendBtn" onclick="sendMessage()"
-                        class="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200 font-medium flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    发送
-                </button>
+            <!-- ========== 金融分析模式面板 ========== -->
+            <div id="panelTrading" class="hidden">
+                <!-- 金融分析控制面板 -->
+                <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex items-center gap-2">
+                            <label for="tradingTicker" class="text-sm font-medium text-gray-700">股票代码</label>
+                            <input type="text" id="tradingTicker" placeholder="例如: AAPL、NVDA、TSLA" maxlength="20"
+                                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400 w-40">
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label for="tradingDate" class="text-sm font-medium text-gray-700">分析日期</label>
+                            <input type="date" id="tradingDate"
+                                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700">
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label for="tradingDebateRounds" class="text-sm font-medium text-gray-700">辩论轮次</label>
+                            <select id="tradingDebateRounds" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                                <option value="1">1轮</option>
+                                <option value="2" selected>2轮</option>
+                                <option value="3">3轮</option>
+                                <option value="5">5轮</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label for="tradingRiskRounds" class="text-sm font-medium text-gray-700">风控轮次</label>
+                            <select id="tradingRiskRounds" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                                <option value="1" selected>1轮</option>
+                                <option value="2">2轮</option>
+                                <option value="3">3轮</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 分析师多选 -->
+                    <div class="mt-3 flex items-center gap-2">
+                        <span class="text-sm font-medium text-gray-700">分析师类型</span>
+                        <div class="flex flex-wrap gap-2">
+                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
+                                <input type="checkbox" id="analystFundamental" value="FUNDAMENTAL" checked class="accent-primary-600">
+                                <span>基本面</span>
+                            </label>
+                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
+                                <input type="checkbox" id="analystTechnical" value="TECHNICAL" checked class="accent-primary-600">
+                                <span>技术面</span>
+                            </label>
+                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
+                                <input type="checkbox" id="analystSentiment" value="SENTIMENT" checked class="accent-primary-600">
+                                <span>情绪面</span>
+                            </label>
+                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
+                                <input type="checkbox" id="analystNews" value="NEWS" checked class="accent-primary-600">
+                                <span>新闻面</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 发送按钮 -->
+                <div class="flex gap-3">
+                    <button id="sendTradingBtn" onclick="sendTradingAnalysis()"
+                            class="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200 font-medium flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        开始金融分析
+                    </button>
+                </div>
             </div>
 
             <!-- 会话状态 -->
             <div class="mt-3 text-center">
                 <div class="text-xs text-gray-500">
                     会话ID: <span id="sessionId" class="font-mono"></span>
+                    <span id="currentModeTag" class="ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium"></span>
                 </div>
             </div>
         </div>
@@ -1261,15 +1350,23 @@
         messageCursorIndex = null;
         hasMoreMessages = true;
 
+        // 重置为通用模式
+        switchMode('general');
+
         // 生成新的会话ID
         sessionId = generateSessionId();
         document.getElementById('sessionId').textContent = sessionId;
 
         // 清空输入框
         document.getElementById('messageInput').value = '';
+        document.getElementById('tradingTicker').value = '';
 
-        // 聚焦输入框
-        document.getElementById('messageInput').focus();
+        // 聚焦输入框（根据当前模式）
+        if (currentMode === 'general') {
+            document.getElementById('messageInput').focus();
+        } else {
+            document.getElementById('tradingTicker').focus();
+        }
 
         // 刷新会话列表（将新会话添加到顶部）
         loadSessionList(false);
@@ -1311,6 +1408,198 @@
         loadSessionList(false);
     });
 
+    // ========== 金融分析相关 ==========
+
+    let currentMode = 'general'; // 'general' | 'trading'
+
+    // 切换模式
+    function switchMode(mode) {
+        currentMode = mode;
+        const tabGeneral = document.getElementById('tabGeneral');
+        const tabTrading = document.getElementById('tabTrading');
+        const panelGeneral = document.getElementById('panelGeneral');
+        const panelTrading = document.getElementById('panelTrading');
+        const modeTag = document.getElementById('currentModeTag');
+
+        if (mode === 'general') {
+            tabGeneral.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-primary-700 shadow-sm';
+            tabTrading.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800';
+            panelGeneral.classList.remove('hidden');
+            panelTrading.classList.add('hidden');
+            modeTag.textContent = '通用对话';
+            modeTag.className = 'ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium';
+        } else {
+            tabGeneral.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800';
+            tabTrading.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-green-700 shadow-sm';
+            panelGeneral.classList.add('hidden');
+            panelTrading.classList.remove('hidden');
+            modeTag.textContent = '金融分析';
+            modeTag.className = 'ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium';
+
+            // 设置默认日期为今天
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('tradingDate').value = `${yyyy}-${mm}-${dd}`;
+        }
+    }
+
+    // 收集选中的分析师
+    function getSelectedAnalysts() {
+        const analysts = [];
+        if (document.getElementById('analystFundamental').checked) analysts.push('FUNDAMENTAL');
+        if (document.getElementById('analystTechnical').checked) analysts.push('TECHNICAL');
+        if (document.getElementById('analystSentiment').checked) analysts.push('SENTIMENT');
+        if (document.getElementById('analystNews').checked) analysts.push('NEWS');
+        return analysts;
+    }
+
+    // 发送金融分析请求
+    function sendTradingAnalysis() {
+        const ticker = document.getElementById('tradingTicker').value.trim();
+        const tradeDate = document.getElementById('tradingDate').value;
+        const debateRounds = parseInt(document.getElementById('tradingDebateRounds').value);
+        const riskRounds = parseInt(document.getElementById('tradingRiskRounds').value);
+        const selectedAnalysts = getSelectedAnalysts();
+
+        if (!ticker) {
+            alert('请输入股票代码');
+            return;
+        }
+
+        if (selectedAnalysts.length === 0) {
+            alert('请至少选择一个分析师类型');
+            return;
+        }
+
+        if (isConnected) {
+            alert('正在处理中，请稍候...');
+            return;
+        }
+
+        // 清空面板，显示用户输入
+        const tickerUpper = ticker.toUpperCase();
+        const dateInfo = tradeDate ? `（${tradeDate}）` : '（今日）';
+        addMessage(`分析股票: ${tickerUpper} ${dateInfo}`, 'user');
+
+        // 禁用按钮
+        const sendBtn = document.getElementById('sendTradingBtn');
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = `
+            <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            分析中，请稍候...
+        `;
+
+        // 显示加载状态
+        document.getElementById('loading').style.display = 'block';
+
+        // 构建请求
+        const requestData = {
+            ticker: tickerUpper,
+            tradeDate: tradeDate || null,
+            selectedAnalysts: selectedAnalysts,
+            maxDebateRounds: debateRounds,
+            maxRiskRounds: riskRounds,
+            sessionId: sessionId
+        };
+
+        // 发送POST请求
+        fetch('http://localhost:8090/api/v1/trading/analysis', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream'
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('网络请求失败: ' + response.status);
+            }
+
+            // 处理流式响应
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            // 清空之前的AI消息（保留欢迎消息）
+            const thinkingDiv = document.getElementById('thinkingMessages');
+            const resultDiv = document.getElementById('resultMessages');
+            const thinkingChildren = Array.from(thinkingDiv.children);
+            thinkingChildren.slice(1).forEach(child => child.remove());
+            const resultChildren = Array.from(resultDiv.children);
+            resultChildren.slice(1).forEach(child => child.remove());
+
+            isConnected = true;
+
+            function readStream() {
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        isConnected = false;
+                        sendBtn.disabled = false;
+                        sendBtn.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            开始金融分析
+                        `;
+                        document.getElementById('loading').style.display = 'none';
+                        addStageMessage('complete', null, '金融分析完成', null);
+                        return;
+                    }
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    for (let line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.substring(6).trim();
+                            if (data && data !== '[DONE]') {
+                                try {
+                                    const jsonData = JSON.parse(data);
+                                    handleSSEMessage(jsonData);
+                                } catch (e) {
+                                    console.warn('无法解析JSON数据:', data);
+                                    addStageMessage('error', null, data, null);
+                                }
+                            }
+                        }
+                    }
+                    scrollToBottom();
+                    readStream();
+                }).catch(error => {
+                    console.error('读取流数据错误:', error);
+                    isConnected = false;
+                    sendBtn.disabled = false;
+                    sendBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        开始金融分析
+                    `;
+                    document.getElementById('loading').style.display = 'none';
+                    addStageMessage('error', null, '连接中断，请重试', null);
+                });
+            }
+            readStream();
+        })
+        .catch(error => {
+            console.error('请求错误:', error);
+            isConnected = false;
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                开始金融分析
+            `;
+            document.getElementById('loading').style.display = 'none';
+            addStageMessage('error', null, '请求失败: ' + error.message, null);
+        });
+    }
+
     // 页面加载完成后
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
@@ -1319,6 +1608,8 @@
         // 设置滚动监听
         setupSessionListScroll();
         setupMessageScroll();
+        // 初始化模式标签
+        document.getElementById('currentModeTag').textContent = '通用对话';
     });
 </script>
 </body>

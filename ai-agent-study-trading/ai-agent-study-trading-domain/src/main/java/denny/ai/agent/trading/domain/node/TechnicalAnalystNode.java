@@ -102,16 +102,28 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
                 stockInfo.getTicker(),
                 stockInfo.getCurrentPrice(),
                 indicators.getMa5(),
+                indicators.getMa10(),
                 indicators.getMa20(),
+                indicators.getMa60(),
+                indicators.getMa120(),
                 indicators.getRsi6(),
                 indicators.getRsi12(),
+                indicators.getRsi24(),
                 indicators.getMacd(),
                 indicators.getMacdSignal(),
-                bollPosition,
-                indicators.getVolumeRatio()
+                indicators.getMacdHistogram(),
+                indicators.getK(),
+                indicators.getD(),
+                indicators.getJ(),
+                indicators.getBollUpper(),
+                indicators.getBollMiddle(),
+                indicators.getBollLower(),
+                indicators.getAtr(),
+                indicators.getVolumeRatio(),
+                indicators.getVolumeMa5()
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6003", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

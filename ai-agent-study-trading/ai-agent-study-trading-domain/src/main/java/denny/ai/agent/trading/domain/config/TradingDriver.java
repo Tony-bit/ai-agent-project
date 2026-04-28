@@ -65,8 +65,8 @@ public class TradingDriver {
         dispatcher.onEvent(TradingEvent.DEBATE_FINISH, stateContext);
     }
 
-    public void traderComplete() {
-        dispatcher.onEvent(TradingEvent.TRADER_COMPLETE, stateContext);
+    public void recommendationComplete() {
+        dispatcher.onEvent(TradingEvent.RECOMMENDATION_COMPLETE, stateContext);
     }
 
     public void riskDebateComplete() {

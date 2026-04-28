@@ -96,7 +96,7 @@ public class BearResearcherNode extends AbstractExecuteSupport {
                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         String prompt = DebatePromptTemplate.BEAR_RESEARCHER_PROMPT.formatted(ticker, reportSummary);
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6007", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

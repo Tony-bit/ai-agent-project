@@ -9,9 +9,9 @@ public class RiskAnalystPromptTemplate {
      * 激进风控分析师 Prompt。
      */
     public static final String AGGRESSIVE_ANALYST_PROMPT = """
-            You are an aggressive risk analyst for %s.
+            ## You are an aggressive risk analyst for %s.
 
-            Current Price: %s
+            ## Current Price: %s
 
             Investment Plan:
             %s
@@ -32,11 +32,11 @@ public class RiskAnalystPromptTemplate {
      * 保守风控分析师 Prompt。
      */
     public static final String CONSERVATIVE_ANALYST_PROMPT = """
-            You are a conservative risk analyst for %s.
+            ## You are a conservative risk analyst for %s.
 
-            Current Price: %s
+            ## Current Price: %s
 
-            Investment Plan:
+            ## Investment Plan:
             %s
 
             ## Your Role
@@ -55,11 +55,11 @@ public class RiskAnalystPromptTemplate {
      * 中性风控分析师 Prompt。
      */
     public static final String NEUTRAL_ANALYST_PROMPT = """
-            You are a neutral risk analyst for %s.
+            ## You are a neutral risk analyst for %s.
 
-            Current Price: %s
+            ## Current Price: %s
 
-            Investment Plan:
+            ## Investment Plan:
             %s
 
             ## Your Role

@@ -9,8 +9,10 @@ import denny.ai.agent.trading.api.vo.ConfidenceEnum;
 import denny.ai.agent.trading.api.vo.IntentEnumVO;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStarter;
+import denny.ai.agent.trading.domain.prompt.IntentRoutingPrompt;
 import denny.ai.agent.trading.domain.service.IntentRoutingService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -45,7 +47,19 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
 
-        IntentRoutingService.IntentRoutingResult result = intentRoutingService.route(requestParameter.getMessage());
+        log.info("开始意图识别，用户消息: {}", requestParameter.getMessage());
+        ChatClient chatClient = getChatClientByClientId("6001", 0);
+
+
+        String response = chatClient.prompt()
+                .system(IntentRoutingPrompt.SYSTEM_PROMPT)
+                .user(requestParameter.getMessage())
+                .call()
+                .content();
+
+        log.debug("意图识别 LLM 原始响应: {}", response);
+
+        IntentRoutingService.IntentRoutingResult result = intentRoutingService.parseResponse(response);
 
         long latencyMs = System.currentTimeMillis() - startAt;
         log.info("意图识别完成: intent={}, confidence={}, ticker={}, 耗时={}ms",

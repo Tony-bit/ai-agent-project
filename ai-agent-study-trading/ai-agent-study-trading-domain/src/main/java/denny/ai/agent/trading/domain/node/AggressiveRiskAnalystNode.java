@@ -83,7 +83,7 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
                 context.getInvestmentPlan() != null ? com.alibaba.fastjson.JSON.toJSONString(context.getInvestmentPlan()) : "{}"
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6012", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();

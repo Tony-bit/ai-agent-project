@@ -2,7 +2,6 @@ package denny.ai.agent.trading.trigger.http;
 
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
-import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
@@ -12,7 +11,6 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.UUID;

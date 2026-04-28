@@ -103,7 +103,7 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
                 riskSummary
         );
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("6009", 0);
 
         long startAt = System.currentTimeMillis();
         String response = chatClient.prompt().user(prompt).call().content();
