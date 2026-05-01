@@ -1208,10 +1208,9 @@
 
     // 添加阶段消息
     function addStageMessage(type, subType, content, step) {
-        // 根据消息类型决定显示在哪个面板（与 Step4 总结类似：终局产物进右侧）
+        // 根据消息类型决定显示在哪个面板（仅终局产物进右侧）
         let targetContainer;
         const isFinalResult =
-            type === 'summary' ||
             type === 'complete' ||
             (type === 'supervision' && subType === 'inspection_report');
         if (isFinalResult) {

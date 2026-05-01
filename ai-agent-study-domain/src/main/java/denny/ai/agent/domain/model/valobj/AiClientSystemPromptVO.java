@@ -37,5 +37,8 @@ public class AiClientSystemPromptVO {
      */
     private String description;
 
-
+    /**
+     * 提示词类型(1=SYSTEM, 2=STEP)
+     */
+    private Integer promptType;
 }

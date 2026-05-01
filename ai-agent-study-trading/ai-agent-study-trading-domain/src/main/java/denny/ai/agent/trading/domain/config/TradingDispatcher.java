@@ -12,7 +12,10 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -39,7 +42,7 @@ import java.util.concurrent.TimeoutException;
 @Component
 public class TradingDispatcher {
 
-    private static final int NODE_TIMEOUT_SECONDS = 60;
+    private static final int NODE_TIMEOUT_SECONDS = 180;
 
     @Resource private FundamentalAnalystNode fundamentalAnalystNode;
     @Resource private TechnicalAnalystNode technicalAnalystNode;
@@ -47,12 +50,27 @@ public class TradingDispatcher {
     @Resource private NewsAnalystNode newsAnalystNode;
     @Resource private BullResearcherNode bullResearcherNode;
     @Resource private BearResearcherNode bearResearcherNode;
-    @Resource private ResearchManagerNode researchManagerNode;
-    @Resource private RecommendationNode recommendationNode;
-    @Resource private AggressiveRiskAnalystNode aggressiveRiskAnalystNode;
-    @Resource private ConservativeRiskAnalystNode conservativeRiskAnalystNode;
-    @Resource private NeutralRiskAnalystNode neutralRiskAnalystNode;
-    @Resource private PortfolioManagerNode portfolioManagerNode;
+
+    @Resource
+    private ResearchManagerNode researchManagerNode;
+
+    @Resource
+    private RecommendationNode recommendationNode;
+
+    @Resource
+    private AggressiveRiskAnalystNode aggressiveRiskAnalystNode;
+
+    @Resource
+    private ConservativeRiskAnalystNode conservativeRiskAnalystNode;
+
+    @Resource
+    private NeutralRiskAnalystNode neutralRiskAnalystNode;
+
+    @Resource
+    private PortfolioManagerNode portfolioManagerNode;
+
+    @Resource(name = "tradingTaskExecutor")
+    private ThreadPoolExecutor tradingTaskExecutor;
 
     /**
      * 核心事件处理入口
@@ -76,30 +94,19 @@ public class TradingDispatcher {
         }
     }
 
-    // ===== 阶段 Handler =====
 
     private void handleInit(TradingEvent event, TradingStateContext stateContext) {
         if (event == TradingEvent.START_TRADING) {
             stateContext.transitionTo(TradingPhase.ANALYST_COLLECTION);
             stateContext.sendSseResult("trading", "trading_init",
                     "交易分析开始", false);
-            invokeNextAnalyst(stateContext);
+            invokeAnalystsInParallel(stateContext, stateContext.getSelectedAnalysts());
         }
     }
 
     private void handleAnalystCollection(TradingEvent event, TradingStateContext stateContext) {
-        switch (event) {
-            case ANALYST_COMPLETE -> {
-                int nextIndex = stateContext.getAnalystIndex() + 1;
-                stateContext.setAnalystIndex(nextIndex);
-                if (nextIndex < stateContext.getSelectedAnalysts().size()) {
-                    invokeNextAnalyst(stateContext);
-                } else {
-                    handleAllAnalystsComplete(stateContext);
-                }
-            }
-            case ALL_ANALYSTS_COMPLETE -> handleAllAnalystsComplete(stateContext);
-            default -> log.warn("ANALYST_COLLECTION 阶段收到意外事件: {}", event);
+        if (event == TradingEvent.START_TRADING) {
+            invokeAnalystsInParallel(stateContext, stateContext.getSelectedAnalysts());
         }
     }
 
@@ -110,34 +117,56 @@ public class TradingDispatcher {
                 String latest = stateContext.getLatestDebateSpeaker();
                 if (latest == null) latest = "";
                 switch (latest) {
-                    case "BULL" -> invokeNode(() -> {
+                    case "BULL" -> {
                         stateContext.setLatestDebateSpeaker("BEAR");
-                        bearResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
-                    case "BEAR" -> invokeNode(() -> {
+                        invokeNodeAsync(
+                            () -> {
+                                bearResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                return null;
+                            },
+                            stateContext,
+                            () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+                        );
+                    }
+                    case "BEAR" -> {
                         stateContext.setLatestDebateSpeaker("RESEARCH_MANAGER");
-                        researchManagerNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
+                        invokeNodeAsync(
+                            () -> {
+                                researchManagerNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                return null;
+                            },
+                            stateContext,
+                            () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+                        );
+                    }
                     case "RESEARCH_MANAGER" -> {
                         if (debate != null && debate.isNeedMoreDebate()
                                 && debate.getCurrentRound() < debate.getMaxRounds()) {
-                            invokeNode(() -> {
-                                debate.nextRound();
-                                stateContext.setLatestDebateSpeaker("BULL");
-                                bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                                return null;
-                            }, stateContext);
+                            debate.nextRound();
+                            stateContext.setLatestDebateSpeaker("BULL");
+                            invokeNodeAsync(
+                                () -> {
+                                    bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                    return null;
+                                },
+                                stateContext,
+                                () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+                            );
                         } else {
                             log.info("辩论结束");
                         }
                     }
-                    default -> invokeNode(() -> {
+                    default -> {
                         stateContext.setLatestDebateSpeaker("BULL");
-                        bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
+                        invokeNodeAsync(
+                            () -> {
+                                bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                return null;
+                            },
+                            stateContext,
+                            () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+                        );
+                    }
                 }
             }
             case CONTINUE_DEBATE -> {
@@ -146,10 +175,14 @@ public class TradingDispatcher {
                     debate.nextRound();
                 }
                 stateContext.setLatestDebateSpeaker("BULL");
-                invokeNode(() -> {
-                    bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                    return null;
-                }, stateContext);
+                invokeNodeAsync(
+                    () -> {
+                        bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                        return null;
+                    },
+                    stateContext,
+                    () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+                );
             }
             case DEBATE_FINISH -> {
                 stateContext.transitionTo(TradingPhase.RECOMMENDATION_DECISION);
@@ -165,10 +198,14 @@ public class TradingDispatcher {
             stateContext.transitionTo(TradingPhase.RISK_MANAGEMENT);
             stateContext.sendSseResult("risk", "risk_start", "风控阶段开始", false);
             stateContext.setLatestRiskSpeaker("AGGRESSIVE");
-            invokeNode(() -> {
-                aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                return null;
-            }, stateContext);
+            invokeNodeAsync(
+                () -> {
+                    aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                    return null;
+                },
+                stateContext,
+                () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+            );
         } else {
             log.warn("RECOMMENDATION_DECISION 阶段收到意外事件: {}", event);
         }
@@ -182,92 +219,75 @@ public class TradingDispatcher {
             switch (latest) {
                 case "AGGRESSIVE" -> {
                     stateContext.setLatestRiskSpeaker("CONSERVATIVE");
-                    invokeNode(() -> {
-                        conservativeRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
+                    invokeNodeAsync(
+                        () -> {
+                            conservativeRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                            return null;
+                        },
+                        stateContext,
+                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                    );
                 }
                 case "CONSERVATIVE" -> {
                     stateContext.setLatestRiskSpeaker("NEUTRAL");
-                    invokeNode(() -> {
-                        neutralRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
+                    invokeNodeAsync(
+                        () -> {
+                            neutralRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                            return null;
+                        },
+                        stateContext,
+                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                    );
                 }
                 case "NEUTRAL" -> {
                     int totalExchanges = riskDebate != null ? riskDebate.getTotalExchangeCount() : 0;
                     int maxRounds = riskDebate != null ? riskDebate.getMaxRounds() : 1;
                     if (totalExchanges >= 3 * maxRounds) {
                         log.info("风控轮次耗尽，进入最终报告");
-                        invokeNode(() -> {
-                            stateContext.transitionTo(TradingPhase.FINAL_REPORT);
-                            stateContext.sendSseResult("final", "final_report_start", "最终报告生成中", false);
-                            portfolioManagerNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                            return null;
-                        }, stateContext);
+                        stateContext.transitionTo(TradingPhase.FINAL_REPORT);
+                        stateContext.sendSseResult("final", "final_report_start", "最终报告生成中", false);
+                        invokeNodeAsync(
+                            () -> {
+                                portfolioManagerNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                return null;
+                            },
+                            stateContext,
+                            () -> TradingDispatcher.this.onEvent(TradingEvent.PORTFOLIO_COMPLETE, stateContext)
+                        );
                     } else {
                         stateContext.setLatestRiskSpeaker("AGGRESSIVE");
-                        invokeNode(() -> {
-                            aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                            return null;
-                        }, stateContext);
+                        invokeNodeAsync(
+                            () -> {
+                                aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                                return null;
+                            },
+                            stateContext,
+                            () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                        );
                     }
                 }
                 default -> {
                     stateContext.setLatestRiskSpeaker("AGGRESSIVE");
-                    invokeNode(() -> {
-                        aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    }, stateContext);
+                    invokeNodeAsync(
+                        () -> {
+                            aggressiveRiskAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                            return null;
+                        },
+                        stateContext,
+                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                    );
                 }
             }
-        } else if (event == TradingEvent.PORTFOLIO_COMPLETE) {
-            stateContext.transitionTo(TradingPhase.FINAL_REPORT);
-            invokeNode(() -> {
-                portfolioManagerNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                return null;
-            }, stateContext);
-        } else {
-            log.warn("RISK_MANAGEMENT 阶段收到意外事件: {}", event);
         }
     }
 
-    /**
-     * FINAL_REPORT 是终止状态，空实现，保留为扩展点。
-     * 正常流程结束时的 completed=true SSE 由 Starter.finally 发送。
-     */
     private void handleFinalReport(TradingEvent event, TradingStateContext stateContext) {
-    }
-
-    // ===== 私有辅助方法 =====
-
-    private void invokeNextAnalyst(TradingStateContext stateContext) {
-        List<AnalystTypeEnum> analysts = stateContext.getSelectedAnalysts();
-        int index = stateContext.getAnalystIndex();
-        if (index >= analysts.size()) {
-            handleAllAnalystsComplete(stateContext);
-            return;
+        log.info("handleFinalReport 收到事件: {}", event);
+        if (event == TradingEvent.PORTFOLIO_COMPLETE) {
+            stateContext.countDownTradingLatch();
         }
-        AnalystTypeEnum analyst = analysts.get(index);
-        log.info("执行分析师: {}, 索引: {}/{}", analyst, index + 1, analysts.size());
-        invokeNode(() -> {
-            switch (analyst) {
-                case FUNDAMENTAL -> {
-                    fundamentalAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                }
-                case TECHNICAL -> {
-                    technicalAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                }
-                case SENTIMENT -> {
-                    sentimentAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                }
-                case NEWS -> {
-                    newsAnalystNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                }
-            }
-            return null;
-        }, stateContext);
     }
+
 
     private void handleAllAnalystsComplete(TradingStateContext stateContext) {
         log.info("所有分析师执行完毕，进入辩论阶段");
@@ -278,10 +298,15 @@ public class TradingDispatcher {
         TradingContextVO.InvestmentDebateVO debate = TradingContextVO.InvestmentDebateVO.createNew(maxRounds);
         stateContext.getTradingContext().setInvestmentDebate(debate);
         stateContext.setLatestDebateSpeaker("BULL");
-        invokeNode(() -> {
-            bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-            return null;
-        }, stateContext);
+        log.info("start bull 做多任务投放");
+        invokeNodeAsync(
+            () -> {
+                bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                return null;
+            },
+            stateContext,
+            () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
+        );
     }
 
     private void invokeRecommendation(TradingStateContext stateContext) {
@@ -289,24 +314,129 @@ public class TradingDispatcher {
         StockAnalysisRequestVO request = stateContext.getRequest();
         int maxRiskRounds = (request != null && request.getMaxRiskRounds() > 0) ? request.getMaxRiskRounds() : 1;
         stateContext.getTradingContext().getRiskDebate().setMaxRounds(maxRiskRounds);
-        invokeNode(() -> {
-            recommendationNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-            return null;
-        }, stateContext);
+        invokeNodeAsync(
+            () -> {
+                recommendationNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                return null;
+            },
+            stateContext,
+            () -> TradingDispatcher.this.onEvent(TradingEvent.RECOMMENDATION_COMPLETE, stateContext)
+        );
+    }
+
+    private void invokeAnalystsInParallel(TradingStateContext stateContext,
+                                         List<AnalystTypeEnum> analysts) {
+        log.info("分析师并行执行: {}", analysts);
+        logExecutorStatus("并行分析师提交前");
+
+        List<CompletableFuture<Void>> futures = analysts.stream()
+            .map(analyst -> CompletableFuture.runAsync(() -> {
+                try {
+                    logExecutorStatus("并行分析师任务开始: " + analyst);
+                    invokeAnalystNode(analyst, stateContext);
+                } catch (Exception e) {
+                    log.error("分析师执行异常: analyst={}", analyst, e);
+                }
+            }, tradingTaskExecutor))
+            .toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .orTimeout(NODE_TIMEOUT_SECONDS * analysts.size(), TimeUnit.SECONDS)
+            .whenComplete((result, ex) -> {
+                logExecutorStatus("所有分析师并行完成");
+                if (ex != null) {
+                    log.error("分析师并行执行异常", ex);
+                    stateContext.sendError("分析师执行异常: " + ex.getMessage());
+                }
+                handleAllAnalystsComplete(stateContext);
+                // ★ 不在此处倒计时，辩论节点异步执行，emitter 需要保持打开直到辩论阶段结束
+                // ★ latch 倒计时移至 handleFinalReport() 中
+            });
+    }
+
+    private void invokeAnalystNode(AnalystTypeEnum analyst, TradingStateContext stateContext) {
+        try {
+            switch (analyst) {
+                case FUNDAMENTAL -> fundamentalAnalystNode.doApply(
+                        new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                case TECHNICAL -> technicalAnalystNode.doApply(
+                        new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                case SENTIMENT -> sentimentAnalystNode.doApply(
+                        new ExecuteCommandEntity(), stateContext.getDynamicContext());
+                case NEWS -> newsAnalystNode.doApply(
+                        new ExecuteCommandEntity(), stateContext.getDynamicContext());
+            }
+        } catch (Exception e) {
+            log.error("分析师执行异常: analyst={}", analyst, e);
+            stateContext.sendError("分析师执行异常: " + e.getMessage());
+        }
+    }
+
+    private void invokeNodeAsync(Callable<Void> nodeAction,
+                                 TradingStateContext stateContext,
+                                 Runnable onComplete) {
+        logExecutorStatus("invokeNodeAsync 提交任务前");
+        CompletableFuture.<Void>runAsync(() -> {
+            try {
+                logExecutorStatus("invokeNodeAsync 任务执行开始");
+                log.info("节点执行开始: {}", nodeAction.getClass().getSimpleName());
+                nodeAction.call();
+                log.info("节点执行结束: {}", nodeAction.getClass().getSimpleName());
+            } catch (Exception e) {
+                log.error("节点执行异常", e);
+                stateContext.sendError("节点执行异常: " + e.getMessage());
+            }
+        }, tradingTaskExecutor)
+        .orTimeout(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .whenComplete((result, ex) -> {
+            logExecutorStatus("invokeNodeAsync 任务完成");
+            if (ex != null && !(ex.getCause() instanceof TimeoutException)) {
+                log.error("invokeNodeAsync 执行失败", ex);
+                return;
+            }
+            if (onComplete != null) {
+                try {
+                    onComplete.run();
+                } catch (Exception e) {
+                    log.error("回调执行异常", e);
+                    stateContext.sendError("回调执行异常: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    // todo 线程池监控 debug 用，debug 完成后删除
+    private void logExecutorStatus(String phase) {
+        int poolSize = tradingTaskExecutor.getPoolSize();
+        int activeCount = tradingTaskExecutor.getActiveCount();
+        int queueSize = tradingTaskExecutor.getQueue().size();
+        long completedCount = tradingTaskExecutor.getCompletedTaskCount();
+        long totalCount = tradingTaskExecutor.getTaskCount();
+        log.info("[tradingTaskExecutor] {} | poolSize={}, activeCount={}, queueSize={}, completedTaskCount={}, totalTaskCount={}",
+                phase, poolSize, activeCount, queueSize, completedCount, totalCount);
     }
 
     private void invokeNode(Callable<Void> nodeAction, TradingStateContext stateContext) {
+        // todo 线程池监控 debug 用，debug 完成后删除
+        logExecutorStatus("提交任务前");
         try {
             CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
                 try {
+                    // todo 线程池监控 debug 用，debug 完成后删除
+                    logExecutorStatus("任务执行开始");
+                    log.info("节点执行开始: {}", nodeAction.getClass().getSimpleName());
                     nodeAction.call();
+                    log.info("节点执行结束: {}", nodeAction.getClass().getSimpleName());
                     return null;
                 } catch (Exception e) {
                     log.error("节点执行异常", e);
                     stateContext.sendError("节点执行异常: " + e.getMessage());
                     return null;
+                } finally {
+                    // todo 线程池监控 debug 用，debug 完成后删除
+                    logExecutorStatus("任务执行结束");
                 }
-            });
+            }, tradingTaskExecutor);
             future.get(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -315,6 +445,9 @@ public class TradingDispatcher {
         } catch (ExecutionException | TimeoutException e) {
             log.error("节点执行超时或异常", e);
             stateContext.sendError("节点执行超时或异常: " + e.getMessage());
+        } finally {
+            // todo 线程池监控 debug 用，debug 完成后删除
+            logExecutorStatus("任务提交后(无论成功或失败)");
         }
     }
 }

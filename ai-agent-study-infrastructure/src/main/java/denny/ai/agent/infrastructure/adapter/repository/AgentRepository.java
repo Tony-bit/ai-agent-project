@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -255,15 +256,18 @@ public class AgentRepository implements IAgentRepository {
                     }
                     processedPromptIds.add(promptId);
 
-                    // 2. 通过promptId查询ai_client_system_prompt表获取系统提示词配置
-                    AiClientSystemPromptPO systemPrompt = aiClientSystemPromptDao.queryByPromptId(promptId);
-                    if (systemPrompt != null && systemPrompt.getStatus() == 1) {
+                    // 精确查 TYPE_SYSTEM，避免混返
+                    AiClientSystemPromptPO systemPrompt =
+                            aiClientSystemPromptDao.queryActiveByPromptIdAndType(promptId, AiClientSystemPromptPO.TYPE_SYSTEM);
+
+                    if (systemPrompt != null) {
                         // 3. 转换为VO对象
                         AiClientSystemPromptVO promptVO = AiClientSystemPromptVO.builder()
                                 .promptId(systemPrompt.getPromptId())
                                 .promptName(systemPrompt.getPromptName())
                                 .promptContent(systemPrompt.getPromptContent())
                                 .description(systemPrompt.getDescription())
+                                .promptType(systemPrompt.getPromptType())
                                 .build();
 
                         result.add(promptVO);
@@ -497,16 +501,32 @@ public class AgentRepository implements IAgentRepository {
                 return Map.of();
             }
 
+            // 批量查出所有 TYPE_STEP 生效记录，一次 DB 查询解决 N+1
+            List<AiClientSystemPromptPO> activeStepPrompts =
+                    aiClientSystemPromptDao.queryActivePromptsByPromptType(AiClientSystemPromptPO.TYPE_STEP);
+            Map<String, String> stepPromptMap = activeStepPrompts.stream()
+                    .collect(Collectors.toMap(
+                            AiClientSystemPromptPO::getPromptId,
+                            AiClientSystemPromptPO::getPromptContent,
+                            (v1, v2) -> {
+                                log.warn("Duplicate promptId detected: {}, keeping first value", v1);
+                                return v1;
+                            }
+                    ));
+
             // 转换为Map结构，key为clientId，value为AiAgentClientFlowConfigVO
             Map<String, AiAgentClientFlowConfigVO> result = new HashMap<>();
 
             for (AiAgentFlowConfigPO flowConfig : flowConfigs) {
+                // 命中则覆盖，无则 fallback
+                String stepPrompt = stepPromptMap.getOrDefault(flowConfig.getClientId(), flowConfig.getStepPrompt());
+
                 AiAgentClientFlowConfigVO configVO = AiAgentClientFlowConfigVO.builder()
                         .clientId(flowConfig.getClientId())
                         .clientName(flowConfig.getClientName())
                         .clientType(flowConfig.getClientType())
                         .sequence(flowConfig.getSequence())
-                        .stepPrompt(flowConfig.getStepPrompt())
+                        .stepPrompt(stepPrompt)
                         .build();
 
                 result.put(flowConfig.getClientType(), configVO);
@@ -530,16 +550,12 @@ public class AgentRepository implements IAgentRepository {
             return Collections.emptyMap();
         }
 
-        // 将PO对象转换为VO对象，并构建Map结构
+        // 将PO对象直接构建Map，无需冗余转换
         return aiClientSystemPrompts.stream()
-                .map(prompt -> AiClientSystemPromptVO.builder()
-                        .promptId(prompt.getPromptId())
-                        .promptContent(prompt.getPromptContent())
-                        .build())
                 .collect(Collectors.toMap(
-                        AiClientSystemPromptVO::getPromptId,  // key: id
-                        prompt -> prompt,               // value: AiClientSystemPromptVO对象
-                        (existing, replacement) -> existing  // 如果有重复key，保留第一个
+                        AiClientSystemPromptVO::getPromptId,
+                        Function.identity(),
+                        (v1, v2) -> v1
                 ));
     }
 }

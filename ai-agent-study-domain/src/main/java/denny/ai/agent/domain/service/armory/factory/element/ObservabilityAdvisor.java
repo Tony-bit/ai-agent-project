@@ -79,7 +79,14 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         String output = extractOutputText(chatClientResponse);
         String model = extractModelName(chatClientResponse);
 
-        // 从 context 中提取用户/智能体/客户端信息
+        if (log.isDebugEnabled()) {
+            log.debug("ObservabilityAdvisor after - traceId={}, spanId={}, inputLen={}, outputLen={}, latencyMs={}, model={}",
+                    traceId, spanId,
+                    input != null ? input.length() : -1,
+                    output != null ? output.length() : -1,
+                    latencyMs, model);
+        }
+
         String userId = asString(context.get("user_id"));
         String agentId = asString(context.get("agent_id"));
         String clientId = asString(context.get("client_id"));
@@ -165,14 +172,80 @@ public class ObservabilityAdvisor implements BaseAdvisor {
     }
 
     private String extractOutputText(ChatClientResponse response) {
-        if (response == null
-                || response.chatResponse() == null
-                || response.chatResponse().getResult() == null
-                || response.chatResponse().getResult().getOutput() == null
-                || response.chatResponse().getResult().getOutput().getText() == null) {
+        if (response == null || response.chatResponse() == null) {
+            log.debug("extractOutputText: response or chatResponse is null");
             return "";
         }
-        return response.chatResponse().getResult().getOutput().getText();
+
+        ChatResponse chatResponse = response.chatResponse();
+        String outputText = tryExtractFromResult(chatResponse);
+
+        if (StringUtils.isBlank(outputText)) {
+            outputText = tryExtractFromMetadata(chatResponse);
+        }
+
+        if (StringUtils.isBlank(outputText)) {
+            outputText = tryExtractFromMessageContent(chatResponse);
+        }
+
+        if (StringUtils.isBlank(outputText)) {
+            log.warn("ObservabilityAdvisor: output text extraction all paths returned empty, "
+                    + "chatResponse={}", chatResponse);
+        }
+
+        return outputText;
+    }
+
+    private String tryExtractFromResult(ChatResponse chatResponse) {
+        try {
+            if (chatResponse.getResult() != null
+                    && chatResponse.getResult().getOutput() != null) {
+                String text = chatResponse.getResult().getOutput().getText();
+                if (StringUtils.isNotBlank(text)) {
+                    return text;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromResult failed: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    private String tryExtractFromMetadata(ChatResponse chatResponse) {
+        try {
+            if (chatResponse.getMetadata() != null) {
+                Object content = chatResponse.getMetadata().get("content");
+                if (content != null) {
+                    String text = String.valueOf(content).trim();
+                    if (StringUtils.isNotBlank(text)) {
+                        return text;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromMetadata failed: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    private String tryExtractFromMessageContent(ChatResponse chatResponse) {
+        try {
+            if (chatResponse.getMetadata() != null) {
+                Object resultObj = chatResponse.getMetadata().get("result");
+                if (resultObj instanceof ChatResponse generated) {
+                    if (generated.getResult() != null
+                            && generated.getResult().getOutput() != null) {
+                        String text = generated.getResult().getOutput().getText();
+                        if (StringUtils.isNotBlank(text)) {
+                            return text;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromMessageContent failed: {}", e.getMessage());
+        }
+        return "";
     }
 
     private String extractModelName(ChatClientResponse response) {

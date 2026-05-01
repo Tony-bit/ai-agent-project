@@ -106,10 +106,12 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         ChatClient chatClient = getChatClientByClientId("6009", 0);
 
         long startAt = System.currentTimeMillis();
+        log.info("组合经理调用LLM | prompt长度={}", prompt.length());
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("组合经理 LLM 响应耗时: {}ms", latencyMs);
+        log.info("组合经理LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
+                prompt.length(), response.length(), latencyMs);
 
         return response;
     }
@@ -146,7 +148,9 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         int jsonStart = trimmed.indexOf("{");
         int jsonEnd = trimmed.lastIndexOf("}");
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            return trimmed.substring(jsonStart, jsonEnd + 1);
+            String json = trimmed.substring(jsonStart, jsonEnd + 1);
+            json = json.replace('\u201C', '\u201D');
+            return json;
         }
         return "{}";
     }

@@ -26,7 +26,7 @@ class SinaNewsApiClientTest {
     // ========== URL 构建 ==========
 
     @Test
-    void buildUrl_containsEastmoneyDomainAndJsonpFormat() {
+    void buildUrl_containsEastmoneyDomainAndJsonpFormat() throws Exception {
         String url = client.buildUrl("人工智能", 1, 20);
 
         assertTrue(url.contains("search-api-web.eastmoney.com/search/jsonp"),
@@ -38,7 +38,7 @@ class SinaNewsApiClientTest {
     }
 
     @Test
-    void buildUrl_paginationParamsEncodedCorrectly() {
+    void buildUrl_paginationParamsEncodedCorrectly() throws Exception {
         String url = client.buildUrl("芯片", 2, 10);
 
         assertTrue(url.contains("%22pageIndex%22%3A2"),
@@ -48,7 +48,7 @@ class SinaNewsApiClientTest {
     }
 
     @Test
-    void buildUrl_keywordEncodedInInnerParam() {
+    void buildUrl_keywordEncodedInInnerParam() throws Exception {
         String url = client.buildUrl("人工智能", 1, 20);
 
         assertTrue(url.contains("%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD"),

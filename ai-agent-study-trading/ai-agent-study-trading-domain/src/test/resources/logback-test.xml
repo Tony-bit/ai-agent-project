@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 禁用 SLF4J 自动配置，避免 logback 初始化失败 -->
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+    <root level="WARN"/>
+</configuration>

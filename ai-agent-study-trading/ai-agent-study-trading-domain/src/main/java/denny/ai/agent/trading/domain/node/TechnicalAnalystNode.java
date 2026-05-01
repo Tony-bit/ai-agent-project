@@ -126,10 +126,12 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
         ChatClient chatClient = getChatClientByClientId("6003", 0);
 
         long startAt = System.currentTimeMillis();
+        log.info("技术分析师调用LLM | prompt长度={}", prompt.length());
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("技术分析 LLM 响应耗时: {}ms", latencyMs);
+        log.info("技术分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
+                prompt.length(), response.length(), latencyMs);
 
         return parseReport(response, indicators);
     }

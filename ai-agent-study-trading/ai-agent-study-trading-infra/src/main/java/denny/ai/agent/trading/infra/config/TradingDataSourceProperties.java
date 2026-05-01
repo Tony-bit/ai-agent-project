@@ -2,6 +2,7 @@ package denny.ai.agent.trading.infra.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 /**
  * 数据源配置属性类。
@@ -9,6 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 配置前缀: spring.ai.trading.data-source
  */
 @Data
+@Component
 @ConfigurationProperties(prefix = "spring.ai.trading.data-source")
 public class TradingDataSourceProperties {
 

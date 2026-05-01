@@ -7,7 +7,9 @@ import denny.ai.agent.trading.api.vo.StockInfoVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 
 /**
@@ -62,15 +64,36 @@ public class TradingStarter {
         // 4. 将 tradingContext 存入 DynamicContext，供节点读取
         dynamicContext.setValue("trading_context", stateContext.getTradingContext());
 
-        // 5. 设置 ThreadLocal Driver，启动状态机
+        // ★ 5. 创建 CountDownLatch，供并行分析师流程完成后 countdown
+        CountDownLatch tradingLatch = new CountDownLatch(1);
+        dynamicContext.setTradingLatch(tradingLatch);
+
+        // 6. 设置 ThreadLocal Driver，启动状态机
         try {
             TradingDriver.setCurrent(driver);
             stateContext.transitionTo(TradingPhase.INIT);
             dispatcher.onEvent(TradingEvent.START_TRADING, stateContext);
         } finally {
             TradingDriver.clear();
-            if (stateContext.getCurrentPhase() == TradingPhase.FINAL_REPORT) {
-                stateContext.sendSseResult("trading", "trading_complete", "交易分析完成", true);
+            try {
+                tradingLatch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("tradingLatch await 被中断: {}", e.getMessage());
+            }
+            tradingLatch.countDown();
+            log.info("TradingStarter 流程完成，latch 倒计时");
+            try {
+                if (stateContext.getCurrentPhase() == TradingPhase.FINAL_REPORT) {
+                    stateContext.sendSseResult("trading", "trading_complete", "交易分析完成", true);
+                }
+                ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+                if (emitter != null) {
+                    emitter.complete();
+                    log.info("TradingStarter emitter 关闭完成");
+                }
+            } catch (Exception e) {
+                log.warn("TradingStarter 关闭 emitter 异常: {}", e.getMessage());
             }
         }
     }

@@ -86,10 +86,12 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         ChatClient chatClient = getChatClientByClientId("6012", 0);
 
         long startAt = System.currentTimeMillis();
+        log.info("激进风控分析师调用LLM | prompt长度={}", prompt.length());
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("激进风控分析师 LLM 响应耗时: {}ms", latencyMs);
+        log.info("激进风控分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
+                prompt.length(), response.length(), latencyMs);
 
         return response;
     }

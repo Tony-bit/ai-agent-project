@@ -74,9 +74,19 @@ public class TradingAnalysisController {
 
         CompletableFuture.runAsync(() -> {
             try {
+                // 发送开始任务标记给前端，展示给用户
                 sendStartEvent(emitter, request);
+
+                // 开始执行整个分析流程
                 executeAnalysis(request, emitter);
-                emitter.complete();
+
+                try {
+                    emitter.complete();
+                } catch (IllegalStateException e) {
+                    log.info("emitter 已在 TradingStarter 中关闭，跳过: {}", e.getMessage());
+                } catch (Exception e) {
+                    log.warn("emitter 关闭异常: {}", e.getMessage());
+                }
             } catch (Exception e) {
                 log.error("股票分析执行异常: {}", e.getMessage(), e);
                 try {
@@ -115,15 +125,14 @@ public class TradingAnalysisController {
                 .build();
 
         log.info("交易请求构建完成: ticker={}, analysts={}", tradingRequest.getTicker(), tradingRequest.getSelectedAnalysts());
-
-        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
-                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
-        dynamicContext.setValue("emitter", emitter);
-        dynamicContext.setValue("step", 1);
-
-        BiConsumerSseSender sseSender = new BiConsumerSseSender(emitter, dynamicContext);
-
         try {
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+            dynamicContext.setValue("emitter", emitter);
+            dynamicContext.setValue("step", 1);
+
+            BiConsumerSseSender sseSender = new BiConsumerSseSender(emitter, dynamicContext);
+
             tradingStarter.start(tradingRequest, dynamicContext, sseSender);
         } catch (Exception e) {
             log.error("交易分析执行异常: ticker={}, error={}", ticker, e.getMessage(), e);

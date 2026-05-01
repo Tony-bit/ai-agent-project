@@ -40,9 +40,27 @@ public class AiClientSystemPromptPO {
     private Integer status;
 
     /**
+     * 提示词类型(1=SYSTEM, 2=STEP)
+     */
+    private Integer promptType;
+
+    /**
+     * 版本号
+     */
+    private Integer version;
+
+    /**
+     * 改动说明
+     */
+    private String changeDesc;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;
+
+    public static final int TYPE_SYSTEM = 1;
+    public static final int TYPE_STEP   = 2;
 
     /**
      * 更新时间

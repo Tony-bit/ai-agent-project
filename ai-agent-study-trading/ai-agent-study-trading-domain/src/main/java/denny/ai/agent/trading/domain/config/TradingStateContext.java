@@ -9,13 +9,12 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 
 /**
  * 交易状态机请求级上下文。
- * <p>
  * 每次请求 new 一个，请求间不共享。
- * <p>
  * 持有所有共享数据：TradingContextVO、DynamicContext、SSE sender、当前阶段、索引等。
  */
 @Getter
@@ -61,7 +60,7 @@ public class TradingStateContext {
     }
 
     /**
-     * 阶段变更
+     * 阶段标记
      */
     public void transitionTo(TradingPhase phase) {
         log.info("阶段变更: {} → {}", this.currentPhase, phase);
@@ -99,6 +98,19 @@ public class TradingStateContext {
         } catch (Exception e) {
             log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
                     type, subType, e.getMessage());
+        }
+    }
+
+    /**
+     * 通知交易流程结束，使 TradingStarter 的 latch countDown
+     */
+    public void countDownTradingLatch() {
+        CountDownLatch latch = dynamicContext.getValue("tradingLatch");
+        if (latch != null) {
+            latch.countDown();
+            log.info("交易流程全部完成，latch 倒计时");
+        } else {
+            log.warn("tradingLatch 不存在，可能已倒计时");
         }
     }
 

@@ -99,10 +99,12 @@ public class BearResearcherNode extends AbstractExecuteSupport {
         ChatClient chatClient = getChatClientByClientId("6007", 0);
 
         long startAt = System.currentTimeMillis();
+        log.info("空头研究员调用LLM | prompt长度={}", prompt.length());
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("空头研究员 LLM 响应耗时: {}ms", latencyMs);
+        log.info("空头研究员LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
+                prompt.length(), response.length(), latencyMs);
 
         return response;
     }

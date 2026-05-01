@@ -66,7 +66,9 @@ public class IntentRoutingService {
         int jsonStart = trimmed.indexOf("{");
         int jsonEnd = trimmed.lastIndexOf("}");
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            return trimmed.substring(jsonStart, jsonEnd + 1);
+            String json = trimmed.substring(jsonStart, jsonEnd + 1);
+            json = json.replace('\u201C', '\u201D');
+            return json;
         }
         return trimmed;
     }

@@ -49,7 +49,7 @@ public class ChatSessionController {
      */
     @GetMapping("/{sessionId}/messages")
     public Response<MessageListResult> getSessionMessages(
-            @PathVariable String sessionId,
+            @PathVariable(name = "sessionId") String sessionId,
             @RequestParam(required = false) Integer cursorIndex) {
         log.info("获取会话消息: sessionId={}, cursorIndex={}", sessionId, cursorIndex);
         MessageListResult result = chatSessionQueryService.getSessionMessages(sessionId, cursorIndex);

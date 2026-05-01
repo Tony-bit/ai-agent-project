@@ -2,6 +2,7 @@ server:
   port: 8090
 
 spring:
+
   main:
     allow-bean-definition-overriding: true
   config:
@@ -188,4 +189,6 @@ logging:
   level:
     web: DEBUG # 这将打印所有Controller映射的详细信息
     # 可选：同时开启Spring核心日志，看扫描过程
-    org.springframework.context: DEBUG
+#    org.springframework.context: DEBUG
+#    root: info
+#    org.springframework.web.client.DefaultRestClient: INFO

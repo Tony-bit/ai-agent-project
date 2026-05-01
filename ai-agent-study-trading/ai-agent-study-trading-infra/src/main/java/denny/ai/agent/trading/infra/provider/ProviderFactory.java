@@ -6,14 +6,14 @@ import denny.ai.agent.trading.infra.config.TradingDataSourceProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 /**
  * 数据 Provider 工厂类，根据配置创建对应的 {@link IStockDataProvider} 实例。
  * <p>
  * 策略模式实现，支持运行时切换数据源。
  */
-@Component
+@Service
 public class ProviderFactory {
 
     private final TradingDataSourceProperties properties;

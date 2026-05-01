@@ -2,20 +2,10 @@ package denny.ai.agent.trading.domain.config;
 
 /**
  * 交易状态机驱动类（请求级实例，ThreadLocal 传递）。
- * <p>
  * 职责：
- * <ul>
- *   <li>持有本次请求的 TradingStateContext 和 TradingDispatcher</li>
- *   <li>节点 doApply() 末尾通过 ThreadLocal 调用，驱动状态机流转</li>
- *   <li>提供 SSE 发送接口</li>
- * </ul>
- * <p>
- * 使用方式：
- * <pre>
- * if (TradingDriver.getCurrent() != null) {
- *     TradingDriver.getCurrent().analystComplete();
- * }
- * </pre>
+ * 1.持有本次请求的 TradingStateContext 和 TradingDispatcher
+ * 2.节点 doApply() 末尾通过 ThreadLocal 调用，驱动状态机流转
+ * 3.提供 SSE 发送接口
  */
 public class TradingDriver {
 

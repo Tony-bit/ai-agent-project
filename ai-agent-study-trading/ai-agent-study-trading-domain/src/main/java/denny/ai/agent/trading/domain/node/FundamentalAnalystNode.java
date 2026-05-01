@@ -105,10 +105,12 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         ChatClient chatClient = getChatClientByClientId("6002", 0);
 
         long startAt = System.currentTimeMillis();
+        log.info("基本面分析师调用LLM | prompt长度={}", prompt.length());
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 
-        log.info("基本面分析 LLM 响应耗时: {}ms", latencyMs);
+        log.info("基本面分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
+                prompt.length(), response.length(), latencyMs);
 
         return parseReport(response, data);
     }
@@ -169,7 +171,9 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         int start = text.indexOf("{");
         int end = text.lastIndexOf("}");
         if (start >= 0 && end > start) {
-            return text.substring(start, end + 1);
+            String json = text.substring(start, end + 1);
+            json = json.replace('\u201C', '\u201D');
+            return json;
         }
         return null;
     }

@@ -14,6 +14,8 @@ import java.util.*;
  * Tushare API HTTP 客户端。
  * <p>
  * 统一 POST 请求到 https://api.tushare.pro，封装请求响应处理。
+ * <p>
+ * 注意：此类由 {@link ProviderFactory} 通过 new 手动创建，不作为 Spring Bean 管理。
  */
 @Slf4j
 public class TushareApiClient {

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * 工厂类
@@ -58,6 +59,13 @@ public class DefaultAutoAgentExecuteStrategyFactory {
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
         private Map<String, Object> dataObjects = new HashMap<>();
+
+        /**
+         * 交易流程 CountDownLatch。
+         * 用于 TradingStarter.start() 的 finally 等待并行分析师流程完成，
+         * 避免 SSE emitter 在节点执行期间被提前关闭。
+         */
+        private CountDownLatch tradingLatch;
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);

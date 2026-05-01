@@ -204,8 +204,8 @@ public class TushareStockDataProvider implements IStockDataProvider {
 
             // 查询现金流数据（计算 freeCashFlow）
             List<TushareCashFlowDTO> cashFlowData = apiClient.callGeneric(
-                    TushareCashFlowDTO.class, "cash_flow",
-                    Map.of("ts_code", tsCode, "limit", 1, "sort", "ann_date", "order", "desc"),
+                    TushareCashFlowDTO.class, "cashflow",
+                    Map.of("ts_code", tsCode, "limit", 1, "order", "desc"),
                     "im_net_incr_cash_equv,pay_for_fixed_assets,oper_net_cash_flow");
 
             BigDecimal freeCashFlow = null;

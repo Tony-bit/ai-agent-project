@@ -61,5 +61,31 @@ public interface IAiClientSystemPromptDao {
      * 查询所有系统提示词配置
      */
     List<AiClientSystemPromptPO> queryAll();
+
+    /**
+     * 按 promptId + promptType + status=1 查当前生效版本（精确匹配，不会混返 SYSTEM/STEP）
+     */
+    AiClientSystemPromptPO queryActiveByPromptIdAndType(
+            @Param("promptId") String promptId,
+            @Param("promptType") Integer promptType);
+
+    /**
+     * 查所有历史版本（按 version 倒序）
+     */
+    List<AiClientSystemPromptPO> queryVersionHistory(
+            @Param("promptId") String promptId,
+            @Param("promptType") Integer promptType);
+
+    /**
+     * 原子激活版本（CASE WHEN 单条 SQL，无并发风险）
+     */
+    void activateVersion(@Param("id") Long id,
+                         @Param("promptId") String promptId,
+                         @Param("promptType") Integer promptType);
+
+    /**
+     * 批量查询指定 promptType 的所有生效记录（解决 N+1 问题）
+     */
+    List<AiClientSystemPromptPO> queryActivePromptsByPromptType(@Param("promptType") Integer promptType);
 }
 

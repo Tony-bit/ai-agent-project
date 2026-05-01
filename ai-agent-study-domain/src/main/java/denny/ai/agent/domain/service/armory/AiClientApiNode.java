@@ -10,6 +10,9 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+
 import java.util.List;
 
 @Slf4j
@@ -18,6 +21,12 @@ public class AiClientApiNode extends AbstractArmorySupport {
 
     @Resource
     private AiClientToolMcpNode aiClientToolMcpNode;
+
+    @Resource
+    private RestClient.Builder aiClientRestClientBuilder;
+
+    @Resource
+    private WebClient.Builder aiClientWebClientBuilder;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -37,6 +46,8 @@ public class AiClientApiNode extends AbstractArmorySupport {
                     .apiKey(aiClientApiVO.getApiKey())
                     .completionsPath(aiClientApiVO.getCompletionsPath())
                     .embeddingsPath(aiClientApiVO.getEmbeddingsPath())
+                    .restClientBuilder(aiClientRestClientBuilder)
+                    .webClientBuilder(aiClientWebClientBuilder)
                     .build();
 
             // 注册 OpenAiApi Bean 对象
