@@ -1,6 +1,5 @@
 package denny.ai.agent.trigger.http;
 
-import denny.ai.agent.api.response.Response;
 import denny.ai.agent.domain.service.chatsession.ISessionEndDetectionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

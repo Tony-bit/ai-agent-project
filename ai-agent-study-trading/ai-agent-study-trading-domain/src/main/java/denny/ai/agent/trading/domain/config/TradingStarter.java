@@ -69,12 +69,14 @@ public class TradingStarter {
         dynamicContext.setTradingLatch(tradingLatch);
 
         // 6. 设置 ThreadLocal Driver，启动状态机
+        //    onEvent() 同步返回，异步任务在后台线程池运行
         try {
             TradingDriver.setCurrent(driver);
             stateContext.transitionTo(TradingPhase.INIT);
             dispatcher.onEvent(TradingEvent.START_TRADING, stateContext);
         } finally {
             TradingDriver.clear();
+            // 等所有异步任务完成（LATCH 被 countDown 后才继续）
             try {
                 tradingLatch.await();
             } catch (InterruptedException e) {
@@ -82,19 +84,29 @@ public class TradingStarter {
                 log.warn("tradingLatch await 被中断: {}", e.getMessage());
             }
             tradingLatch.countDown();
-            log.info("TradingStarter 流程完成，latch 倒计时");
-            try {
-                if (stateContext.getCurrentPhase() == TradingPhase.FINAL_REPORT) {
-                    stateContext.sendSseResult("trading", "trading_complete", "交易分析完成", true);
-                }
-                ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-                if (emitter != null) {
-                    emitter.complete();
-                    log.info("TradingStarter emitter 关闭完成");
-                }
-            } catch (Exception e) {
-                log.warn("TradingStarter 关闭 emitter 异常: {}", e.getMessage());
+            log.info("tradingLatch 已倒计时，异步任务全部完成");
+            // 发送最终 SSE 并关闭 emitter
+            finishAndCloseSse(stateContext, dynamicContext);
+        }
+    }
+
+    /**
+     * 发送最终 SSE 并关闭 emitter。
+     * 必须在 latch.await() 返回后再调用，避免发送时 emitter 已关闭。
+     */
+    private void finishAndCloseSse(TradingStateContext stateContext, DynamicContext dynamicContext) {
+        try {
+            if (stateContext.getCurrentPhase() == TradingPhase.FINAL_REPORT) {
+                stateContext.sendSseResult("trading", "trading_complete", "交易分析完成", true);
             }
+        } catch (Exception e) {
+            log.warn("发送完成事件异常，不影响 emitter 关闭: {}", e.getMessage());
+        }
+
+        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+        if (emitter != null) {
+            emitter.complete();
+            log.info("emitter 关闭完成");
         }
     }
 
