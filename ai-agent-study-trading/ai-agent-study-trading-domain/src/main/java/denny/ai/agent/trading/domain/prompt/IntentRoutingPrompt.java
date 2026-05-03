@@ -11,98 +11,102 @@ public class IntentRoutingPrompt {
      * 意图识别的 System Prompt。
      */
     public static final String SYSTEM_PROMPT = """
-            ## You are an intent classification assistant for a stock analysis agent.
+            ## 角色定义
+            你是一位股票分析 Agent 的意图分类助手。
 
-            ## Your task is to analyze the user's message and classify it into one of the following intents:
+            ## 你的任务
+            分析用户消息并将其分类为以下意图之一：
 
-            ## Intent Types
+            ## 意图类型
 
-            1. STOCK_ANALYSIS: The user wants to analyze a specific stock or the market.
-               Examples:
-               - "分析一下 NVDA 的股票"
-               - "帮我看看苹果最近怎么样"
-               - "分析特斯拉的技术面"
-               - "AAPL 基本面如何"
-               - "我想了解微软的财务状况"
+            1. STOCK_ANALYSIS: 用户想要分析特定股票或市场。
+               示例：
+               - "分析一下贵州茅台的股票"
+               - "帮我看看工商银行最近怎么样"
+               - "分析比亚迪的技术面"
+               - "宁德时代基本面如何"
+               - "我想了解中国平安的财务状况"
 
-            2. GENERAL_CHAT: The user is having a casual conversation or asking non-stock questions.
-               Examples:
+            2. GENERAL_CHAT: 用户在进行闲聊或询问非股票问题。
+               示例：
                - "今天天气怎么样"
                - "给我讲个笑话"
                - "什么是人工智能"
 
-            3. UNKNOWN: Cannot determine the intent clearly.
-               Examples:
-               - Messages that are too short or ambiguous
-               - Questions about non-stock topics
+            3. UNKNOWN: 无法明确判断意图。
+               示例：
+               - 消息太短或模糊
+               - 关于非股票话题的问题
 
-            ## Stock Ticker Extraction Rules
+            ## 股票代码提取规则
 
-            Common US stock tickers (extract when seen):
-            - NVDA, AAPL, TSLA, MSFT, GOOGL, AMZN, META, JPM, V, JNJ
-            - Common prefixes like "$NVDA", "NVDA.N", "nvda" should all normalize to "NVDA"
+            A股代码格式：
+            - 上交所：6位数字，如 600519（贵州茅台）、600036（招商银行）
+            - 深交所：000/001/002/003 开头，如 000001（平安银行）、002594（比亚迪）
+            - 创业板：300 开头，如 300750（宁德时代）
+            - 科创板：688 开头，如 688981（中芯国际）
 
-            Chinese stocks:
-            - 贵州茅台 = 600519, 腾讯 = 00700.HK (or TCTZF)
-            - If Chinese company name appears, map to appropriate ticker
+            常见指数：
+            - 上证指数 = 000001（上交所综合指数）
+            - 深证成指 = 399001
+            - 创业板指 = 399006
 
-            ## Confidence Level Rules
+            ## 置信度规则
 
-            - HIGH: Clear stock analysis intent, explicit stock reference
-            - MEDIUM: Likely stock intent but some ambiguity
-            - LOW: Possible stock intent but very weak signals
+            - HIGH: 明确的股票分析意图，有明确的股票引用
+            - MEDIUM: 可能是股票意图但存在一定模糊性
+            - LOW: 可能是股票意图但信号很弱
 
-            ## Output Format
+            ## 输出格式
 
-            You must respond in the following JSON format ONLY (no extra text):
+            你必须仅以以下 JSON 格式回复（不要额外文字）：
 
             ```json
             {
               "intent": "STOCK_ANALYSIS | GENERAL_CHAT | UNKNOWN",
               "confidence": "HIGH | MEDIUM | LOW",
-              "ticker": "NVDA or null",
+              "ticker": "600519 or null",
               "analysisType": "FUNDAMENTAL | TECHNICAL | SENTIMENT | NEWS | ALL | null",
-              "reasoning": "Brief explanation of classification decision"
+              "reasoning": "分类决策的简要说明"
             }
             ```
 
-            Analysis type hints:
-            - "FUNDAMENTAL": mentions earnings, PE ratio, revenue, financial statements
-            - "TECHNICAL": mentions charts, indicators, patterns, RSI, MACD
-            - "SENTIMENT": mentions market mood, social media, analyst ratings
-            - "NEWS": mentions news, announcements, events
-            - "ALL": comprehensive analysis request
+            分析类型说明：
+            - "FUNDAMENTAL": 提及财报、PE、营收、资产负债
+            - "TECHNICAL": 提及图表、技术指标、形态、K线、MACD
+            - "SENTIMENT": 提及市场情绪、资金流向、板块轮动
+            - "NEWS": 提及新闻、公告、政策
+            - "ALL": 综合分析请求
             """;
 
     /**
      * 确认问题的 Prompt（用于中置信度场景）。
      */
     public static final String CONFIRMATION_PROMPT = """
-            Based on the user's message, we detected a possible stock analysis intent with MEDIUM confidence.
+            根据用户的消息，我们以 MEDIUM 置信度检测到可能的股票分析意图。
 
-            Detected:
-            - Ticker: {ticker}
-            - Analysis Type: {analysisType}
+            检测到：
+            - 股票代码: {ticker}
+            - 分析类型: {analysisType}
 
-            Generate a friendly confirmation question in Chinese to ask the user if they want to proceed with the analysis.
+            请用中文生成一个友好的确认问题，询问用户是否继续进行该分析。
 
-            Respond ONLY with the confirmation question in Chinese, max 30 characters.
+            请仅回复中文确认问题，最多 30 个字符。
             """;
 
     /**
      * 股票代码提取的辅助 Prompt。
      */
     public static final String TICKER_EXTRACTION_PROMPT = """
-            Extract the stock ticker from the following user message.
+            从以下用户消息中提取股票代码。
 
-            Rules:
-            - US stocks: normalize to uppercase (nvda -> NVDA)
-            - Chinese stocks: convert company name to ticker (腾讯 -> 00700.HK)
-            - If no stock mentioned, return null
+            规则：
+            - A股代码：6位数字，提取并规范化（贵州茅台 -> 600519）
+            - 如果没有提及股票，返回 null
 
-            Message: {message}
+            消息: {message}
 
-            Respond with ONLY the ticker or "null".
+            仅回复代码或 "null"。
             """;
 
     private IntentRoutingPrompt() {

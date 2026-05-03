@@ -156,17 +156,7 @@ public class TradingDispatcher {
                             log.info("辩论结束");
                         }
                     }
-                    default -> {
-                        stateContext.setLatestDebateSpeaker("BULL");
-                        invokeNodeAsync(
-                            () -> {
-                                bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                                return null;
-                            },
-                            stateContext,
-                            () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
-                        );
-                    }
+                    default -> log.warn("latestDebateSpeaker 收到意外事件: {}", event);
                 }
             }
             case CONTINUE_DEBATE -> {
@@ -175,14 +165,6 @@ public class TradingDispatcher {
                     debate.nextRound();
                 }
                 stateContext.setLatestDebateSpeaker("BULL");
-                invokeNodeAsync(
-                    () -> {
-                        bullResearcherNode.doApply(new ExecuteCommandEntity(), stateContext.getDynamicContext());
-                        return null;
-                    },
-                    stateContext,
-                    () -> TradingDispatcher.this.onEvent(TradingEvent.INVESTMENT_DEBATE_COMPLETE, stateContext)
-                );
             }
             case DEBATE_FINISH -> {
                 stateContext.transitionTo(TradingPhase.RECOMMENDATION_DECISION);
@@ -327,12 +309,11 @@ public class TradingDispatcher {
     private void invokeAnalystsInParallel(TradingStateContext stateContext,
                                          List<AnalystTypeEnum> analysts) {
         log.info("分析师并行执行: {}", analysts);
-        logExecutorStatus("并行分析师提交前");
 
         List<CompletableFuture<Void>> futures = analysts.stream()
             .map(analyst -> CompletableFuture.runAsync(() -> {
                 try {
-                    logExecutorStatus("并行分析师任务开始: " + analyst);
+
                     invokeAnalystNode(analyst, stateContext);
                 } catch (Exception e) {
                     log.error("分析师执行异常: analyst={}", analyst, e);
@@ -343,7 +324,7 @@ public class TradingDispatcher {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
             .orTimeout(NODE_TIMEOUT_SECONDS * analysts.size(), TimeUnit.SECONDS)
             .whenComplete((result, ex) -> {
-                logExecutorStatus("所有分析师并行完成");
+
                 if (ex != null) {
                     log.error("分析师并行执行异常", ex);
                     stateContext.sendError("分析师执行异常: " + ex.getMessage());
@@ -375,10 +356,10 @@ public class TradingDispatcher {
     private void invokeNodeAsync(Callable<Void> nodeAction,
                                  TradingStateContext stateContext,
                                  Runnable onComplete) {
-        logExecutorStatus("invokeNodeAsync 提交任务前");
+
         CompletableFuture.<Void>runAsync(() -> {
             try {
-                logExecutorStatus("invokeNodeAsync 任务执行开始");
+
                 log.info("节点执行开始: {}", nodeAction.getClass().getSimpleName());
                 nodeAction.call();
                 log.info("节点执行结束: {}", nodeAction.getClass().getSimpleName());
@@ -389,7 +370,7 @@ public class TradingDispatcher {
         }, tradingTaskExecutor)
         .orTimeout(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .whenComplete((result, ex) -> {
-            logExecutorStatus("invokeNodeAsync 任务完成");
+
             if (ex != null && !(ex.getCause() instanceof TimeoutException)) {
                 log.error("invokeNodeAsync 执行失败", ex);
                 return;
@@ -405,36 +386,21 @@ public class TradingDispatcher {
         });
     }
 
-    // todo 线程池监控 debug 用，debug 完成后删除
-    private void logExecutorStatus(String phase) {
-        int poolSize = tradingTaskExecutor.getPoolSize();
-        int activeCount = tradingTaskExecutor.getActiveCount();
-        int queueSize = tradingTaskExecutor.getQueue().size();
-        long completedCount = tradingTaskExecutor.getCompletedTaskCount();
-        long totalCount = tradingTaskExecutor.getTaskCount();
-        log.info("[tradingTaskExecutor] {} | poolSize={}, activeCount={}, queueSize={}, completedTaskCount={}, totalTaskCount={}",
-                phase, poolSize, activeCount, queueSize, completedCount, totalCount);
-    }
-
     private void invokeNode(Callable<Void> nodeAction, TradingStateContext stateContext) {
-        // todo 线程池监控 debug 用，debug 完成后删除
-        logExecutorStatus("提交任务前");
+
         try {
             CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
                 try {
-                    // todo 线程池监控 debug 用，debug 完成后删除
-                    logExecutorStatus("任务执行开始");
+
                     log.info("节点执行开始: {}", nodeAction.getClass().getSimpleName());
                     nodeAction.call();
                     log.info("节点执行结束: {}", nodeAction.getClass().getSimpleName());
+
                     return null;
                 } catch (Exception e) {
                     log.error("节点执行异常", e);
                     stateContext.sendError("节点执行异常: " + e.getMessage());
                     return null;
-                } finally {
-                    // todo 线程池监控 debug 用，debug 完成后删除
-                    logExecutorStatus("任务执行结束");
                 }
             }, tradingTaskExecutor);
             future.get(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -445,9 +411,6 @@ public class TradingDispatcher {
         } catch (ExecutionException | TimeoutException e) {
             log.error("节点执行超时或异常", e);
             stateContext.sendError("节点执行超时或异常: " + e.getMessage());
-        } finally {
-            // todo 线程池监控 debug 用，debug 完成后删除
-            logExecutorStatus("任务提交后(无论成功或失败)");
         }
     }
 }

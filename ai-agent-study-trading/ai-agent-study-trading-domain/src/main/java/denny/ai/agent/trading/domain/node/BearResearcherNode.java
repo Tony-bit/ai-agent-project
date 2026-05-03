@@ -7,7 +7,6 @@ import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.vo.*;
-import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.DebatePromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.vo.TradingContextVO.InvestmentDebateVO;
@@ -58,10 +57,6 @@ public class BearResearcherNode extends AbstractExecuteSupport {
         sendDebateEvent(dynamicContext, "bear_thesis", bearThesis);
 
         log.info("空头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().debateComplete();
-        }
 
         return "bear_analysis_completed";
     }

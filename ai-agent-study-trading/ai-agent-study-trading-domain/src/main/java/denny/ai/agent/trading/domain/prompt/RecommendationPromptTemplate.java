@@ -9,26 +9,27 @@ public class RecommendationPromptTemplate {
      * 推荐 Prompt。
      */
     public static final String RECOMMENDATION_PROMPT = """
-            ## You are a professional investment advisor analyzing %s.
+            ## 角色定义
+            你是一位专业投资顾问，正在分析 %s。
 
-            ## Analysis Summary
+            ## 分析摘要
             %s
 
-            ## Your Task
-            Based on the analysis above, provide an investment recommendation:
+            ## 你的任务
+            基于上述分析，提供投资建议：
 
-            Return your response as JSON:
+            请以 JSON 格式返回你的回答：
             {
                 "action": "BUY/SELL/HOLD",
-                "positionRatio": <0.0-1.0, e.g., 0.3 means 30%% position>,
-                "entryPriceRange": "<price range if buying>",
-                "stopLossPrice": "<stop loss price>",
-                "takeProfitPrice": "<take profit price>",
-                "holdingPeriod": "<expected holding period, e.g., 1-2 weeks>",
-                "riskRewardRatio": <e.g., 2.5 means 1:2.5 risk-reward>
+                "positionRatio": <0.0-1.0，如 0.3 表示 30%% 仓位>,
+                "entryPriceRange": "<入场价格区间>",
+                "stopLossPrice": "<Stop Loss 价格>",
+                "takeProfitPrice": "<Take Profit 价格>",
+                "holdingPeriod": "<预期持仓周期，如 1-2 周>",
+                "riskRewardRatio": <如 2.5 表示 1:2.5 的风险收益比>
             }
 
-            Be specific and realistic. Consider all analyst opinions and debate conclusions.
+            要具体且务实。需综合考虑所有分析师的观点和辩论结论。
             """;
 
     private RecommendationPromptTemplate() {

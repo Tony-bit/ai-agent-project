@@ -35,4 +35,103 @@ public class NewsReportVO {
      * 分析总结
      */
     private String summary;
+
+    /**
+     * LLM confidence, 0.0 to 1.0.
+     */
+    private Double confidence;
+
+    /**
+     * Structured news themes identified by the news analyst.
+     */
+    private List<NewsThemeVO> newsThemes;
+
+    /**
+     * LLM deduplicated event list. Each event groups semantically equivalent news.
+     */
+    private List<NewsEventVO> deduplicatedEvents;
+
+    /**
+     * Structured risk warnings identified by the news analyst.
+     */
+    private List<NewsRiskWarningVO> riskWarnings;
+
+    /**
+     * Data quality note, including duplicate or missing-data observations.
+     */
+    private String dataQuality;
+
+    /**
+     * News item ids that were enhanced with full text or authoritative verification.
+     */
+    private List<Integer> enhancedSourceNewsIds;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NewsThemeVO {
+
+        private String theme;
+
+        private String sentiment;
+
+        private String impactLevel;
+
+        private List<Integer> evidenceIds;
+
+        private List<Integer> enhancedSourceNewsIds;
+
+        private String evidenceLevel;
+
+        private String evidenceQuality;
+
+        private String reason;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NewsEventVO {
+
+        private String eventType;
+
+        private String eventTitle;
+
+        private String sentiment;
+
+        private String impactLevel;
+
+        private List<Integer> sourceNewsIds;
+
+        private List<Integer> enhancedSourceNewsIds;
+
+        private String evidenceLevel;
+
+        private String evidenceQuality;
+
+        private String summary;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NewsRiskWarningVO {
+
+        private String risk;
+
+        private String impactLevel;
+
+        private List<Integer> evidenceIds;
+
+        private List<Integer> enhancedSourceNewsIds;
+
+        private String evidenceLevel;
+
+        private String evidenceQuality;
+
+        private String reason;
+    }
 }

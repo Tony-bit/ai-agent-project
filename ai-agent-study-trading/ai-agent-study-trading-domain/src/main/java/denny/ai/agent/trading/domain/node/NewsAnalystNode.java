@@ -8,7 +8,9 @@ import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
-import denny.ai.agent.trading.api.vo.*;
+import denny.ai.agent.trading.api.vo.NewsItemVO;
+import denny.ai.agent.trading.api.vo.NewsReportVO;
+import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
@@ -17,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,6 +29,8 @@ import java.util.List;
 public class NewsAnalystNode extends AbstractExecuteSupport {
 
     public static final String TRADING_CONTEXT_KEY = "trading_context";
+
+    private final NewsAnalysisStructuredProcessor structuredProcessor = new NewsAnalysisStructuredProcessor();
 
     @Resource
     private IStockDataProvider dataProvider;
@@ -55,7 +58,7 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         log.info("获取新闻数据: ticker={}, count={}", ticker, newsItems.size());
 
-        sendAnalystEvent(dynamicContext, "analyst_progress", "已获取 " + newsItems.size() + " 条新闻，开始分析...");
+        sendAnalystEvent(dynamicContext, "analyst_progress", "已获取 " + newsItems.size() + " 条新闻，开始结构化分析...");
 
         NewsReportVO report = generateReport(stockInfo, newsItems, dynamicContext);
 
@@ -63,7 +66,8 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         context.setNewsReport(report);
 
-        log.info("新闻分析完成: ticker={}, rating={}", ticker, report.getRating());
+        log.info("新闻分析完成: ticker={}, rating={}, sentiment={}, confidence={}",
+                ticker, report.getRating(), report.getOverallSentiment(), report.getConfidence());
 
         if (TradingDriver.getCurrent() != null) {
             TradingDriver.getCurrent().analystComplete();
@@ -80,20 +84,13 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
     }
 
     private NewsReportVO generateReport(StockInfoVO stockInfo,
-                                     List<NewsItemVO> newsItems,
-                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        StringBuilder newsSummary = new StringBuilder();
-        for (NewsItemVO news : newsItems) {
-            newsSummary.append("- [").append(news.getPublishTime()).append("] ")
-                    .append(news.getTitle()).append(" (")
-                    .append(news.getSource()).append(")\n")
-                    .append("  摘要：").append(news.getSummary()).append("\n\n");
-        }
+                                        List<NewsItemVO> newsItems,
+                                        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        String structuredNewsInput = structuredProcessor.buildLlmInput(stockInfo.getTicker(), stockInfo.getName(), newsItems);
 
-        String prompt = AnalystPromptTemplate.NEWS_ANALYST_PROMPT.formatted(
-                stockInfo.getTicker(),
-                newsSummary
-        );
+        String prompt = AnalystPromptTemplate.NEWS_ANALYST_STRUCTURED_PROMPT
+                .replaceFirst("%s", stockInfo.getTicker())
+                .replaceFirst("%s", structuredNewsInput);
 
         ChatClient chatClient = getChatClientByClientId("6005", 0);
 
@@ -105,78 +102,11 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
         log.info("新闻分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return parseReport(response, newsItems);
-    }
-
-    private NewsReportVO parseReport(String llmResponse, List<NewsItemVO> newsItems) {
-        int rating = calculateRating(newsItems);
-        String overallSentiment = determineOverallSentiment(newsItems);
-
-        return NewsReportVO.builder()
-                .rating(rating)
-                .newsItems(newsItems)
-                .overallSentiment(overallSentiment)
-                .summary(llmResponse)
-                .build();
-    }
-
-    private int calculateRating(List<NewsItemVO> newsItems) {
-        if (newsItems == null || newsItems.isEmpty()) {
-            return 3;
-        }
-
-        double totalSentiment = 0;
-        int count = 0;
-
-        for (NewsItemVO news : newsItems) {
-            if (news.getSentimentScore() != null) {
-                totalSentiment += news.getSentimentScore();
-                count++;
-            }
-        }
-
-        if (count == 0) {
-            return 3;
-        }
-
-        double avgSentiment = totalSentiment / count;
-
-        if (avgSentiment > 0.5) return 5;
-        else if (avgSentiment > 0.2) return 4;
-        else if (avgSentiment > -0.2) return 3;
-        else if (avgSentiment > -0.5) return 2;
-        else return 1;
-    }
-
-    private String determineOverallSentiment(List<NewsItemVO> newsItems) {
-        if (newsItems == null || newsItems.isEmpty()) {
-            return "无新闻数据";
-        }
-
-        double totalSentiment = 0;
-        int count = 0;
-
-        for (NewsItemVO news : newsItems) {
-            if (news.getSentimentScore() != null) {
-                totalSentiment += news.getSentimentScore();
-                count++;
-            }
-        }
-
-        if (count == 0) {
-            return "情绪中性";
-        }
-
-        double avgSentiment = totalSentiment / count;
-
-        if (avgSentiment > 0.3) return "偏正面";
-        else if (avgSentiment > 0) return "略偏正面";
-        else if (avgSentiment > -0.3) return "略偏负面";
-        else return "偏负面";
+        return structuredProcessor.parseReport(response, newsItems);
     }
 
     private void sendAnalystEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                 String subType, String content) {
+                                  String subType, String content) {
         AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
                 .type("analyst")
                 .subType(subType)
