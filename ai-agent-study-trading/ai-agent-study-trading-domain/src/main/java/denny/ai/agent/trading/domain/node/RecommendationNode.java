@@ -8,7 +8,9 @@ import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.domain.config.TradingDriver;
+import denny.ai.agent.trading.domain.model.valobj.TradingResultVO;
 import denny.ai.agent.trading.domain.prompt.RecommendationPromptTemplate;
+import denny.ai.agent.trading.domain.service.TradingResultExportService;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,6 +29,9 @@ public class RecommendationNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource
+    private TradingResultExportService tradingResultExportService;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -50,6 +55,8 @@ public class RecommendationNode extends AbstractExecuteSupport {
         parseAndUpdatePlan(context, planJson);
 
         sendRecommendationEvent(dynamicContext, "recommendation_plan", JSON.toJSONString(context.getInvestmentPlan()));
+
+        tradingResultExportService.export(TradingResultVO.from(context));
 
         log.info("推荐节点执行完成: ticker={}, action={}",
                 ticker, context.getInvestmentPlan() != null ? context.getInvestmentPlan().getAction() : "N/A");

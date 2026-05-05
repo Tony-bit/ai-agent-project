@@ -38,3 +38,31 @@ alwaysApply: true
 
 - 写设计文档的时候，每一项改动或者子任务都需要添加status字段
 - 执行设计文档的时候，需要依次执行任务项，执行完且编译通过后，将文档中的任务项的status字段置为pass
+
+# superpower 执行流程规范
+
+对于需要多步骤实现的任务（3个文件以上，或涉及多个模块改动），必须遵循以下 superpower 流程：
+
+## 流程步骤
+
+1. **加载 `executing-plans` skill** — 读取计划/设计文档
+2. **创建执行清单（TodoWrite）** — 每个任务项带 status（pending/in_progress/completed）
+3. **按顺序执行任务** — 每完成一个更新对应 status 为 pass
+4. **执行完成后继续后续 skill** — 代码写完后不是终点，还需要：
+   - **验证**：加载 `verification-before-completion` skill，运行验证命令确认输出
+   - **收尾**：加载 `finishing-a-development-branch` skill，验证测试并呈现合并选项
+   - **审查（可选）**：加载 `requesting-code-review` skill 请求代码审查
+
+## 触发条件
+
+以下场景必须走 superpower 流程：
+- 新增 2 个及以上文件
+- 跨 2 个及以上模块的改动
+- 用户明确说"开始执行"、"执行方案"等
+
+## 禁止事项
+
+- 不能跳过 superpower 流程直接写代码（即使方案已确认）
+- 代码写完不等于任务完成，必须执行后续验证和收尾 skill
+- 不允许在未加载 skill 的情况下声称"完成了"
+
