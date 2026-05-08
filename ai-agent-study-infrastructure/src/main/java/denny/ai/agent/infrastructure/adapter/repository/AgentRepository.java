@@ -136,13 +136,17 @@ public class AgentRepository implements IAgentRepository {
                             }
                         }
 
-                        // 4. 转换为VO对象
+                        // 4. 解析 extParam 中的重试配置
+                        AiClientModelVO.RetryConfig retryConfig = parseRetryConfig(model);
+
+                        // 5. 转换为VO对象
                         AiClientModelVO modelVO = AiClientModelVO.builder()
                                 .modelId(model.getModelId())
                                 .apiId(model.getApiId())
                                 .modelName(model.getModelName())
                                 .modelType(model.getModelType())
                                 .toolMcpIds(toolMcpIds)
+                                .retryConfig(retryConfig)
                                 .build();
 
                         // 避免重复添加相同的模型配置
@@ -557,5 +561,18 @@ public class AgentRepository implements IAgentRepository {
                         Function.identity(),
                         (v1, v2) -> v1
                 ));
+    }
+
+    private AiClientModelVO.RetryConfig parseRetryConfig(AiClientModelPO modelPO) {
+        if (modelPO.getExtParam() == null || modelPO.getExtParam().trim().isEmpty()) {
+            log.warn("extparam is null, modelId: {}", modelPO.getModelId());
+            return null;
+        }
+        try {
+            return JSON.parseObject(modelPO.getExtParam(), AiClientModelVO.RetryConfig.class);
+        } catch (Exception e) {
+            log.warn("解析模型 retry 配置失败，extParam={}, ex={}", modelPO.getExtParam(), e.getMessage());
+            return null;
+        }
     }
 }

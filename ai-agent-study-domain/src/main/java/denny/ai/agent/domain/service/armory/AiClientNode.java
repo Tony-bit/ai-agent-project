@@ -12,8 +12,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
@@ -51,7 +51,7 @@ public class AiClientNode extends AbstractArmorySupport {
                 defaultSystem.append(aiClientSystemPromptVO.getPromptContent());
             }
 
-            OpenAiChatModel chatModel = getBean(aiClientVO.getModelBeanName());
+            ChatModel chatModel = getBean(aiClientVO.getModelBeanName());
 
             List<McpSyncClient> mcpSyncClients = new ArrayList<>();
             for (String mcpBeanName : aiClientVO.getMcpBeanNameList()) {

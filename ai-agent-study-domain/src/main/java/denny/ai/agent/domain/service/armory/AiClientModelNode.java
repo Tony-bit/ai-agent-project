@@ -6,17 +6,21 @@ import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO;
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import io.modelcontextprotocol.client.McpSyncClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Slf4j
@@ -60,10 +64,26 @@ public class AiClientModelNode extends AbstractArmorySupport{
                                     .build()
                     ).build();
 
-            registerBean(getBeanName(modelVO.getModelId()), OpenAiChatModel.class, chatModel);
+            // 应用重试装饰器
+            ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig());
+            registerBean(getBeanName(modelVO.getModelId()), ChatModel.class, registeredModel);
         }
 
         return router(requestParameter, dynamicContext);
+    }
+
+    private ChatModel applyRetryDecorator(OpenAiChatModel chatModel, RetryConfig retryConfig) {
+        if (retryConfig == null || !retryConfig.isEnabled()) {
+            return chatModel;
+        }
+        log.warn("应用重试装饰器，model={}, maxAttempts={}, interval={}ms, multiplier={}",
+                Optional.ofNullable(chatModel.getDefaultOptions())
+                        .map(opts -> opts.getModel())
+                        .orElse("unknown"),
+                retryConfig.getMaxAttempts(),
+                retryConfig.getInitialIntervalMs(),
+                retryConfig.getMultiplier());
+        return new RetryChatModel(chatModel, retryConfig);
     }
 
     @Override

@@ -35,6 +35,11 @@ public class AiClientModelPO {
     private String modelType;
 
     /**
+     * 扩展参数，JSON格式
+     */
+    private String extParam;
+
+    /**
      * 状态：0-禁用，1-启用
      */
     private Integer status;
