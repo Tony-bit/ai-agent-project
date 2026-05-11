@@ -12,7 +12,7 @@
 ### 1.1 现有问题
 
 - **意图识别延迟高**：Zero-Shot 意图识别准确率依赖 LLM 能力，边界场景误识别率高
-- **切槽能力缺失**：STOCK_ANALYSIS 链路无结构化槽位提取，TradingNode 需二次解析
+- **切槽能力缺失**：STOCK_ANALYSIS 链路无结构化槽位提取，`tradingNode` 需二次解析
 - **STOCK_ANALYSIS 未实现**：设计文档标记 pending（IR-2）
 
 ### 1.2 目标
@@ -42,8 +42,8 @@
               ▼          ▼         ▼         ▼          ▼
         STOCK_ANALYSIS  PE_*   INSPECTION GENERAL_CHAT  UNKNOWN
               │          │         │          │          │
-          TradingNode   ↓         ↓          ↓          ↓
-        (切槽生效)   Step1Analyzer  Intelligent  GeneralChat
+          tradingNode   ↓         ↓          ↓          ↓
+        (TradingStarter) Step1Analyzer  Intelligent  GeneralChat
                           Node      Inspection      Node
 ```
 
@@ -53,14 +53,17 @@
 
 | 编号 | 决策 | 确认时间 |
 |------|------|---------|
-| P0-1 | 意图识别 + 切槽一次 LLM 调用完成 | 2026-05-11 |
+| P0-1 | 意图识别 + 切槽**一次 LLM 调用**同时完成（不拆分两步） | 2026-05-11 |
 | P0-2 | 切槽仅 STOCK_ANALYSIS 链路触发，其他意图忽略 | 2026-05-11 |
 | P0-3 | 槽位 Schema：baseSlot（通用）+ intentSpecificSlots（意图专属） | 2026-05-11 |
+| P0-4 | 置信度仅 HIGH / LOW 两级，无需 MEDIUM | 2026-05-11 |
+| P0-5 | STOCK_ANALYSIS 路由目标为 `TradingStarter`（已有），非 `TradingNode`（不存在） | 2026-05-11 |
 | P1-1 | 动态 Few-Shot，每次请求前从 PGvector 检索 Top-5 | 2026-05-11 |
 | P1-2 | 独立管理：意图样本独立表 + 独立 vector_store 表，与业务 RAG 隔离 | 2026-05-11 |
-| P1-3 | 复用现有 Embedding 模型（qwen3-vl-embedding / text-embedding-v4） | 2026-05-11 |
+| P1-3 | 复用现有 Embedding 模型（qwen3-vl-embedding / text-embedding-v4），模型已在 `AiAgentConfig` 中装配完毕，无需新增 | 2026-05-11 |
 | P1-4 | 各链路自行解析 slots，不侵入其他链路 | 2026-05-11 |
 | P1-5 | 意图样本 CRUD 通过 Mapper 管理 | 2026-05-11 |
+| P1-6 | **槽位传递机制**：`IntentRoutingResult` VO 含完整 slots → 存入 `DynamicContext`（key=`intentRoutingResult`）→ 下游节点按需读取 VO，不额外拉平字段 | 2026-05-11 |
 
 ---
 
@@ -88,7 +91,7 @@
 
 | 枚举值 | 说明 | 路由目标 | 切槽 |
 |--------|------|---------|------|
-| `STOCK_ANALYSIS` | 股票/市场分析 | TradingNode | ✅ |
+| `STOCK_ANALYSIS` | 股票/市场分析 | tradingNode | ✅ |
 | `PE_REASONING` | 逻辑推理 | Step1AnalyzerNode | ❌ |
 | `PE_CALCULATION` | 数学计算 | Step1AnalyzerNode | ❌ |
 | `PE_RETRIEVAL` | 知识检索 | Step1AnalyzerNode | ❌ |
@@ -217,9 +220,11 @@ CREATE TABLE intent_fewshot_sample (
 
 ### P2 任务
 
+> **注意**：STOCK_ANALYSIS → tradingNode → TradingStarter（已有），tradingNode 内部构造 `StockAnalysisRequestVO` 并在异步线程中调用 `TradingStarter.start()`。
+
 | Task | 内容 | 文件 | status |
 |------|------|------|--------|
-| P2-1 | 修复 IR-2：STOCK_ANALYSIS → TradingNode 实际路由 | `IntentRoutingNode.java` | pending |
+| P2-1 | `IntentRoutingNode.get()` 中 STOCK_ANALYSIS → `tradingNode`（tradingNode 内部调用 `TradingStarter`） | `IntentRoutingNode.java` | pending |
 | P2-2 | 修复 IR-4：`getRecentMessages` → `getRecentHistoryMessages` | `IntentRoutingNode.java` | pending |
 | P2-3 | 编译验证 | — | pending |
 
@@ -269,15 +274,15 @@ public class IntentRoutingPrompt {
         8. UNKNOWN: 无法明确判断
 
         ## 置信度
-        HIGH: 意图非常明确 | MEDIUM: 较明确 | LOW: 信号较弱
+        HIGH: 意图非常明确 | LOW: 信号较弱或意图模糊
 
         ## 槽位说明
         - baseSlot: 所有意图通用槽位（topic, sentiment）
         - intentSpecificSlots: 意图专属槽位
           - STOCK_ANALYSIS: {stockCode, stockQueryType, timeRange, exchange}
 
-        ## 输出格式
-        {"intent": "...", "confidence": "HIGH|MEDIUM|LOW", "reasoning": "...",
+        ## 输出格式（置信度仅 HIGH / LOW）
+        {"intent": "...", "confidence": "HIGH", "reasoning": "...",
          "baseSlot": {"topic": "...", "sentiment": "..."},
          "intentSpecificSlots": {...}}
         """;
@@ -351,24 +356,26 @@ public class IntentRoutingService {
 }
 ```
 
-### 8.5 IntentRoutingNode（解析 slots，链路自行消费）
+### 8.5 IntentRoutingNode（STOCK_ANALYSIS → TradingStarter）
+
+> **路由目标（P0-5）**：`STOCK_ANALYSIS` 路由到 `TradingStarter`（已有 `@Service`），由其管理 SSE emitter + 状态机。`TradingStarter` 在异步线程中运行 `latch.await()`，不阻塞调用线程。
 
 ```java
 @Service("intentRoutingNode")
 public class IntentRoutingNode extends AbstractExecuteSupport {
+    public static final String ROUTING_RESULT_KEY = "intentRoutingResult";
+
     @Resource
     private IntentRoutingService intentRoutingService;
     @Resource
-    private TradingNode tradingNode;
+    private TradingStarter tradingStarter;
 
     @Override
     protected String doApply(ExecuteCommandEntity request, DynamicContext dynamicContext) {
         List<String> history = intentRoutingService.getRecentHistoryMessages(request.getSessionId());
         IntentRoutingResult result = intentRoutingService.route(request.getMessage(), history);
-        dynamicContext.setValue("intentRoutingResult", result);
+        dynamicContext.setValue(ROUTING_RESULT_KEY, result);
         dynamicContext.setValue("recognizedIntent", result.getIntent());
-        dynamicContext.setValue("baseSlot", result.getBaseSlot());
-        dynamicContext.setValue("intentSpecificSlots", result.getIntentSpecificSlots());
         if (result.getIntent() == STOCK_ANALYSIS) {
             StockSlot stockSlot = extractStockSlot(result.getIntentSpecificSlots());
             dynamicContext.setValue("stockSlot", stockSlot);
@@ -382,18 +389,57 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     public StrategyHandler<...> get(ExecuteCommandEntity request, DynamicContext dynamicContext) {
         IntentTypeEnum intent = dynamicContext.getValue("recognizedIntent");
         return switch (intent) {
-            case STOCK_ANALYSIS -> tradingNode;
+            case STOCK_ANALYSIS -> tradingNode; // ← 内部调用 TradingStarter
             case PE_REASONING, PE_CALCULATION, PE_RETRIEVAL -> step1AnalyzerNode;
             case INSPECTION -> intelligentInspection;
             default -> generalChatNode;
         };
     }
+}
+```
 
-    private StockSlot extractStockSlot(Map<String, Object> intentSpecificSlots) {
-        if (intentSpecificSlots == null) return null;
-        Object stockSlotObj = intentSpecificSlots.get("stockSlot");
-        if (stockSlotObj instanceof StockSlot) return (StockSlot) stockSlotObj;
-        return null;
+> **tradingNode 内部实现**：构建 `StockAnalysisRequestVO` → 创建 `ResponseBodyEmitter` + `BiConsumerSseSender` → 调用 `TradingStarter.start()` → `TradingStarter` 在异步线程中 `latch.await()` 等状态机完成，SSE 正常发送。`DynamicContext` 必须先注入 `emitter` 字段。
+
+#### tradingNode 示例（STOCK_ANALYSIS 路由目标）
+
+```java
+@Service("tradingNode")
+public class TradingNode extends AbstractExecuteSupport {
+    @Resource
+    private TradingStarter tradingStarter;
+
+    @Override
+    protected String doApply(ExecuteCommandEntity request, DynamicContext dynamicContext) {
+        StockSlot stockSlot = dynamicContext.getValue("stockSlot");
+        String sessionId = request.getSessionId();
+
+        // 1. 构造 StockAnalysisRequestVO（从槽位映射）
+        StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
+                .ticker(normalizeTicker(stockSlot.getStockCode()))
+                .tradeDate(parseTradeDate(stockSlot.getTimeRange()))
+                .selectedAnalysts(List.of(FUNDAMENTAL, TECHNICAL, SENTIMENT, NEWS))
+                .maxDebateRounds(2)
+                .sessionId(sessionId)
+                .build();
+
+        // 2. 异步线程中运行 TradingStarter（latch.await 不阻塞调用线程）
+        CompletableFuture.runAsync(() -> {
+            DynamicContext ctx = new DynamicContext();
+            ctx.setValue("emitter", createEmitter());
+            ctx.setValue("step", 1);
+            BiConsumer<String, Object> sseSender = new BiConsumerSseSender(emitter, ctx);
+            tradingStarter.start(tradingRequest, ctx, sseSender);
+        });
+
+        return END; // SSE 异步推送，不等结果
+    }
+
+    private String normalizeTicker(String stockCode) {
+        // 调用 IStockDataProvider 解析中文名称 → ticker
+    }
+
+    private String parseTradeDate(String timeRange) {
+        // 解析 timeRange（近一年/近三月等）→ tradeDate
     }
 }
 ```

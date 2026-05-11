@@ -54,10 +54,6 @@ Thumbs.db
 *.seed
 *.pid.lock
 
-# Git worktrees
-.worktrees/
-worktrees/
-
 # Maven local repository artifacts extracted in project dir (avoid cluttering git)
 .m2/
 META-INF/
