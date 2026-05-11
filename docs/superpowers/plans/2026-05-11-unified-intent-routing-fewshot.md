@@ -1,9 +1,9 @@
-# Intent Routing + 动态 Few-Shot + 切槽 Story
+﻿# Intent Routing + 动态 Few-Shot + 切槽 Story
 
 > **创建时间:** 2026-05-11
 > **所属 epic:** 统一意图路由 + RAG Few-Shot + 切槽能力
 > **优先级:** P0
-> **状态:** pending
+> **状态:** done
 
 ---
 
@@ -11,55 +11,54 @@
 
 ### 1.1 现有问题
 
-- **意图识别延迟高**：Zero-Shot 意图识别准确率依赖 LLM 能力，边界场景误识别率高
-- **切槽能力缺失**：STOCK_ANALYSIS 链路无结构化槽位提取，TradingNode 需二次解析
-- **STOCK_ANALYSIS 未实现**：设计文档标记 pending（IR-2）
+- **意图识别延迟高:** Zero-Shot 意图识别精确度依赖LLM能力，边端模型误识别率高
+- **切槽能力缺失:** STOCK_ANALYSIS 路由无结构化槽位提取，TradingNode 需再次分析
+- **STOCK_ANALYSIS 未实现:** 设计文档标注 pending（IR-2）,
 
 ### 1.2 目标
 
 1. 意图识别 + 切槽 **一次 LLM 调用**完成
-2. 动态 Few-Shot 注入，意图识别准确率提升
-3. STOCK_ANALYSIS 链路支持结构化切槽（baseSlot + intentSpecificSlots）
-4. 各链路自行解析消费 slots，不侵入其他链路
+2. 动态 Few-Shot 注入，提升意图识别准确率
+3. STOCK_ANALYSIS 路由支持结构化切槽（baseSlot + intentSpecificSlots）
+4. 各链路自动解析 slots，不注入到其他路由
 
 ---
 
 ## 2. 架构总览
 
 ```
-用户请求 → RootNode
-              ├─ 有 aiAgentId → 直接路由对应 Agent
-              └─ 无 aiAgentId → IntentRoutingNode
+用户请求  → RootNode
+              ├─ 有 aiAgentId  → 直接路由对应 Agent
+              ├─ 无 aiAgentId  → IntentRoutingNode
                                    │
                     ┌──────────────┴──────────────┐
                     │      一次 LLM 调用返回        │
-                    │  intent + confidence        │
-                    │  + baseSlot                 │
-                    │  + intentSpecificSlots       │
+                    │ intent + confidence         │
+                    │ + baseSlot                  │
+                    │ + intentSpecificSlots       │
                     └──────────────┬──────────────┘
                                    │
               ┌──────────┬─────────┼─────────┬──────────┐
-              ▼          ▼         ▼         ▼          ▼
+              │          │         │         │          │
         STOCK_ANALYSIS  PE_*   INSPECTION GENERAL_CHAT  UNKNOWN
-              │          │         │          │          │
-          TradingNode   ↓         ↓          ↓          ↓
-        (切槽生效)   Step1Analyzer  Intelligent  GeneralChat
-                          Node      Inspection      Node
+              │          │         │         │          │
+          TradingNode  Step1Analyzer  Intelligent  GeneralChat
+        (切槽生效)      Node      Inspection      Node
 ```
 
 ---
 
 ## 3. 决策记录
 
-| 编号 | 决策 | 确认时间 |
+| 序号 | 决策 | 确认时间 |
 |------|------|---------|
 | P0-1 | 意图识别 + 切槽一次 LLM 调用完成 | 2026-05-11 |
-| P0-2 | 切槽仅 STOCK_ANALYSIS 链路触发，其他意图忽略 | 2026-05-11 |
-| P0-3 | 槽位 Schema：baseSlot（通用）+ intentSpecificSlots（意图专属） | 2026-05-11 |
-| P1-1 | 动态 Few-Shot，每次请求前从 PGvector 检索 Top-5 | 2026-05-11 |
-| P1-2 | 独立管理：意图样本独立表 + 独立 vector_store 表，与业务 RAG 隔离 | 2026-05-11 |
-| P1-3 | 复用现有 Embedding 模型（qwen3-vl-embedding / text-embedding-v4） | 2026-05-11 |
-| P1-4 | 各链路自行解析 slots，不侵入其他链路 | 2026-05-11 |
+| P0-2 | 切槽从 STOCK_ANALYSIS 路由触发，其他意图降级 | 2026-05-11 |
+| P0-3 | 槽位 Schema：baseSlot（通用）+ intentSpecificSlots（意图专有） | 2026-05-11 |
+| P1-1 | 动态 Few-Shot，每轮请求前先从 PGvector 检索 Top-5 | 2026-05-11 |
+| P1-2 | 独立管理：意图样本独立表 + 独立 vector_store 库，与业务 RAG 隔离 | 2026-05-11 |
+| P1-3 | 复用现有 Embedding 模型（qwen3-vl-embedding / text-embedding-v4），| 2026-05-11 |
+| P1-4 | 各链路自动解析 slots，不注入到其他路由 | 2026-05-11 |
 | P1-5 | 意图样本 CRUD 通过 Mapper 管理 | 2026-05-11 |
 
 ---
@@ -89,12 +88,12 @@
 | 枚举值 | 说明 | 路由目标 | 切槽 |
 |--------|------|---------|------|
 | `STOCK_ANALYSIS` | 股票/市场分析 | TradingNode | ✅ |
-| `PE_REASONING` | 逻辑推理 | Step1AnalyzerNode | ❌ |
-| `PE_CALCULATION` | 数学计算 | Step1AnalyzerNode | ❌ |
-| `PE_RETRIEVAL` | 知识检索 | Step1AnalyzerNode | ❌ |
-| `INSPECTION` | 系统巡检 | IntelligentInspection | ❌ |
+| `PE_REASONING` | 逻辑推理推荐 | Step1AnalyzerNode | ✅ |
+| `PE_CALCULATION` | 数学计算 | Step1AnalyzerNode | ✅ |
+| `PE_RETRIEVAL` | 知识检索 | Step1AnalyzerNode | ✅ |
+| `INSPECTION` | 系统体检 | IntelligentInspection | ✅ |
 | `GENERAL_CHAT` | 闲聊 | GeneralChatNode | ❌ |
-| `AMBIGUOUS` | 模糊意图 | GeneralChatNode（引导澄清） | ❌ |
+| `AMBIGUOUS` | 模糊意图 | GeneralChatNode（引导策略） | ❌ |
 | `UNKNOWN` | 未知意图 | GeneralChatNode（降级） | ❌ |
 
 ---
@@ -103,7 +102,7 @@
 
 ### 5.1 样本管理（独立管理）
 
-**表结构：**
+    **表结构：**
 
 ```sql
 CREATE TABLE intent_fewshot_sample (
@@ -120,34 +119,29 @@ CREATE TABLE intent_fewshot_sample (
 ```
 
 - 独立 `intent_fewshot_sample` 表，与业务 `vector_store` 完全隔离
-- 向量存储：复用 PGvector provider，单独 `intent_fewshot_vector_store` 表
+- 向量存储：复用 PGvector provider，单独 `intent_fewshot_vector_store` 库
 
 ### 5.2 Few-Shot 注入流程
 
 ```
 意图识别请求
     │
-    ▼
-① Query Embedding（复用现有 qwen3-vl-embedding / text-embedding-v4）
-    │
-    ▼
-② PGvector Top-K 检索（intent_fewshot_vector_store 表）
-    │  SELECT * FROM intent_fewshot_vector_store
-    │  WHERE status = 1
-    │  ORDER BY embedding <=> embedding_query
-    │  LIMIT 5;
-    │
-    ▼
-③ 动态组装 Few-Shot Prompt
-    │  system: 分类定义 + 置信度说明
-    │  examples: Top-K 样本（query → 完整JSON示例）
-    │  user: 当前用户消息
-    │
-    ▼
-④ LLM 调用（一次完成意图识别 + 切槽）
-    │
-    ▼
-⑤ 返回结果，各链路自行解析 slots
+    ├─ Query Embedding（复用现有 qwen3-vl-embedding / text-embedding-v4）
+    │   │
+    │   ├─ PGvector Top-K 检索（intent_fewshot_vector_store 库）
+    │   │   SELECT * FROM intent_fewshot_vector_store
+    │   │   WHERE status = 1
+    │   │   ORDER BY embedding <=> embedding_query
+    │   │   LIMIT 5;
+    │   │   │
+    │   ├─ 动态组装 Few-Shot Prompt
+    │   │   system: 分类定义 + 置信度说明
+    │   │   examples: Top-K 样本（query → 完整JSON示例）
+    │   │   user: 当前用户消息
+    │   │   │
+    │   └─ LLM 调用（一次完成意图识别 + 切槽）
+    │       │
+    │       └─ 返回结果，各路由自行分析 slots
 ```
 
 ### 5.3 样本 CRUD
@@ -155,7 +149,7 @@ CREATE TABLE intent_fewshot_sample (
 | 方法 | 说明 |
 |------|------|
 | `addSample(queryText, intentCode, exampleJson)` | 新增样本，自动生成 embedding |
-| `deleteSample(id)` | 软删除（status=0） |
+| `deleteSample(id)` | 软删除（status=0）|
 | `updateSample(id, exampleJson)` | 更新样本 |
 | `retrieveTopK(query, k)` | PGvector Top-K 检索 |
 
@@ -167,7 +161,7 @@ CREATE TABLE intent_fewshot_sample (
 
 | # | 文件 | 职责 | status |
 |---|------|------|--------|
-| 1 | `model/valobj/IntentRoutingResult.java` | 意图识别结果（含 slots） | pending |
+| 1 | `model/valobj/IntentRoutingResult.java` | 意图识别结果（含 slots）| pending |
 | 2 | `model/valobj/BaseSlot.java` | 通用槽位 VO | pending |
 | 3 | `model/valobj/StockSlot.java` | 股票切槽 VO | pending |
 | 4 | `model/entity/IntentFewshotSample.java` | 样本实体 | pending |
@@ -177,10 +171,10 @@ CREATE TABLE intent_fewshot_sample (
 
 ### 6.2 修改文件（3个）
 
-| # | 文件 | 改动 | status |
+| # | 文件 | 变化 | status |
 |---|------|------|--------|
 | 8 | `IntentRoutingPrompt.java` | 支持动态 Few-Shot 注入 | pending |
-| 9 | `IntentRoutingService.java` | 集成 Few-Shot + 切槽解析 | pending |
+| 9 | `IntentRoutingService.java` | 集成 Few-Shot + 切槽分析 | pending |
 | 10 | `IntentRoutingNode.java` | 解析 slots 到 context | pending |
 
 ### 6.3 不需修改
@@ -188,7 +182,7 @@ CREATE TABLE intent_fewshot_sample (
 - `RootNode.java`
 - `AiAgentController.java`
 - `AutoAgentExecuteStrategy.java`
-- PE / React 各节点
+- PE / React 各个环节
 - `AiAgentConfig.java`（复用现有 PGvector 配置）
 
 ---
@@ -199,29 +193,29 @@ CREATE TABLE intent_fewshot_sample (
 
 | Task | 内容 | 文件 | status |
 |------|------|------|--------|
-| P0-1 | 新增 `IntentRoutingResult.java`（含 slots 字段） | `domain/model/valobj/` | pending |
-| P0-2 | 新增 `BaseSlot.java`（通用槽位） | `domain/model/valobj/` | pending |
-| P0-3 | 新增 `StockSlot.java`（股票切槽） | `domain/model/valobj/` | pending |
-| P0-4 | 修改 `IntentRoutingPrompt.java`（支持动态 Few-Shot） | `domain/service/auto/step/routing/` | pending |
-| P0-5 | 修改 `IntentRoutingService.java`（集成 Few-Shot + 切槽解析） | `domain/service/auto/step/routing/` | pending |
-| P0-6 | 修改 `IntentRoutingNode.java`（解析 slots 到 context） | `domain/service/auto/step/routing/` | pending |
+| P0-1 | 新增 `IntentRoutingResult.java`（含 slots 字段）| `domain/model/valobj/` | pass |
+| P0-2 | 新增 `BaseSlot.java`（通用槽位）| `domain/model/valobj/` | pass |
+| P0-3 | 新增 `StockSlot.java`（股票切槽）| `domain/model/valobj/` | pass |
+| P0-4 | 修改 `IntentRoutingPrompt.java`（支持动态 Few-Shot）| `domain/service/auto/step/routing/` | pass |
+| P0-5 | 修改 `IntentRoutingService.java`（集成 Few-Shot + 切槽分析）| `domain/service/auto/step/routing/` | pass |
+| P0-6 | 修改 `IntentRoutingNode.java`（解析 slots 到 context）| `domain/service/auto/step/routing/` | pass |
 
 ### P1 任务
 
 | Task | 内容 | 文件 | status |
-|------|------|------|--------|
-| P1-1 | 新增 `IntentFewshotSample.java`（样本实体） | `domain/model/entity/` | pending |
-| P1-2 | 新增 `IntentFewshotSampleMapper.xml`（CRUD SQL） | `resources/mybatis/mapper/` | pending |
-| P1-3 | 新增 `IntentFewshotSampleRepository.java`（CRUD） | `domain/repository/` | pending |
-| P1-4 | 新增 `IntentFewshotService.java`（Few-Shot 管理 + PGvector 检索） | `domain/service/intent/` | pending |
+|------|------|--------|--------|
+| P1-1 | 新增 `IntentFewshotSample.java`（样本实体的）| `domain/model/entity/` | pass |
+| P1-2 | 新增 `IntentFewshotSampleMapper.xml`（CRUD SQL）| `resources/mybatis/mapper/` | pass |
+| P1-3 | 新增 `IntentFewshotSampleRepository.java`（CRUD）| `domain/repository/` | pass |
+| P1-4 | 新增 `IntentFewshotService.java`（Few-Shot 管理 + PGvector 检索）| `domain/service/intent/` | pass |
 
 ### P2 任务
 
 | Task | 内容 | 文件 | status |
 |------|------|------|--------|
-| P2-1 | 修复 IR-2：STOCK_ANALYSIS → TradingNode 实际路由 | `IntentRoutingNode.java` | pending |
-| P2-2 | 修复 IR-4：`getRecentMessages` → `getRecentHistoryMessages` | `IntentRoutingNode.java` | pending |
-| P2-3 | 编译验证 | — | pending |
+| P2-1 | 解决 IR-2：STOCK_ANALYSIS → TradingNode 实际路由 | `IntentRoutingNode.java` | pass |
+| P2-2 | 解决 IR-4：`getRecentMessages` → `getRecentHistoryMessages` | `IntentRoutingNode.java` | pass |
+| P2-3 | 编译验证 | — | pass |
 
 ---
 
@@ -260,20 +254,20 @@ public class IntentRoutingPrompt {
     private static final String SYSTEM_PROMPT_TEMPLATE = """
         ## 意图分类（共 8 种）
         1. STOCK_ANALYSIS: 股票/市场分析
-        2. PE_REASONING: 逻辑推理、问题分析
+        2. PE_REASONING: 逻辑推理推荐、问题分析
         3. PE_CALCULATION: 数学计算、数据处理
         4. PE_RETRIEVAL: 知识检索、信息查询
-        5. INSPECTION: 系统巡检、健康检查
+        5. INSPECTION: 系统体检、健康检查
         6. GENERAL_CHAT: 闲聊或其他无法归类
-        7. AMBIGUOUS: 意图模糊或复合语义
+        7. AMBIGUOUS: 意图模糊或复合语
         8. UNKNOWN: 无法明确判断
 
         ## 置信度
-        HIGH: 意图非常明确 | MEDIUM: 较明确 | LOW: 信号较弱
+        HIGH: 意图非常明确 | MEDIUM: 较明确 | LOW: 置信度较弱
 
         ## 槽位说明
         - baseSlot: 所有意图通用槽位（topic, sentiment）
-        - intentSpecificSlots: 意图专属槽位
+        - intentSpecificSlots: 意图专有槽位
           - STOCK_ANALYSIS: {stockCode, stockQueryType, timeRange, exchange}
 
         ## 输出格式
@@ -298,7 +292,7 @@ public class IntentRoutingPrompt {
 }
 ```
 
-### 8.4 IntentRoutingService（集成 Few-Shot + 切槽解析）
+### 8.4 IntentRoutingService（集成 Few-Shot + 切槽分析）
 
 ```java
 @Service
@@ -345,13 +339,13 @@ public class IntentRoutingService {
         } catch (Exception e) {
             log.warn("LLM返回格式异常，降级为UNKNOWN: {}", e.getMessage());
             return IntentRoutingResult.builder()
-                    .intent(UNKNOWN).confidence(LOW).reasoning("解析失败").build();
+                    .intent(UNKNOWN).confidence(LOW).reasoning("分析失败").build();
         }
     }
 }
 ```
 
-### 8.5 IntentRoutingNode（解析 slots，链路自行消费）
+### 8.5 IntentRoutingNode（解析 slots，链路自动消费）
 
 ```java
 @Service("intentRoutingNode")
@@ -418,9 +412,9 @@ CREATE TABLE intent_fewshot_sample (
     INDEX idx_status (status)
 );
 
--- 独立 vector 表（复用 PGvector provider）
--- 由 Spring AI PgVectorStore 自动管理，无需手动创建
--- Spring AI 会创建 intent_fewshot_vector_store 表
+-- 独立 vector 库（复用 PGvector provider）
+-- 用 Spring AI PgVectorStore 自动管理，无需手动创建
+-- Spring AI 会创建 intent_fewshot_vector_store 库
 ```
 
 ---
@@ -431,7 +425,7 @@ CREATE TABLE intent_fewshot_sample (
 
 ## 11. 风险与注意事项
 
-1. **LLM 返回格式异常**：降级为 UNKNOWN + LOW，不阻断流程
-2. **PGvector 检索失败**：降级为空 Few-Shot，继续 Zero-Shot 识别
-3. **STOCK_ANALYSIS 切槽为空**：降级为默认槽值，打 warn 日志
-4. **Embedding 模型维度不匹配**：校验 dimension 与 PGvector 表一致
+1. **LLM 返回格式异常：** 降级为 UNKNOWN + LOW，不阻断流程
+2. **PGvector 检索失败：** 降级为无 Few-Shot，继续 Zero-Shot 识别
+3. **STOCK_ANALYSIS 切槽为空：** 降级为默认槽位，发 warn 日志
+4. **Embedding 模型维度不匹配：** 校验 dimension 与 PGvector 库一致

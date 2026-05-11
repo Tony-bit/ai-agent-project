@@ -16,13 +16,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 意图识别服务。
+ * 交易模块意图识别服务。
  * <p>
  * 调用 LLM 对用户消息进行意图分类，支持股票分析意图识别和置信度判断。
  */
 @Slf4j
-@Service
-public class IntentRoutingService {
+@Service("tradingIntentRoutingService")
+public class TradingIntentRoutingService {
 
     /**
      * 解析 LLM 响应为意图路由结果。
