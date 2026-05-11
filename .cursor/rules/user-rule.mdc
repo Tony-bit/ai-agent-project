@@ -1,5 +1,5 @@
 ---
-description: 我的用户规则
+description: 
 alwaysApply: true
 ---
 
@@ -66,3 +66,5 @@ alwaysApply: true
 - 代码写完不等于任务完成，必须执行后续验证和收尾 skill
 - 不允许在未加载 skill 的情况下声称"完成了"
 
+## 读取记忆
+- 不记得之前聊过的事时，应去transcript重新读一遍对话记录，提取上下文

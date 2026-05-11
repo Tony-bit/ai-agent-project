@@ -5,8 +5,8 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
-// import denny.ai.agent.trading.domain.node.IntentRoutingNode;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,8 +24,8 @@ import java.util.Objects;
 @Service("executeRootNode")
 public class RootNode extends AbstractExecuteSupport {
 
-    // @Resource
-    // private IntentRoutingNode intentRoutingNode;
+    @Resource
+    private IntentRoutingNode intentRoutingNode;
 
     @Resource
     private Step1AnalyzerNode step1AnalyzerNode;
@@ -44,21 +44,16 @@ public class RootNode extends AbstractExecuteSupport {
 
         // 客户端对话组
         dynamicContext.setAiAgentClientFlowConfigVOMap(aiAgentClientFlowConfigVOMap);
-        // 上下文信息 - 注意：这里创建了新的 StringBuilder，可能丢失原 dynamicContext 中的某些信息
-        StringBuilder oldHistory = dynamicContext.getExecutionHistory();
+        // 上下文信息 - 重置执行历史
         dynamicContext.setExecutionHistory(new StringBuilder());
         // 当前任务信息
         dynamicContext.setCurrentTask(requestParameter.getMessage());
         // 最大任务步骤
         dynamicContext.setMaxStep(requestParameter.getMaxStep());
 
-        log.info(">>> [RootNode.doApply] router前检查 - oldHistory={}, currentTask={}, dataObjects={}",
-                oldHistory != null ? "exists" : "null",
+        log.debug(">>> [RootNode.doApply] router前检查 - currentTask={}, dataObjects={}",
                 dynamicContext.getCurrentTask(),
                 dynamicContext.getDataObjects().keySet());
-        // 特别注意：检查emitter是否还在
-        Object emitterCheck = dynamicContext.getValue("emitter");
-        log.info(">>> [RootNode.doApply] emitter检查: {}", emitterCheck != null ? "存在" : "NULL");
 
         long startAt = System.currentTimeMillis();
         String result = router(requestParameter, dynamicContext);
@@ -74,14 +69,21 @@ public class RootNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+    public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
+            ExecuteCommandEntity requestParameter,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         // 巡检 Agent（aiAgentId = "5"）走独立流程
         if (Objects.equals(requestParameter.getAiAgentId(), "5")) {
             return intelligentInspection;
         }
 
-        // IntentRoutingNode 已移除，股票分析走独立 Controller 链路
-        return null;
+        // 有显式 aiAgentId → PE 链路
+        if (requestParameter.getAiAgentId() != null && !requestParameter.getAiAgentId().isBlank()) {
+            return step1AnalyzerNode;
+        }
+
+        // 无 aiAgentId → 意图识别兜底
+        return intentRoutingNode;
     }
 
     /**
@@ -113,6 +115,10 @@ public class RootNode extends AbstractExecuteSupport {
         // 交易 Agent 流：tradingFinalDecision
         if (output == null) {
             output = dynamicContext.getValue("tradingFinalDecision");
+        }
+        // 通用对话流：generalChatResponse
+        if (output == null) {
+            output = dynamicContext.getValue("generalChatResponse");
         }
         String clientId = "RESPONSE_ASSISTANT";
 

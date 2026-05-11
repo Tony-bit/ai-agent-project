@@ -1204,6 +1204,25 @@
 
         // 根据type和subType添加消息
         addStageMessage(type, subType, content, step);
+
+        // 如果收到错误类型消息或完成标记，关闭 loading 并恢复按钮状态
+        if (type === 'error' || type === 'complete') {
+            closeLoadingState();
+        }
+    }
+
+    // 关闭加载状态，恢复 UI 交互
+    function closeLoadingState() {
+        isConnected = false;
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('sendTradingBtn').disabled = false;
+        document.getElementById('sendTradingBtn').innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            开始金融分析
+        `;
     }
 
     // 添加阶段消息

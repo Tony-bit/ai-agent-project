@@ -30,6 +30,9 @@ public class RetryChatModel implements ChatModel {
 
     @Override
     public ChatResponse call(Prompt prompt) {
+        if (!retryConfig.isEnabled()) {
+            return delegate.call(prompt);
+        }
         if (retryConfig.getMaxAttempts() <= 0) {
             return delegate.call(prompt);
         }
@@ -72,6 +75,12 @@ public class RetryChatModel implements ChatModel {
 
     @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
+        if (!retryConfig.isEnabled()) {
+            return delegate.stream(prompt);
+        }
+        if (retryConfig.getMaxAttempts() <= 0) {
+            return delegate.stream(prompt);
+        }
         int attempt = 0;
         long interval = retryConfig.getInitialIntervalMs();
         Exception lastException = null;
@@ -83,21 +92,26 @@ public class RetryChatModel implements ChatModel {
             } catch (Exception e) {
                 lastException = e;
                 String errorCode = extractErrorCode(e);
-                boolean shouldRetry = retryableErrorCodes.contains(errorCode) || isRetryable(e);
-                if (!shouldRetry || attempt >= retryConfig.getMaxAttempts()) {
+                if (nonRetryableErrorCodes.contains(errorCode)) {
+                    log.warn("[RetryStream] Blacklist matched, skip retry, errorCode={}, attempt={}, ex={}",
+                            errorCode, attempt, e.getMessage());
+                    return Flux.error(e instanceof RuntimeException ? e : new RuntimeException(e));
+                }
+                if (retryableErrorCodes.contains(errorCode) || isRetryable(e)) {
                     if (attempt >= retryConfig.getMaxAttempts()) {
                         log.error("[RetryStream] Max attempts {} reached, giving up, attempt={}, errorCode={}, ex={}",
                                 retryConfig.getMaxAttempts(), attempt, errorCode, e.getMessage());
-                    } else {
-                        log.warn("[RetryStream] Non-retryable exception, rethrow directly, errorCode={}, attempt={}, ex={}",
-                                errorCode, attempt, e.getMessage());
+                        return Flux.error(e instanceof RuntimeException ? e : new RuntimeException(e));
                     }
+                    log.warn("[RetryStream] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
+                            attempt, retryConfig.getMaxAttempts(), interval, errorCode, e.getMessage());
+                    sleep(interval);
+                    interval = Math.min((long) (interval * retryConfig.getMultiplier()), retryConfig.getMaxIntervalMs());
+                } else {
+                    log.warn("[RetryStream] Non-retryable exception, rethrow directly, errorCode={}, attempt={}, ex={}",
+                            errorCode, attempt, e.getMessage());
                     return Flux.error(e instanceof RuntimeException ? e : new RuntimeException(e));
                 }
-                log.warn("[RetryStream] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
-                        attempt, retryConfig.getMaxAttempts(), interval, errorCode, e.getMessage());
-                sleep(interval);
-                interval = Math.min((long) (interval * retryConfig.getMultiplier()), retryConfig.getMaxIntervalMs());
             }
         }
         return Flux.error(lastException != null ? (lastException instanceof RuntimeException ? lastException : new RuntimeException(lastException))
