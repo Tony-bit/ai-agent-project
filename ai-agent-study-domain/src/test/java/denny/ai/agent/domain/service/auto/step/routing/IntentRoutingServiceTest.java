@@ -1,8 +1,8 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
+import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
-import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService.IntentRoutingResult;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;

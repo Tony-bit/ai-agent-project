@@ -1,9 +1,10 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
@@ -13,11 +14,12 @@ import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -36,6 +38,11 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
     public static final String RECOGNIZED_INTENT_KEY = "recognizedIntent";
     public static final String ROUTING_RESULT_KEY = "intentRoutingResult";
+    public static final String BASE_SLOT_KEY = "baseSlot";
+    public static final String INTENT_SPECIFIC_SLOTS_KEY = "intentSpecificSlots";
+    public static final String STOCK_SLOT_KEY = "stockSlot";
+
+    private static final String TRADING_NODE_BEAN_NAME = "tradingIntentRoutingNode";
 
     @Resource
     private IntentRoutingService intentRoutingService;
@@ -50,7 +57,6 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     private IntelligentInspection intelligentInspection;
 
     @Resource
-    @Lazy
     private GeneralChatNode generalChatNode;
 
     @Override
@@ -61,10 +67,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         long startAt = System.currentTimeMillis();
 
         List<String> historyMessages = getRecentHistoryMessages(request.getSessionId());
-        String prompt = IntentRoutingPrompt.buildPrompt(request.getMessage(), historyMessages);
-
-        IntentRoutingService.IntentRoutingResult result = intentRoutingService.route(
-                request.getMessage(), prompt);
+        IntentRoutingResult result = intentRoutingService.route(request.getMessage(), historyMessages);
 
         long latencyMs = System.currentTimeMillis() - startAt;
         log.info("意图识别完成: intent={}, confidence={}, reasoning={}, 耗时={}ms",
@@ -72,6 +75,8 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
         dynamicContext.setValue(ROUTING_RESULT_KEY, result);
         dynamicContext.setValue(RECOGNIZED_INTENT_KEY, result.getIntent());
+        dynamicContext.setValue(BASE_SLOT_KEY, result.getBaseSlot());
+        dynamicContext.setValue(INTENT_SPECIFIC_SLOTS_KEY, result.getIntentSpecificSlots());
 
         if (result.getConfidence() == ConfidenceEnum.LOW) {
             log.warn("意图识别置信度低: intent={}, reasoning={}, sessionId={}",
@@ -79,8 +84,11 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         }
 
         if (result.getIntent() == IntentTypeEnum.STOCK_ANALYSIS) {
-            log.warn("STOCK_ANALYSIS 暂不支持内部路由，打日志后流转到下一节点: sessionId={}",
-                    request.getSessionId());
+            StockSlot stockSlot = extractStockSlot(result.getIntentSpecificSlots());
+            dynamicContext.setValue(STOCK_SLOT_KEY, stockSlot);
+            log.info("STOCK_ANALYSIS 切槽完成: stockCode={}, queryType={}",
+                    stockSlot != null ? stockSlot.getStockCode() : "null",
+                    stockSlot != null ? stockSlot.getStockQueryType() : "null");
         }
 
         return router(request, dynamicContext);
@@ -97,10 +105,24 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         }
 
         return switch (intent) {
+            case STOCK_ANALYSIS -> resolveTradingNode();
             case PE_REASONING, PE_CALCULATION, PE_RETRIEVAL -> step1AnalyzerNode;
             case INSPECTION -> intelligentInspection;
             default -> generalChatNode;
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private StrategyHandler<ExecuteCommandEntity,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> resolveTradingNode() {
+        try {
+            return (StrategyHandler<ExecuteCommandEntity,
+                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String>)
+                    applicationContext.getBean(TRADING_NODE_BEAN_NAME);
+        } catch (Exception e) {
+            log.warn("TradingNode 未找到，降级为 generalChatNode: {}", e.getMessage());
+            return generalChatNode;
+        }
     }
 
     private List<String> getRecentHistoryMessages(String sessionId) {
@@ -115,5 +137,16 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                     sessionId, e.getMessage());
             return List.of();
         }
+    }
+
+    private StockSlot extractStockSlot(Map<String, Object> intentSpecificSlots) {
+        if (intentSpecificSlots == null) {
+            return null;
+        }
+        Object stockSlotObj = intentSpecificSlots.get("stockSlot");
+        if (stockSlotObj instanceof StockSlot) {
+            return (StockSlot) stockSlotObj;
+        }
+        return null;
     }
 }

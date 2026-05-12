@@ -10,7 +10,7 @@ import denny.ai.agent.trading.api.vo.IntentEnumVO;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStarter;
 import denny.ai.agent.trading.domain.prompt.IntentRoutingPrompt;
-import denny.ai.agent.trading.domain.service.IntentRoutingService;
+import denny.ai.agent.trading.domain.service.TradingIntentRoutingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -26,7 +26,7 @@ import jakarta.annotation.Resource;
  * - GENERAL_CHAT 或低置信度 → 不修改，正常流转
  */
 @Slf4j
-@Service
+@Service("tradingIntentRoutingNode")
 public class IntentRoutingNode extends AbstractExecuteSupport {
 
     public static final String TRADING_REQUEST_KEY = "trading_request";
@@ -34,7 +34,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     public static final String INTENT_ROUTING_RESULT_KEY = "intent_routing_result";
 
     @Resource
-    private IntentRoutingService intentRoutingService;
+    private TradingIntentRoutingService tradingIntentRoutingService;
 
     @Resource
     private TradingStarter starter;
@@ -59,7 +59,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
         log.debug("意图识别 LLM 原始响应: {}", response);
 
-        IntentRoutingService.IntentRoutingResult result = intentRoutingService.parseResponse(response);
+        TradingIntentRoutingService.IntentRoutingResult result = tradingIntentRoutingService.parseResponse(response);
 
         long latencyMs = System.currentTimeMillis() - startAt;
         log.info("意图识别完成: intent={}, confidence={}, ticker={}, 耗时={}ms",
@@ -106,7 +106,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
     private void handleStockAnalysisIntent(ExecuteCommandEntity requestParameter,
                                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                          IntentRoutingService.IntentRoutingResult result) {
+                                          TradingIntentRoutingService.IntentRoutingResult result) {
         if (result.getConfidence() == ConfidenceEnum.HIGH) {
             StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
                     .ticker(result.getTicker())
@@ -131,7 +131,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     }
 
     private void sendIntentRoutingEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                       IntentRoutingService.IntentRoutingResult result) {
+                                       TradingIntentRoutingService.IntentRoutingResult result) {
         AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
                 .type("intent_routing")
                 .subType("intent_result")
