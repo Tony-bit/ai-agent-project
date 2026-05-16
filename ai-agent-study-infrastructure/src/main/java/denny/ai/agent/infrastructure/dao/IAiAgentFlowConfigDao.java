@@ -74,5 +74,11 @@ public interface IAiAgentFlowConfigDao {
      * @return 智能体-客户端关联配置列表
      */
     List<AiAgentFlowConfigPO> queryAll();
+
+    /**
+     * 查询所有配置用于意图路由场景（按 client_type 分组，取 sequence 最小的）
+     * @return 配置列表
+     */
+    List<AiAgentFlowConfigPO> queryAllForIntentRouting();
 }
 

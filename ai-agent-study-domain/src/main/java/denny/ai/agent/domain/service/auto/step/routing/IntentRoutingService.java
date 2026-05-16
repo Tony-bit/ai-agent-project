@@ -40,24 +40,13 @@ public class IntentRoutingService {
      * @param historyMessages 历史消息列表
      * @return 意图识别结果（含 slots）
      */
-    public IntentRoutingResult route(String userMessage, List<String> historyMessages) {
+    String route(String userMessage, List<String> historyMessages) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(userMessage);
         String prompt = IntentRoutingPrompt.buildPrompt(userMessage, historyMessages, fewshotSamples);
-        return doRoute(userMessage, prompt);
+        return prompt;
     }
 
-    /**
-     * 调用 LLM 进行意图识别（旧签名，保持向后兼容）
-     *
-     * @param userMessage 当前用户消息
-     * @param prompt      已构建好的 Prompt
-     * @return 意图识别结果
-     */
-    public IntentRoutingResult route(String userMessage, String prompt) {
-        return doRoute(userMessage, prompt);
-    }
-
-    private IntentRoutingResult doRoute(String userMessage, String prompt) {
+    IntentRoutingResult doRoute(String userMessage, String prompt) {
         try {
             String response = chatClient.prompt(prompt).call().content();
             log.debug("意图识别 LLM 原始响应: userMessage={}, response={}", userMessage, response);
@@ -157,7 +146,7 @@ public class IntentRoutingService {
         return response;
     }
 
-    private IntentRoutingResult fallbackResult(String reason) {
+    public IntentRoutingResult fallbackResult(String reason) {
         return IntentRoutingResult.builder()
                 .intent(IntentTypeEnum.UNKNOWN)
                 .confidence(ConfidenceEnum.LOW)

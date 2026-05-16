@@ -73,7 +73,7 @@ public class GeneralChatNode extends AbstractExecuteSupport {
 
         String systemPrompt = resolveSystemPrompt(recognizedIntent);
 
-        ChatClient chatClient = getChatClientByClientId("default", 0);
+        ChatClient chatClient = getChatClientByClientId("3001", 0);
 
         String response = chatClient.prompt()
                 .system(systemPrompt)

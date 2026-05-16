@@ -3,8 +3,10 @@ package denny.ai.agent.domain.service.auto.step.routing;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.StockSlot;
+import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
@@ -14,6 +16,7 @@ import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
@@ -66,8 +69,16 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
 
+        // 获取配置信息
+        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.INTENT_ROUTING.getCode());
+        if (aiAgentClientFlowConfigVO == null) {
+            throw new IllegalStateException("未找到任务分析客户端配置，aiAgentId=" + request.getAiAgentId()
+                    + "，请确认智能体流程配置中已添加 TASK_ANALYZER_CLIENT 类型的节点");
+        }
+
         List<String> historyMessages = getRecentHistoryMessages(request.getSessionId());
-        IntentRoutingResult result = intentRoutingService.route(request.getMessage(), historyMessages);
+        String userPrompt = intentRoutingService.route(request.getMessage(), historyMessages);
+        IntentRoutingResult result = doRoute(request.getMessage(), userPrompt, aiAgentClientFlowConfigVO);
 
         long latencyMs = System.currentTimeMillis() - startAt;
         log.info("意图识别完成: intent={}, confidence={}, reasoning={}, 耗时={}ms",
@@ -110,6 +121,21 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             case INSPECTION -> intelligentInspection;
             default -> generalChatNode;
         };
+    }
+
+    protected IntentRoutingResult doRoute(String userMessage, String prompt, AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO) {
+        try {
+
+            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+
+            String response = chatClient.prompt(prompt).call().content();
+            log.debug("意图识别 LLM 原始响应: userMessage={}, response={}", userMessage, response);
+            return intentRoutingService.parseResponse(response);
+        } catch (Exception e) {
+            log.error("意图识别调用失败，降级为 UNKNOWN: userMessage={}, error={}",
+                    userMessage, e.getMessage());
+            return intentRoutingService.fallbackResult("LLM调用异常: " + e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")

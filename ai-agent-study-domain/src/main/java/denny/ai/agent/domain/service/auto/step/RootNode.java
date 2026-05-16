@@ -40,10 +40,13 @@ public class RootNode extends AbstractExecuteSupport {
         log.info("最大执行步数: {}", requestParameter.getMaxStep());
         log.info("会话ID: {}", requestParameter.getSessionId());
 
-        Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap = repository.queryAiAgentClientFlowConfig(requestParameter.getAiAgentId());
-
-        // 客户端对话组
-        dynamicContext.setAiAgentClientFlowConfigVOMap(aiAgentClientFlowConfigVOMap);
+        // 意图路由场景（aiAgentId 为空）：配置已在 RootNode.get() 中通过 queryAllFlowConfigForIntentRouting() 加载
+        // 此处不再重复加载，避免覆盖掉正确的配置
+        if (requestParameter.getAiAgentId() != null && !requestParameter.getAiAgentId().isBlank()) {
+            Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap =
+                    repository.queryAiAgentClientFlowConfig(requestParameter.getAiAgentId());
+            dynamicContext.setAiAgentClientFlowConfigVOMap(aiAgentClientFlowConfigVOMap);
+        }
         // 上下文信息 - 重置执行历史
         dynamicContext.setExecutionHistory(new StringBuilder());
         // 当前任务信息
@@ -72,18 +75,21 @@ public class RootNode extends AbstractExecuteSupport {
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
             ExecuteCommandEntity requestParameter,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        // 意图路由场景：无 aiAgentId，直接 queryAll + group by clientType
+        if (requestParameter.getAiAgentId() == null || requestParameter.getAiAgentId().isBlank()) {
+            Map<String, AiAgentClientFlowConfigVO> intentRoutingConfigMap =
+                    repository.queryAllFlowConfigForIntentRouting();
+            dynamicContext.setAiAgentClientFlowConfigVOMap(intentRoutingConfigMap);
+            return intentRoutingNode;
+        }
+
         // 巡检 Agent（aiAgentId = "5"）走独立流程
         if (Objects.equals(requestParameter.getAiAgentId(), "5")) {
             return intelligentInspection;
         }
 
         // 有显式 aiAgentId → PE 链路
-        if (requestParameter.getAiAgentId() != null && !requestParameter.getAiAgentId().isBlank()) {
-            return step1AnalyzerNode;
-        }
-
-        // 无 aiAgentId → 意图识别兜底
-        return intentRoutingNode;
+        return step1AnalyzerNode;
     }
 
     /**

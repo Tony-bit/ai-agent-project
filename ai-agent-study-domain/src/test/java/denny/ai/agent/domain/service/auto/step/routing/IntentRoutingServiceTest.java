@@ -71,7 +71,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"reasoning\":\"用户明确询问股票走势\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("分析平安银行", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("分析平安银行", "prompt");
 
         assertEquals(IntentTypeEnum.STOCK_ANALYSIS, result.getIntent());
         assertEquals(ConfidenceEnum.HIGH, result.getConfidence());
@@ -86,7 +86,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"PE_REASONING\",\"confidence\":\"MEDIUM\",\"reasoning\":\"逻辑推理任务\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("分析房价下跌影响", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("分析房价下跌影响", "prompt");
 
         assertEquals(IntentTypeEnum.PE_REASONING, result.getIntent());
         assertEquals(ConfidenceEnum.MEDIUM, result.getConfidence());
@@ -101,7 +101,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"reasoning\":\"数学计算\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("计算1.05的12次方", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("计算1.05的12次方", "prompt");
 
         assertEquals(IntentTypeEnum.PE_CALCULATION, result.getIntent());
         assertEquals(ConfidenceEnum.HIGH, result.getConfidence());
@@ -116,7 +116,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"MEDIUM\",\"reasoning\":\"知识查询\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("什么是RAG技术", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("什么是RAG技术", "prompt");
 
         assertEquals(IntentTypeEnum.PE_RETRIEVAL, result.getIntent());
         assertEquals(ConfidenceEnum.MEDIUM, result.getConfidence());
@@ -131,7 +131,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"reasoning\":\"健康检查请求\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("执行系统健康检查", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("执行系统健康检查", "prompt");
 
         assertEquals(IntentTypeEnum.INSPECTION, result.getIntent());
         assertEquals(ConfidenceEnum.HIGH, result.getConfidence());
@@ -146,7 +146,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"GENERAL_CHAT\",\"confidence\":\"LOW\",\"reasoning\":\"闲聊内容\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("今天天气怎么样", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("今天天气怎么样", "prompt");
 
         assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -161,7 +161,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"AMBIGUOUS\",\"confidence\":\"LOW\",\"reasoning\":\"意图不明确\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("那个事情怎么样了", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("那个事情怎么样了", "prompt");
 
         assertEquals(IntentTypeEnum.AMBIGUOUS, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -178,7 +178,7 @@ public class IntentRoutingServiceTest {
         String response = "invalid json response";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("hello", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("hello", "prompt");
 
         assertEquals(IntentTypeEnum.UNKNOWN, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -193,7 +193,7 @@ public class IntentRoutingServiceTest {
         String response = "{}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("hello", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("hello", "prompt");
 
         assertEquals(IntentTypeEnum.UNKNOWN, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -207,7 +207,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"STOCK_ANALYSIS\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("分析股票", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("分析股票", "prompt");
 
         assertEquals(IntentTypeEnum.STOCK_ANALYSIS, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -221,7 +221,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"confidence\":\"HIGH\",\"reasoning\":\"test\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("hello", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("hello", "prompt");
 
         assertEquals(IntentTypeEnum.UNKNOWN, result.getIntent());
     }
@@ -266,7 +266,7 @@ public class IntentRoutingServiceTest {
         when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
                 .thenThrow(new RuntimeException("LLM service unavailable"));
 
-        IntentRoutingResult result = intentRoutingService.route("hello", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("hello", "prompt");
 
         assertEquals(IntentTypeEnum.UNKNOWN, result.getIntent());
         assertEquals(ConfidenceEnum.LOW, result.getConfidence());
@@ -305,7 +305,7 @@ public class IntentRoutingServiceTest {
         String response = "{\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\"}";
         mockLLMResponse(response);
 
-        IntentRoutingResult result = intentRoutingService.route("分析股票", "prompt");
+        IntentRoutingResult result = intentRoutingService.doRoute("分析股票", "prompt");
 
         assertEquals("无推理过程", result.getReasoning());
     }

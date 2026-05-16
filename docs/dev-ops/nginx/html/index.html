@@ -446,6 +446,7 @@
                     <div class="flex items-center gap-2">
                         <label for="aiAgentSelect" class="text-sm font-medium text-gray-700">智能体类型</label>
                         <select id="aiAgentSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                            <option value="">不选择（使用默认智能体）</option>
                             <option value="3">Auto Agent - 自动智能对话体-3</option>
                             <option value="4">Auto Agent - 自动智能对话体-4</option>
                             <option value="5">Auto Agent - 自动智能对话体-5</option>
@@ -1095,13 +1096,16 @@
         document.getElementById('loading').style.display = 'block';
 
         // 准备请求数据
+        const aiAgentId = document.getElementById('aiAgentSelect').value;
         const requestData = {
-            aiAgentId: document.getElementById('aiAgentSelect').value,
             message: message,
             sessionId: sessionId,
             userId: currentUserId,
             maxStep: parseInt(document.getElementById('maxStepSelect').value)
         };
+        if (aiAgentId) {
+            requestData.aiAgentId = aiAgentId;
+        }
 
         // 发送POST请求
         fetch('http://localhost:8090/api/v1/agent/auto_agent', {

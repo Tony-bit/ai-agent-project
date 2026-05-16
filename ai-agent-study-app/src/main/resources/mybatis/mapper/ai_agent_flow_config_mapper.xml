@@ -69,5 +69,16 @@
         FROM ai_agent_flow_config
         ORDER BY agent_id ASC, sequence ASC
     </select>
+
+    <select id="queryAllForIntentRouting" resultMap="AiAgentFlowConfigMap">
+        SELECT id, agent_id, client_id, client_name, client_type, sequence, step_prompt, create_time
+        FROM ai_agent_flow_config t1
+        WHERE sequence = (
+            SELECT MIN(t2.sequence)
+            FROM ai_agent_flow_config t2
+            WHERE t2.client_type = t1.client_type
+        )
+        ORDER BY sequence ASC
+    </select>
 </mapper>
 

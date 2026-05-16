@@ -26,4 +26,12 @@ public interface IAgentRepository {
 
     Map<String, AiAgentClientFlowConfigVO> queryAiAgentClientFlowConfig(String aiAgentId);
 
+    /**
+     * 查询所有客户端配置用于意图路由场景。
+     * 按 client_type 分组，每种类型取 sequence 最小的记录，
+     * 意图路由下游节点各自按 client_type 取用。
+     * @return 按 clientType 聚合的配置 Map
+     */
+    Map<String, AiAgentClientFlowConfigVO> queryAllFlowConfigForIntentRouting();
+
 }

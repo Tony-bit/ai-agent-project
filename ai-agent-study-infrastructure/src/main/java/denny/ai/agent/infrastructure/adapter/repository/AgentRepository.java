@@ -547,6 +547,43 @@ public class AgentRepository implements IAgentRepository {
     }
 
     @Override
+    public Map<String, AiAgentClientFlowConfigVO> queryAllFlowConfigForIntentRouting() {
+        try {
+            List<AiAgentFlowConfigPO> flowConfigs = aiAgentFlowConfigDao.queryAllForIntentRouting();
+            if (flowConfigs == null || flowConfigs.isEmpty()) {
+                return Map.of();
+            }
+
+            // 批量查出所有 TYPE_STEP 生效记录，一次 DB 查询解决 N+1
+            List<AiClientSystemPromptPO> activeStepPrompts =
+                    aiClientSystemPromptDao.queryActivePromptsByPromptType(AiClientSystemPromptPO.TYPE_STEP);
+            Map<String, String> stepPromptMap = activeStepPrompts.stream()
+                    .collect(Collectors.toMap(
+                            AiClientSystemPromptPO::getPromptId,
+                            AiClientSystemPromptPO::getPromptContent,
+                            (v1, v2) -> v1
+                    ));
+
+            Map<String, AiAgentClientFlowConfigVO> result = new HashMap<>();
+            for (AiAgentFlowConfigPO flowConfig : flowConfigs) {
+                String stepPrompt = stepPromptMap.getOrDefault(flowConfig.getClientId(), flowConfig.getStepPrompt());
+                AiAgentClientFlowConfigVO configVO = AiAgentClientFlowConfigVO.builder()
+                        .clientId(flowConfig.getClientId())
+                        .clientName(flowConfig.getClientName())
+                        .clientType(flowConfig.getClientType())
+                        .sequence(flowConfig.getSequence())
+                        .stepPrompt(stepPrompt)
+                        .build();
+                result.put(flowConfig.getClientType(), configVO);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Query all flow config for intent routing failed", e);
+            return Map.of();
+        }
+    }
+
+    @Override
     public Map<String, AiClientSystemPromptVO> queryAiClientSystemPromptMapByClientIds(List<String> clientIdList) {
         List<AiClientSystemPromptVO> aiClientSystemPrompts = AiClientSystemPromptVOByClientIds(clientIdList);
 
