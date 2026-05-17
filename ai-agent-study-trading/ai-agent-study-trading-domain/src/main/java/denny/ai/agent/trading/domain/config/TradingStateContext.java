@@ -74,7 +74,70 @@ public class TradingStateContext {
         this.errorMessage = msg;
         this.currentPhase = TradingPhase.ERROR;
         log.error("交易流程进入 ERROR 状态: {}", msg);
-        sendSseResult("trading", "error", msg != null ? msg : "交易分析过程中发生错误，请重试", true);
+
+        String friendlyMessage = getFriendlyErrorMessage(msg);
+        sendSseResult("trading", "error", friendlyMessage, true);
+    }
+
+    /**
+     * 将技术错误信息转换为用户友好的中文提示
+     */
+    private String getFriendlyErrorMessage(String originalMsg) {
+        if (originalMsg == null) {
+            return "交易分析过程中发生未知错误，请稍后重试";
+        }
+
+        String lowerMsg = originalMsg.toLowerCase();
+
+        // Prompt 超长
+        if (lowerMsg.contains("prompt exceeds max length") || lowerMsg.contains("max length")
+                || lowerMsg.contains("1261")) {
+            return "请求内容过长，AI模型处理能力有限。建议减少分析范围或简化问题描述后重试。";
+        }
+        // 超时
+        if (lowerMsg.contains("timeout") || lowerMsg.contains("超时")) {
+            return "网络请求超时，服务器响应时间过长。请检查网络连接后重试。";
+        }
+        // 连接失败
+        if (lowerMsg.contains("connection") || lowerMsg.contains("connect")
+                || lowerMsg.contains("failed to connect")) {
+            return "无法连接到AI服务，请稍后重试或联系技术支持。";
+        }
+        // 限流
+        if (lowerMsg.contains("rate limit") || lowerMsg.contains("429")
+                || lowerMsg.contains("too many requests")) {
+            return "请求过于频繁，请稍后再试。";
+        }
+        // 认证失败
+        if (lowerMsg.contains("unauthorized") || lowerMsg.contains("401")
+                || lowerMsg.contains("api key") || lowerMsg.contains("认证")) {
+            return "认证失败，请检查账户权限设置。";
+        }
+        // 股票代码未找到
+        if ((lowerMsg.contains("股票代码") || lowerMsg.contains("ticker"))
+                && (lowerMsg.contains("不能为空") || lowerMsg.contains("null")
+                    || lowerMsg.contains("not found") || lowerMsg.contains("未找到")
+                    || lowerMsg.contains("不存在"))) {
+            return "未能识别股票代码，请提供完整的股票代码（如600519、000858）或公司全称。";
+        }
+        // 分析师执行异常
+        if (lowerMsg.contains("分析师执行异常") || lowerMsg.contains("analyst")) {
+            return "分析过程中遇到问题，请稍后重试或调整分析参数。";
+        }
+        // 节点执行异常
+        if (lowerMsg.contains("节点执行异常") || lowerMsg.contains("节点处理异常")) {
+            return "处理过程中遇到问题，请稍后重试。";
+        }
+
+        // 默认友好消息
+        return "分析过程中遇到问题（" + truncateMessage(originalMsg, 50) + "），请稍后重试或简化问题描述。";
+    }
+
+    private String truncateMessage(String msg, int maxLen) {
+        if (msg == null || msg.length() <= maxLen) {
+            return msg;
+        }
+        return msg.substring(0, maxLen) + "...";
     }
 
     /**

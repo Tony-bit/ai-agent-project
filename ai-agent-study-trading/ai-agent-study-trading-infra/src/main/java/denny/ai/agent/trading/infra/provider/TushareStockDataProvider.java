@@ -307,6 +307,34 @@ public class TushareStockDataProvider implements IStockDataProvider {
         }
     }
 
+    @Override
+    public List<StockSearchResultVO> searchByName(String name) {
+        try {
+            List<TushareStockBasicDTO> data = apiClient.callGeneric(
+                    TushareStockBasicDTO.class, "stock_basic",
+                    Map.of("name", name, "list_status", "L"),
+                    "ts_code,symbol,name,exchange,market");
+
+            if (data.isEmpty()) {
+                log.warn("根据名称搜索股票未找到结果: name={}", name);
+                return Collections.emptyList();
+            }
+
+            return data.stream()
+                    .map(dto -> StockSearchResultVO.builder()
+                            .ticker(dto.getSymbol())
+                            .name(dto.getName())
+                            .exchange(dto.getExchange())
+                            .market(dto.getMarket())
+                            .tsCode(dto.getTsCode())
+                            .build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("根据名称搜索股票失败: name={}, error={}", name, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     // ==================== 辅助方法 ====================
 
     /**

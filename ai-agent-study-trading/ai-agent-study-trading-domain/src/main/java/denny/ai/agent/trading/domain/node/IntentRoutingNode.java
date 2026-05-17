@@ -50,7 +50,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         log.info("开始意图识别，用户消息: {}", requestParameter.getMessage());
         ChatClient chatClient = getChatClientByClientId("6001", 0);
 
-
+        // 注意：ChatClient 已通过 AiClientNode 配置了 defaultToolCallbacks，无需再次调用 .tools()
         String response = chatClient.prompt()
                 .system(IntentRoutingPrompt.SYSTEM_PROMPT)
                 .user(requestParameter.getMessage())
@@ -107,9 +107,20 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     private void handleStockAnalysisIntent(ExecuteCommandEntity requestParameter,
                                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                           TradingIntentRoutingService.IntentRoutingResult result) {
+        String ticker = result.getTicker();
+
+        // 兜底：如果 ticker 为 null 且意图是 STOCK_ANALYSIS，尝试从消息中提取公司名称并搜索
+        if (ticker == null && result.getIntent() == IntentEnumVO.STOCK_ANALYSIS) {
+            String companyName = extractCompanyName(requestParameter.getMessage());
+            if (companyName != null && !companyName.isEmpty()) {
+                ticker = tradingIntentRoutingService.searchTickerByName(companyName);
+                log.info("LLM 未返回 ticker，已通过搜索获取: company={}, ticker={}", companyName, ticker);
+            }
+        }
+
         if (result.getConfidence() == ConfidenceEnum.HIGH) {
             StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
-                    .ticker(result.getTicker())
+                    .ticker(ticker)
                     .selectedAnalysts(result.getSelectedAnalysts())
                     .maxDebateRounds(2)
                     .maxRiskRounds(1)
@@ -117,17 +128,42 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                     .build();
 
             dynamicContext.setValue(TRADING_REQUEST_KEY, tradingRequest);
-            log.info("高置信度股票分析意图，设置 trading_request: {}", tradingRequest.getTicker());
+            log.info("高置信度股票分析意图，设置 trading_request: ticker={}", ticker);
 
         } else if (result.getConfidence() == ConfidenceEnum.MEDIUM) {
             dynamicContext.setValue(NEEDS_CONFIRMATION_KEY, true);
-            dynamicContext.setValue("pending_ticker", result.getTicker());
+            dynamicContext.setValue("pending_ticker", ticker);
             dynamicContext.setValue("pending_analysts", result.getSelectedAnalysts());
-            log.info("中置信度股票分析意图，等待用户确认: ticker={}", result.getTicker());
+            log.info("中置信度股票分析意图，等待用户确认: ticker={}", ticker);
 
         } else {
-            log.info("低置信度股票分析意图，不触发交易流程: ticker={}", result.getTicker());
+            log.info("低置信度股票分析意图，不触发交易流程: ticker={}", ticker);
         }
+    }
+
+    /**
+     * 从消息中提取公司名称。
+     */
+    private String extractCompanyName(String message) {
+        if (message == null || message.isEmpty()) {
+            return null;
+        }
+        // 去除常见前缀
+        String[] prefixes = {"帮我分析一下", "帮我看看", "分析一下", "看看", "分析", "帮我", "我想了解"};
+        String temp = message;
+        for (String prefix : prefixes) {
+            if (temp.startsWith(prefix)) {
+                temp = temp.substring(prefix.length()).trim();
+            }
+        }
+        // 去除常见后缀
+        String[] suffixes = {"怎么样", "如何", "的股票", "股票"};
+        for (String suffix : suffixes) {
+            if (temp.endsWith(suffix)) {
+                temp = temp.substring(0, temp.length() - suffix.length()).trim();
+            }
+        }
+        return temp.isEmpty() ? null : temp;
     }
 
     private void sendIntentRoutingEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

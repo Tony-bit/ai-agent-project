@@ -624,7 +624,9 @@
         'supervision': { name: '监督阶段', icon: '🔍', class: 'stage-supervision' },
         'summary': { name: '总结阶段', icon: '📊', class: 'stage-summary' },
         'error': { name: '错误信息', icon: '❌', class: 'stage-error' },
-        'complete': { name: '完成', icon: '✅', class: 'stage-summary' }
+        'complete': { name: '完成', icon: '✅', class: 'stage-summary' },
+        'trading': { name: '交易分析', icon: '📈', class: 'stage-analysis' },
+        'final': { name: '最终决策', icon: '🎯', class: 'stage-summary' }
     };
 
     // 子类型映射
@@ -647,7 +649,21 @@
         'incomplete_reasons': '未完成原因',
         'evaluation': '效果评估',
         'summary_overview': '总结概览',
-        'inspection_report': '巡检报告'
+        'inspection_report': '巡检报告',
+        // trading 模块相关
+        'error': '错误',
+        'trading_complete': '分析完成',
+        'progress': '进度',
+        'analysis_start': '分析开始',
+        'final_decision': '最终决策',
+        'aggressive_opinion': '激进观点',
+        'conservative_opinion': '保守观点',
+        'neutral_opinion': '中立观点',
+        'fundamental_analysis': '基本面分析',
+        'technical_analysis': '技术面分析',
+        'sentiment_analysis': '情绪分析',
+        'news_analysis': '新闻分析',
+        'risk_debate': '风险辩论'
     };
 
     // ========== 会话列表相关 ==========
@@ -1088,12 +1104,8 @@
         // 清空输入框
         messageInput.value = '';
 
-        // 禁用发送按钮
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = true;
-
         // 显示加载状态
-        document.getElementById('loading').style.display = 'block';
+        showLoadingState();
 
         // 准备请求数据
         const aiAgentId = document.getElementById('aiAgentSelect').value;
@@ -1118,7 +1130,7 @@
         })
         .then(response => {
             if (!response.ok) {
-                throw new Error('网络请求失败: ' + response.status);
+                throw new NetworkError('网络请求失败: ' + response.status);
             }
 
             // 处理流式响应
@@ -1146,10 +1158,7 @@
                 reader.read().then(({ done, value }) => {
                     if (done) {
                         // Stream ended
-                        isConnected = false;
-                        sendBtn.disabled = false;
-                        document.getElementById('loading').style.display = 'none';
-                        // 添加完成标识
+                        closeLoadingState('general');
                         addStageMessage('complete', null, '任务执行完成', null);
                         return;
                     }
@@ -1168,9 +1177,8 @@
                                     const jsonData = JSON.parse(data);
                                     handleSSEMessage(jsonData);
                                 } catch (e) {
-                                    // If not JSON, treat as plain text
-                                    console.warn('无法解析JSON数据:', data);
-                                    addStageMessage('error', null, data, null);
+                                    // JSON解析失败，忽略不友好的原始数据
+                                    console.warn('无法解析JSON数据，已忽略:', data.substring(0, 100));
                                 }
                                 // Scroll to bottom after adding content
                                 scrollToBottom();
@@ -1181,20 +1189,16 @@
                     readStream();
                 }).catch(error => {
                     console.error('读取流数据错误:', error);
-                    isConnected = false;
-                    sendBtn.disabled = false;
-                    document.getElementById('loading').style.display = 'none';
-                    addStageMessage('error', null, '连接中断，请重试', null);
+                    closeLoadingState('general');
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
                 });
             }
             readStream();
         })
         .catch(error => {
             console.error('请求错误:', error);
-            isConnected = false;
-            sendBtn.disabled = false;
-            document.getElementById('loading').style.display = 'none';
-            addStageMessage('error', null, '请求失败: ' + error.message, null);
+            closeLoadingState('general');
+            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
         });
     }
 
@@ -1210,23 +1214,84 @@
         addStageMessage(type, subType, content, step);
 
         // 如果收到错误类型消息或完成标记，关闭 loading 并恢复按钮状态
-        if (type === 'error' || type === 'complete') {
+        // type='error' 是 auto_agent 的错误格式
+        // type='trading' + subType='error' 是 trading 模块的错误格式
+        // type='final' 是 final_decision 的完成格式
+        // type='trading' + subType='trading_complete' 是 trading 模块的完成格式
+        if (type === 'error' || type === 'final' ||
+            (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
             closeLoadingState();
         }
     }
 
     // 关闭加载状态，恢复 UI 交互
-    function closeLoadingState() {
+    function closeLoadingState(mode) {
         isConnected = false;
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('sendBtn').disabled = false;
-        document.getElementById('sendTradingBtn').disabled = false;
-        document.getElementById('sendTradingBtn').innerHTML = `
+
+        const sendBtn = document.getElementById('sendBtn');
+        sendBtn.disabled = false;
+
+        const sendTradingBtn = document.getElementById('sendTradingBtn');
+        sendTradingBtn.disabled = false;
+        sendTradingBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             开始金融分析
         `;
+    }
+
+    // 显示加载状态
+    function showLoadingState() {
+        const sendBtn = document.getElementById('sendBtn');
+        sendBtn.disabled = true;
+        document.getElementById('loading').style.display = 'block';
+    }
+
+    // 将技术错误转换为用户友好的中文提示
+    function getFriendlyErrorMessage(error) {
+        const msg = error.message || String(error);
+        const lowerMsg = msg.toLowerCase();
+
+        // 网络断开
+        if (lowerMsg.includes('network') || lowerMsg.includes('failed to fetch')
+                || lowerMsg.includes('net::err') || lowerMsg.includes('网络')) {
+            return '网络连接不稳定，请检查网络后重试';
+        }
+        // 超时
+        if (lowerMsg.includes('timeout') || lowerMsg.includes('超时')) {
+            return '请求超时，服务器响应时间过长，请稍后重试';
+        }
+        // 服务端错误
+        if (lowerMsg.includes('500') || lowerMsg.includes('502') || lowerMsg.includes('503')
+                || lowerMsg.includes('内部错误') || lowerMsg.includes('server error')) {
+            return '服务器暂时不可用，请稍后再试';
+        }
+        // 客户端错误
+        if (lowerMsg.includes('400') || lowerMsg.includes('bad request')) {
+            return '请求格式有误，请稍后重试';
+        }
+        // 未授权
+        if (lowerMsg.includes('401') || lowerMsg.includes('unauthorized')
+                || lowerMsg.includes('未授权') || lowerMsg.includes('认证')) {
+            return '认证失败，请刷新页面或重新登录';
+        }
+        // 请求被拒绝
+        if (lowerMsg.includes('403') || lowerMsg.includes('forbidden')
+                || lowerMsg.includes('拒绝')) {
+            return '访问被拒绝，请联系管理员';
+        }
+        // 404 资源不存在
+        if (lowerMsg.includes('404') || lowerMsg.includes('not found')) {
+            return '请求的资源不存在，请检查输入后重试';
+        }
+        // CORS 跨域
+        if (lowerMsg.includes('cors') || lowerMsg.includes('跨域')) {
+            return '跨域请求失败，请联系技术支持';
+        }
+        // 默认
+        return '请求失败（' + msg.substring(0, 50) + '），请稍后重试';
     }
 
     // 添加阶段消息
@@ -1249,6 +1314,9 @@
         const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
         const subTypeName = subType ? subTypeMap[subType] || subType : '';
 
+        // 判断是否为错误消息
+        const isError = type === 'error' || subType === 'error';
+
         // 构建标识标签
         let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
         if (subTypeName) {
@@ -1261,14 +1329,29 @@
         // 渲染Markdown内容
         const renderedContent = marked.parse(content);
 
-        messageDiv.innerHTML = `
-            <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <span class="text-white text-sm font-semibold">AI</span>
+        // 错误消息特殊样式
+        const errorBoxClass = isError ? 'bg-red-50 border-2 border-red-300' : 'bg-primary-50';
+        const errorIndicator = isError ? `
+            <div class="flex items-center gap-2 mb-2 text-red-600 font-semibold">
+                <span class="text-xl">⚠️</span>
+                <span>操作失败</span>
             </div>
-            <div class="flex-1 bg-primary-50 rounded-lg p-3">
-                <div class="text-sm text-primary-800">
-                    <strong>AI助手:</strong> ${indicators}
-                    <div class="markdown-content">${renderedContent}</div>
+        ` : '';
+
+        messageDiv.innerHTML = `
+            <div class="w-8 h-8 ${isError ? 'bg-red-500' : 'bg-primary-600'} rounded-full flex items-center justify-center flex-shrink-0">
+                <span class="text-white text-sm font-semibold">${isError ? '!' : 'AI'}</span>
+            </div>
+            <div class="flex-1 ${errorBoxClass} rounded-lg p-3">
+                <div class="text-sm ${isError ? 'text-red-800' : 'text-primary-800'}">
+                    ${errorIndicator}
+                    <strong>${isError ? '系统提示:' : 'AI助手:'} </strong>${indicators}
+                    <div class="markdown-content ${isError ? 'text-red-700' : ''}">${renderedContent}</div>
+                    ${isError ? `
+                        <div class="mt-2 text-xs text-red-500">
+                            💡 提示：请检查输入是否正确，或稍后重试
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -1560,15 +1643,7 @@
             function readStream() {
                 reader.read().then(({ done, value }) => {
                     if (done) {
-                        isConnected = false;
-                        sendBtn.disabled = false;
-                        sendBtn.innerHTML = `
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            开始金融分析
-                        `;
-                        document.getElementById('loading').style.display = 'none';
+                        closeLoadingState('trading');
                         addStageMessage('complete', null, '金融分析完成', null);
                         return;
                     }
@@ -1583,8 +1658,8 @@
                                     const jsonData = JSON.parse(data);
                                     handleSSEMessage(jsonData);
                                 } catch (e) {
-                                    console.warn('无法解析JSON数据:', data);
-                                    addStageMessage('error', null, data, null);
+                                    // JSON解析失败，忽略不友好的原始数据
+                                    console.warn('无法解析JSON数据，已忽略');
                                 }
                             }
                         }
@@ -1593,32 +1668,16 @@
                     readStream();
                 }).catch(error => {
                     console.error('读取流数据错误:', error);
-                    isConnected = false;
-                    sendBtn.disabled = false;
-                    sendBtn.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        开始金融分析
-                    `;
-                    document.getElementById('loading').style.display = 'none';
-                    addStageMessage('error', null, '连接中断，请重试', null);
+                    closeLoadingState('trading');
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
                 });
             }
             readStream();
         })
         .catch(error => {
             console.error('请求错误:', error);
-            isConnected = false;
-            sendBtn.disabled = false;
-            sendBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                开始金融分析
-            `;
-            document.getElementById('loading').style.display = 'none';
-            addStageMessage('error', null, '请求失败: ' + error.message, null);
+            closeLoadingState('trading');
+            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
         });
     }
 

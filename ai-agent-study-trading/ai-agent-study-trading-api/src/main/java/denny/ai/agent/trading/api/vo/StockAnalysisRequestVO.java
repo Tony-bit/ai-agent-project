@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -16,20 +19,29 @@ import java.util.List;
 @AllArgsConstructor
 public class StockAnalysisRequestVO {
 
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     /**
      * 股票代码，如 NVDA、AAPL
      */
     private String ticker;
 
     /**
-     * 分析日期，格式 yyyy-MM-dd
+     * 分析日期，格式 yyyy-MM-dd，默认当天
      */
-    private String tradeDate;
+    @Builder.Default
+    private String tradeDate = LocalDate.now().format(DATE_FORMATTER);
 
     /**
      * 启用的分析师类型列表，null 表示使用默认全部
      */
-    private List<AnalystTypeEnum> selectedAnalysts;
+    @Builder.Default
+    private List<AnalystTypeEnum> selectedAnalysts = Arrays.asList(
+            AnalystTypeEnum.FUNDAMENTAL,
+            AnalystTypeEnum.TECHNICAL,
+            AnalystTypeEnum.SENTIMENT,
+            AnalystTypeEnum.NEWS
+    );
 
     /**
      * 辩论轮次，默认 2
@@ -54,8 +66,6 @@ public class StockAnalysisRequestVO {
     public static StockAnalysisRequestVO of(String ticker) {
         return StockAnalysisRequestVO.builder()
                 .ticker(ticker)
-                .maxDebateRounds(2)
-                .maxRiskRounds(1)
                 .build();
     }
 
@@ -66,8 +76,6 @@ public class StockAnalysisRequestVO {
         return StockAnalysisRequestVO.builder()
                 .ticker(ticker)
                 .tradeDate(tradeDate)
-                .maxDebateRounds(2)
-                .maxRiskRounds(1)
                 .build();
     }
 }

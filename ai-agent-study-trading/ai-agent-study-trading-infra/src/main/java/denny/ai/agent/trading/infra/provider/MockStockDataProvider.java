@@ -303,4 +303,60 @@ public class MockStockDataProvider implements IStockDataProvider {
                     .build();
         };
     }
+
+    @Override
+    public List<StockSearchResultVO> searchByName(String name) {
+        // Mock 数据：返回预定义的几只股票
+        Map<String, StockSearchResultVO> mockData = Map.of(
+                "药明康德", StockSearchResultVO.builder()
+                        .ticker("603259")
+                        .name("药明康德")
+                        .exchange("SSE")
+                        .market("科创板")
+                        .tsCode("603259.SH")
+                        .build(),
+                "贵州茅台", StockSearchResultVO.builder()
+                        .ticker("600519")
+                        .name("贵州茅台")
+                        .exchange("SSE")
+                        .market("主板")
+                        .tsCode("600519.SH")
+                        .build(),
+                "宁德时代", StockSearchResultVO.builder()
+                        .ticker("300750")
+                        .name("宁德时代")
+                        .exchange("SZSE")
+                        .market("创业板")
+                        .tsCode("300750.SZ")
+                        .build(),
+                "比亚迪", StockSearchResultVO.builder()
+                        .ticker("002594")
+                        .name("比亚迪")
+                        .exchange("SZSE")
+                        .market("主板")
+                        .tsCode("002594.SZ")
+                        .build(),
+                "平安银行", StockSearchResultVO.builder()
+                        .ticker("000001")
+                        .name("平安银行")
+                        .exchange("SZSE")
+                        .market("主板")
+                        .tsCode("000001.SZ")
+                        .build()
+        );
+
+        // 精确匹配
+        if (mockData.containsKey(name)) {
+            return List.of(mockData.get(name));
+        }
+
+        // 模糊匹配（包含关键词）
+        List<StockSearchResultVO> results = new ArrayList<>();
+        for (StockSearchResultVO vo : mockData.values()) {
+            if (vo.getName().contains(name) || name.contains(vo.getName())) {
+                results.add(vo);
+            }
+        }
+        return results;
+    }
 }

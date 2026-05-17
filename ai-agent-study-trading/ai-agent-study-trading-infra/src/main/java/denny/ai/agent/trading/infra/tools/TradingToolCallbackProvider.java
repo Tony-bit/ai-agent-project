@@ -54,20 +54,27 @@ public class TradingToolCallbackProvider {
     }
 
     @Bean
+    public ToolCallback searchStockByNameCallback(TradingToolCallbacks callbacks) {
+        return callbacks.searchStockByNameCallback();
+    }
+
+    @Bean
     public List<ToolCallback> tradingToolCallbackList(
             ToolCallback stockInfoCallback,
             ToolCallback historicalBarsCallback,
             ToolCallback technicalIndicatorsCallback,
             ToolCallback fundamentalDataCallback,
             ToolCallback sentimentCallback,
-            ToolCallback stockNewsCallback) {
+            ToolCallback stockNewsCallback,
+            ToolCallback searchStockByNameCallback) {
         return List.of(
                 stockInfoCallback,
                 historicalBarsCallback,
                 technicalIndicatorsCallback,
                 fundamentalDataCallback,
                 sentimentCallback,
-                stockNewsCallback
+                stockNewsCallback,
+                searchStockByNameCallback
         );
     }
 }

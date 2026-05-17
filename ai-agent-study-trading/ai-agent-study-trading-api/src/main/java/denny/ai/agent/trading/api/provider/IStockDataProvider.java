@@ -66,4 +66,14 @@ public interface IStockDataProvider {
      * @return 情绪数据
      */
     SentimentDataVO getSentiment(String ticker);
+
+    /**
+     * 根据股票名称搜索股票代码。
+     * <p>
+     * 调用 Tushare stock_basic 接口的 name 参数进行模糊匹配。
+     *
+     * @param name 股票名称（支持模糊匹配，如"药明康德"）
+     * @return 匹配的股票列表
+     */
+    List<StockSearchResultVO> searchByName(String name);
 }

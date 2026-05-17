@@ -19,7 +19,6 @@ import java.util.Map;
 
 /**
  * Trading 领域 ToolCallback 工厂类。
- * <p>
  * 将 {@link IStockDataProvider} 的 6 个方法逐个包装为独立的 {@link ToolCallback} 实例。
  * 生成的 ToolCallback Bean 由 {@link TradingToolCallbackProvider} 注册，
  * 再由 {@link denny.ai.agent.domain.service.armory.AiClientNode} 注入到 ChatClient。
@@ -122,6 +121,19 @@ public class TradingToolCallbacks {
                 int limit = parseInteger(input.get("limit"), 5);
                 List<NewsItemVO> news = provider.getNews(ticker, limit);
                 return formatNews(news);
+            }
+        };
+    }
+
+    public ToolCallback searchStockByNameCallback() {
+        return new AbstractToolCallback("search_stock_by_name",
+                "根据股票中文名称搜索股票代码。当用户提到公司名但未提供股票代码时，必须调用此工具。适用场景：用户说'分析一下药明康德'时，需要先调用此工具获取股票代码。",
+                buildInputSchema("name", "股票中文名称，支持模糊匹配，如 药明康德、贵州茅台、宁德时代、比亚迪")) {
+            @Override
+            protected String doExecute(Map<String, Object> input) {
+                String name = (String) input.get("name");
+                List<StockSearchResultVO> results = provider.searchByName(name);
+                return formatSearchResults(results);
             }
         };
     }
@@ -388,6 +400,31 @@ public class TradingToolCallbacks {
             sb.append("\n");
         }
         return sb.toString();
+    }
+
+    private String formatSearchResults(List<StockSearchResultVO> results) {
+        if (results == null || results.isEmpty()) {
+            return "未找到匹配的股票，请尝试其他名称";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 搜索结果（共 ").append(results.size()).append(" 条）\n\n");
+        for (int i = 0; i < results.size(); i++) {
+            StockSearchResultVO r = results.get(i);
+            sb.append(i + 1).append(". ").append(r.getName())
+                    .append(" (").append(r.getTicker()).append(") [");
+            sb.append(formatExchange(r.getExchange())).append("-").append(nvl(r.getMarket())).append("]\n");
+        }
+        return sb.toString();
+    }
+
+    private String formatExchange(String exchange) {
+        if (exchange == null) return "未知";
+        return switch (exchange) {
+            case "SSE" -> "上交所";
+            case "SZSE" -> "深交所";
+            case "BSE" -> "北交所";
+            default -> exchange;
+        };
     }
 
     // ==================== 辅助格式化方法 ====================
