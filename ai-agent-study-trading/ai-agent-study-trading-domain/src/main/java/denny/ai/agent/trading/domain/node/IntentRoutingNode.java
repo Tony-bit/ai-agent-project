@@ -13,9 +13,15 @@ import denny.ai.agent.trading.domain.prompt.IntentRoutingPrompt;
 import denny.ai.agent.trading.domain.service.TradingIntentRoutingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 意图路由节点。
@@ -50,12 +56,25 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         log.info("开始意图识别，用户消息: {}", requestParameter.getMessage());
         ChatClient chatClient = getChatClientByClientId("6001", 0);
 
-        // 注意：ChatClient 已通过 AiClientNode 配置了 defaultToolCallbacks，无需再次调用 .tools()
-        String response = chatClient.prompt()
-                .system(IntentRoutingPrompt.SYSTEM_PROMPT)
-                .user(requestParameter.getMessage())
-                .call()
-                .content();
+        // 构建临时对话历史，让 LLM 在其中执行 tool 调用
+        List<org.springframework.ai.chat.messages.Message> messages = List.of(
+                new SystemMessage(IntentRoutingPrompt.SYSTEM_PROMPT),
+                new UserMessage(requestParameter.getMessage())
+        );
+
+        // stream() 返回 Flux<String>，通过 block() 同步获取最终内容
+        List<String> contentParts = chatClient.prompt()
+                .messages(messages)
+                .advisors(PromptChatMemoryAdvisor.builder(
+                        MessageWindowChatMemory.builder()
+                                .maxMessages(10)
+                                .build()
+                ).build())
+                .stream()
+                .content()
+                .collectList()
+                .block();
+        String response = contentParts != null ? String.join("", contentParts) : "";
 
         log.debug("意图识别 LLM 原始响应: {}", response);
 
@@ -113,8 +132,15 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         if (ticker == null && result.getIntent() == IntentEnumVO.STOCK_ANALYSIS) {
             String companyName = extractCompanyName(requestParameter.getMessage());
             if (companyName != null && !companyName.isEmpty()) {
+                log.info("开始通过公司名搜索股票: company={}", companyName);
                 ticker = tradingIntentRoutingService.searchTickerByName(companyName);
-                log.info("LLM 未返回 ticker，已通过搜索获取: company={}, ticker={}", companyName, ticker);
+                if (ticker != null) {
+                    log.info("Java 兜底搜索成功: company={}, ticker={}", companyName, ticker);
+                } else {
+                    log.warn("Java 兜底搜索失败，将以 ticker=null 继续流程: company={}", companyName);
+                }
+            } else {
+                log.warn("无法从消息中提取有效公司名: {}", requestParameter.getMessage());
             }
         }
 
@@ -148,22 +174,38 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         if (message == null || message.isEmpty()) {
             return null;
         }
-        // 去除常见前缀
-        String[] prefixes = {"帮我分析一下", "帮我看看", "分析一下", "看看", "分析", "帮我", "我想了解"};
-        String temp = message;
+        // 去除常见前缀（按长度降序排列，确保长前缀优先匹配）
+        String[] prefixes = {
+                "帮我分析一下", "帮我看看", "帮我查一下", "帮我找一下",
+                "分析一下", "看看", "查一下", "找一下",
+                "分析", "查看", "查询", "查找",
+                "帮我", "我想了解", "请帮我", "请问"
+        };
+        String temp = message.trim();
         for (String prefix : prefixes) {
             if (temp.startsWith(prefix)) {
                 temp = temp.substring(prefix.length()).trim();
+                break; // 只去除第一个匹配的前缀
             }
         }
+        // 如果去除前缀后是"的股票"结尾，去掉
+        if (temp.endsWith("的股票")) {
+            temp = temp.substring(0, temp.length() - 4).trim();
+        }
         // 去除常见后缀
-        String[] suffixes = {"怎么样", "如何", "的股票", "股票"};
+        String[] suffixes = {"怎么样", "如何", "好吗", "股票"};
         for (String suffix : suffixes) {
             if (temp.endsWith(suffix)) {
                 temp = temp.substring(0, temp.length() - suffix.length()).trim();
             }
         }
-        return temp.isEmpty() ? null : temp;
+        // 如果剩余内容太短（<2字符）或太长（>4字符），认为是无效提取
+        // A股公司名最长4个字，如"贵州茅台"、"宁德时代"
+        if (temp.length() < 2 || temp.length() > 4) {
+            log.warn("公司名提取结果可疑（长度不在2-4之间），返回 null: original={}, extracted={}", message, temp);
+            return null;
+        }
+        return temp;
     }
 
     private void sendIntentRoutingEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
