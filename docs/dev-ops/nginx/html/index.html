@@ -15,313 +15,448 @@
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
                     },
                     colors: {
                         primary: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            300: '#7dd3fc',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            800: '#075985',
-                            900: '#0c4a6e',
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
                         }
-                    }
+                    },
+                    boxShadow: {
+                        'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
+                        'soft-lg': '0 10px 40px -10px rgba(0, 0, 0, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.05)',
+                        'glow': '0 0 20px rgba(59, 130, 246, 0.3)',
+                    },
+                    animation: {
+                        'float': 'float 3s ease-in-out infinite',
+                        'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
+                        'slide-up': 'slide-up 0.3s ease-out',
+                        'slide-down': 'slide-down 0.3s ease-out',
+                        'fade-in': 'fade-in 0.4s ease-out',
+                    },
+                    keyframes: {
+                        'float': {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-5px)' },
+                        },
+                        'pulse-soft': {
+                            '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+                            '50%': { opacity: '0.7', transform: 'scale(1.1)' },
+                        },
+                        'slide-up': {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        'slide-down': {
+                            '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        'fade-in': {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                    },
                 }
             }
         }
     </script>
     <style>
-        /* 自定义样式 */
+        /* 基础渐变背景 */
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-attachment: fixed;
+        }
+
+        /* 自定义滚动条 - 优雅风格 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.6);
+        }
+        .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+        }
+
+        /* 阶段指示器样式 */
         .stage-indicator {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
-            margin-right: 8px;
+            margin-right: 6px;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+        }
+        .stage-indicator:hover {
+            transform: scale(1.02);
         }
 
         .stage-analysis {
-            background-color: #e3f2fd;
-            color: #1976d2;
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            color: #1d4ed8;
+            box-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
         }
-
         .stage-execution {
-            background-color: #f3e5f5;
-            color: #7b1fa2;
+            background: linear-gradient(135deg, #f3e5f5, #e9d5ff);
+            color: #7c3aed;
+            box-shadow: 0 1px 3px rgba(139, 92, 246, 0.2);
         }
-
         .stage-supervision {
-            background-color: #fff3e0;
-            color: #f57c00;
+            background: linear-gradient(135deg, #ffedd5, #fed7aa);
+            color: #c2410c;
+            box-shadow: 0 1px 3px rgba(249, 115, 22, 0.2);
         }
-
         .stage-summary {
-            background-color: #e8f5e8;
-            color: #388e3c;
+            background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+            color: #15803d;
+            box-shadow: 0 1px 3px rgba(34, 197, 94, 0.2);
         }
-
         .stage-error {
-            background-color: #ffebee;
-            color: #d32f2f;
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            color: #dc2626;
+            box-shadow: 0 1px 3px rgba(239, 68, 68, 0.2);
         }
 
         .sub-type-indicator {
             display: inline-block;
-            padding: 1px 6px;
-            border-radius: 8px;
+            padding: 2px 8px;
+            border-radius: 12px;
             font-size: 10px;
             font-weight: 500;
             margin-left: 4px;
-            background-color: rgba(0, 0, 0, 0.1);
-            color: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.06);
+            color: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(0, 0, 0, 0.08);
         }
 
+        /* Markdown 内容美化 */
         .markdown-content {
-            margin-top: 8px;
-            line-height: 1.6;
+            margin-top: 10px;
+            line-height: 1.7;
+            color: #374151;
         }
-
-        .markdown-content h1,
-        .markdown-content h2,
-        .markdown-content h3,
-        .markdown-content h4,
-        .markdown-content h5,
-        .markdown-content h6 {
-            margin: 16px 0 8px 0;
+        .markdown-content h1, .markdown-content h2, .markdown-content h3,
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+            margin: 18px 0 10px 0;
             font-weight: 600;
-            color: #2c3e50;
+            color: #1f2937;
         }
-
         .markdown-content h1 { font-size: 1.5em; }
         .markdown-content h2 { font-size: 1.3em; }
-        .markdown-content h3 { font-size: 1.2em; }
-        .markdown-content h4 { font-size: 1.1em; }
-
-        .markdown-content p {
-            margin: 8px 0;
+        .markdown-content h3 { font-size: 1.15em; }
+        .markdown-content h4 { font-size: 1.05em; }
+        .markdown-content p { margin: 10px 0; }
+        .markdown-content ul, .markdown-content ol {
+            margin: 10px 0;
+            padding-left: 24px;
         }
-
-        .markdown-content ul,
-        .markdown-content ol {
-            margin: 8px 0;
-            padding-left: 20px;
-        }
-
-        .markdown-content li {
-            margin: 4px 0;
-        }
-
+        .markdown-content li { margin: 6px 0; }
         .markdown-content blockquote {
-            border-left: 4px solid #3498db;
+            border-left: 4px solid #60a5fa;
             margin: 16px 0;
-            padding: 8px 16px;
-            background: #f8f9fa;
-            color: #555;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            color: #475569;
             font-style: italic;
+            border-radius: 0 8px 8px 0;
         }
-
         .markdown-content code {
-            background: #f1f3f4;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            color: #d73a49;
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.88em;
+            color: #be123c;
+            border: 1px solid rgba(0, 0, 0, 0.08);
         }
-
         .markdown-content pre {
-            background: #f6f8fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 16px;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border-radius: 12px;
+            padding: 16px 20px;
             overflow-x: auto;
             margin: 16px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
         }
-
         .markdown-content pre code {
             background: none;
             padding: 0;
-            color: inherit;
+            color: #e2e8f0;
             font-size: 0.85em;
+            border: none;
         }
-
         .markdown-content table {
             border-collapse: collapse;
             width: 100%;
             margin: 16px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-
-        .markdown-content th,
-        .markdown-content td {
-            border: 1px solid #ddd;
-            padding: 8px 12px;
+        .markdown-content th, .markdown-content td {
+            border: none;
+            padding: 12px 16px;
             text-align: left;
         }
-
         .markdown-content th {
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
             font-weight: 600;
+            color: #1e293b;
         }
-
+        .markdown-content td {
+            background: white;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .markdown-content tr:last-child td { border-bottom: none; }
         .markdown-content a {
-            color: #3498db;
+            color: #2563eb;
             text-decoration: none;
+            border-bottom: 1px dashed #93c5fd;
+            transition: all 0.2s;
         }
-
         .markdown-content a:hover {
-            text-decoration: underline;
+            color: #1d4ed8;
+            border-bottom-style: solid;
         }
+        .markdown-content strong { font-weight: 600; color: #1f2937; }
+        .markdown-content em { font-style: italic; color: #64748b; }
 
-        .markdown-content strong {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        .markdown-content em {
-            font-style: italic;
-            color: #555;
-        }
-
+        /* 消息动画 */
         @keyframes messageSlideIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(15px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
+        @keyframes messageFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
         .message {
-            animation: messageSlideIn 0.3s ease-out;
+            animation: messageSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .message-fade {
+            animation: messageFadeIn 0.3s ease-out;
         }
 
-        /* 滚动条样式 */
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
+        /* 玻璃态效果 */
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
-
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #d1d5db;
-            border-radius: 3px;
-        }
-
-        .custom-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: #d1d5db transparent;
+        .glass-dark {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
 
         /* 会话列表项样式 */
         .session-item {
-            padding: 10px 12px;
-            border-radius: 8px;
+            padding: 12px 14px;
+            border-radius: 12px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.5);
+            margin-bottom: 8px;
         }
-
         .session-item:hover {
-            background-color: #f3f4f6;
-            border-color: #e5e7eb;
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(59, 130, 246, 0.2);
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
         }
-
         .session-item.active {
-            background-color: #eff6ff;
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
             border-color: #3b82f6;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
         }
-
         .session-item-title {
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             color: #1f2937;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-
         .session-item-preview {
             font-size: 11px;
             color: #6b7280;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
         }
-
         .session-item-time {
             font-size: 10px;
             color: #9ca3af;
+            font-weight: 500;
         }
-
         .session-item-badge {
-            display: inline-block;
-            padding: 1px 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1px 7px;
             border-radius: 10px;
             font-size: 10px;
-            margin-right: 4px;
+            font-weight: 600;
+            margin-right: 5px;
         }
-
         .badge-user {
-            background-color: #dcfce7;
-            color: #166534;
+            background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+            color: #15803d;
         }
-
         .badge-ai {
-            background-color: #dbeafe;
-            color: #1e40af;
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            color: #1d4ed8;
         }
 
         /* 历史消息样式 */
         .history-message {
-            animation: messageSlideIn 0.3s ease-out;
+            animation: messageSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .history-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 11px;
+            color: #94a3b8;
+            padding: 10px 0;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .history-indicator::before,
+        .history-indicator::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
         }
 
-        .history-indicator {
-            font-size: 11px;
-            color: #9ca3af;
-            text-align: center;
-            padding: 8px 0;
-            margin-bottom: 8px;
-            border-bottom: 1px dashed #e5e7eb;
+        /* 按钮悬停发光效果 */
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+        .btn-glow-green:hover {
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+        }
+
+        /* 输入框聚焦效果 */
+        .input-focus:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+
+        /* 头像悬浮效果 */
+        .avatar-hover {
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .avatar-hover:hover {
+            transform: scale(1.08);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        /* 消息气泡渐变 */
+        .bubble-user {
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+        .bubble-ai {
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+        }
+        .bubble-error {
+            background: linear-gradient(135deg, #fef2f2, #fee2e2);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        /* 状态指示灯呼吸效果 */
+        .status-pulse {
+            animation: statusPulse 2s ease-in-out infinite;
+        }
+        @keyframes statusPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        }
+
+        /* Tab 切换滑动条 */
+        .tab-indicator {
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* 加载骨架屏 */
+        .skeleton {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+        }
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* 面板分隔线渐变 */
+        .divider-gradient {
+            background: linear-gradient(180deg, transparent, #e2e8f0, transparent);
+            width: 1px;
         }
     </style>
 </head>
-<body class="h-screen flex flex-col bg-gray-50 font-sans">
+<body class="h-screen flex flex-col font-sans overflow-hidden">
 <!-- Top Navigation -->
-<nav class="border-b bg-white px-4 py-3 flex items-center gap-3 shadow-sm sticky top-0 z-30">
+<nav class="glass border-b border-white/20 px-5 py-3 flex items-center gap-4 sticky top-0 z-30 shadow-soft">
     <div class="flex items-center gap-3">
-        <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span class="text-white font-bold text-sm">🤖</span>
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30 animate-float">
+                <span class="text-white font-bold text-lg">🤖</span>
             </div>
-            <h1 class="text-xl font-bold text-gray-800">AI Agent Project</h1>
+            <div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">AI Agent Project</h1>
+                <p class="text-xs text-gray-500 font-medium">智能对话系统</p>
+            </div>
         </div>
     </div>
 
     <div class="flex-1 flex items-center justify-center">
-        <div class="flex items-center gap-3 text-gray-600">
-            <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-            <span class="font-medium">智能对话助手 - 实时流式交互体验</span>
-            <span class="text-xl">🐏</span>
+        <div class="flex items-center gap-3 text-gray-600 bg-gradient-to-r from-gray-50 to-white px-4 py-2 rounded-full border border-gray-200/50">
+            <span class="w-3 h-3 bg-green-500 rounded-full status-pulse"></span>
+            <span class="font-medium text-sm">智能对话助手 - 实时流式交互</span>
+            <span class="text-lg">🐏</span>
         </div>
     </div>
 
-    <div class="flex items-center gap-2">
-        <button id="newChatBtn" class="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200">
+    <div class="flex items-center gap-3">
+        <button id="newChatBtn" class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             新建对话
         </button>
 
-        <button id="clearAllChatsBtn" class="flex items-center gap-1 px-3 py-2 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200">
+        <button id="clearAllChatsBtn" class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-250">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
@@ -330,83 +465,100 @@
     </div>
 </nav>
 
-<div class="flex-1 flex overflow-hidden">
+<div class="flex-1 flex overflow-hidden p-4 gap-4">
     <!-- 侧边栏 -->
-    <aside id="sidebar" class="w-72 bg-white border-r overflow-y-auto transition-all duration-300 ease-in-out shadow-sm custom-scrollbar">
+    <aside id="sidebar" class="w-72 glass rounded-2xl overflow-hidden transition-all duration-300 ease-in-out shadow-soft-lg border border-white/50 custom-scrollbar">
         <div class="p-4">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="font-bold text-lg text-gray-800 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                    </svg>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="font-bold text-base text-gray-800 flex items-center gap-2">
+                    <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center shadow-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                    </div>
                     对话历史
                 </h2>
-                <button id="refreshSessionListBtn" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-gray-100 rounded-md transition-colors" title="刷新会话列表">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <button id="refreshSessionListBtn" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all duration-200" title="刷新会话列表">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                 </button>
             </div>
             <!-- 加载状态 -->
-            <div id="sessionListLoading" class="hidden text-center py-4 text-gray-500">
-                <svg class="animate-spin h-5 w-5 mx-auto text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p class="text-xs mt-1">加载中...</p>
+            <div id="sessionListLoading" class="hidden text-center py-6">
+                <div class="flex flex-col items-center gap-2">
+                    <div class="w-8 h-8 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+                    <p class="text-xs text-gray-500 font-medium">加载中...</p>
+                </div>
             </div>
-            <ul id="chatList" class="space-y-2">
+            <ul id="chatList" class="space-y-1">
                 <!-- 对话历史列表 -->
             </ul>
             <!-- 无历史记录提示 -->
-            <div id="noHistoryTip" class="hidden text-center py-8 text-gray-400">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <p class="text-sm">暂无历史对话</p>
-                <p class="text-xs mt-1">开始新的对话吧</p>
+            <div id="noHistoryTip" class="hidden text-center py-10">
+                <div class="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                </div>
+                <p class="text-sm text-gray-500 font-medium">暂无历史对话</p>
+                <p class="text-xs text-gray-400 mt-1">开始新的对话吧</p>
             </div>
         </div>
     </aside>
 
     <!-- Main Content -->
-    <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div class="flex-1 flex flex-col overflow-hidden glass rounded-2xl shadow-soft-lg border border-white/50">
         <!-- 双面板内容区域 -->
         <div class="flex-1 flex overflow-hidden">
             <!-- 左侧思考过程面板 -->
-            <div class="w-1/2 flex flex-col border-r border-gray-200 bg-white">
-                <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                    <span class="text-lg">🧠</span>
-                    <h3 class="font-semibold text-gray-800">AI思考执行过程</h3>
+            <div class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50">
+                <div class="px-5 py-4 bg-gradient-to-r from-primary-50/80 to-transparent border-b border-gray-100/80 flex items-center gap-3">
+                    <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-md shadow-primary-500/20">
+                        <span class="text-lg">🧠</span>
+                    </div>
+                    <h3 class="font-bold text-gray-800">AI 思考执行过程</h3>
+                    <div class="ml-auto flex items-center gap-2">
+                        <span class="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></span>
+                        <span class="text-xs text-gray-500">处理中</span>
+                    </div>
                 </div>
-                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                    <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">AI</span>
+                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                    <div class="flex items-start gap-4 animate-fade-in">
+                        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">AI</span>
                         </div>
-                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                             <div class="text-sm text-primary-800">
-                                <strong>AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
+                                <strong class="font-semibold">AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <div class="divider-gradient mx-0"></div>
+
             <!-- 右侧结果面板 -->
-            <div class="w-1/2 flex flex-col bg-white">
-                <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                    <span class="text-lg">📋</span>
-                    <h3 class="font-semibold text-gray-800">最终执行结果</h3>
+            <div class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50">
+                <div class="px-5 py-4 bg-gradient-to-r from-green-50/80 to-transparent border-b border-gray-100/80 flex items-center gap-3">
+                    <div class="w-9 h-9 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-green-500/20">
+                        <span class="text-lg">📋</span>
+                    </div>
+                    <h3 class="font-bold text-gray-800">最终执行结果</h3>
+                    <div class="ml-auto flex items-center gap-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        <span class="text-xs text-gray-500">就绪</span>
+                    </div>
                 </div>
-                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                    <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">AI</span>
+                <div id="resultMessages" class="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                    <div class="flex items-start gap-4 animate-fade-in">
+                        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">AI</span>
                         </div>
-                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                             <div class="text-sm text-primary-800">
-                                <strong>AI助手:</strong> 这里将显示AI的最终执行结果和总结。
+                                <strong class="font-semibold">AI助手:</strong> 这里将显示AI的最终执行结果和总结。
                             </div>
                         </div>
                     </div>
@@ -415,26 +567,23 @@
         </div>
 
         <!-- 底部输入区域 -->
-        <div class="border-t border-gray-200 bg-white p-4">
+        <div class="border-t border-gray-200/50 bg-gradient-to-t from-white to-gray-50/50 p-5">
             <!-- 加载状态 -->
-            <div id="loading" class="hidden text-center py-2 text-primary-600">
-                <div class="flex items-center justify-center gap-2">
-                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span class="font-medium">AI正在思考中，请稍候...</span>
+            <div id="loading" class="hidden mb-4">
+                <div class="flex items-center justify-center gap-3 py-3 bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl border border-primary-100">
+                    <div class="w-5 h-5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin"></div>
+                    <span class="font-medium text-primary-700">AI正在思考中，请稍候...</span>
                 </div>
             </div>
 
             <!-- 模式切换 Tab -->
-            <div class="mb-4 flex items-center gap-2 p-1 bg-gray-100 rounded-lg w-fit">
+            <div class="mb-4 flex items-center gap-1 p-1.5 bg-gray-100/80 rounded-xl w-fit">
                 <button id="tabGeneral" onclick="switchMode('general')"
-                        class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-primary-700 shadow-sm">
+                        class="tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-white text-primary-700 shadow-sm ring-2 ring-primary-500/20">
                     通用对话
                 </button>
                 <button id="tabTrading" onclick="switchMode('trading')"
-                        class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800">
+                        class="tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-gray-600 hover:text-gray-800 hover:bg-white/50">
                     金融分析
                 </button>
             </div>
@@ -442,10 +591,10 @@
             <!-- ========== 通用对话模式面板 ========== -->
             <div id="panelGeneral">
                 <!-- 控制面板 -->
-                <div class="mb-4 flex flex-wrap items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                    <div class="flex items-center gap-2">
-                        <label for="aiAgentSelect" class="text-sm font-medium text-gray-700">智能体类型</label>
-                        <select id="aiAgentSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                <div class="mb-4 flex flex-wrap items-center gap-4 p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200/50 shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <label for="aiAgentSelect" class="text-sm font-semibold text-gray-700">智能体类型</label>
+                        <select id="aiAgentSelect" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus">
                             <option value="">不选择（使用默认智能体）</option>
                             <option value="3">Auto Agent - 自动智能对话体-3</option>
                             <option value="4">Auto Agent - 自动智能对话体-4</option>
@@ -453,9 +602,9 @@
                         </select>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <label for="maxStepSelect" class="text-sm font-medium text-gray-700">最大执行步数</label>
-                        <select id="maxStepSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                    <div class="flex items-center gap-3">
+                        <label for="maxStepSelect" class="text-sm font-semibold text-gray-700">最大步数</label>
+                        <select id="maxStepSelect" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus">
                             <option value="1">1步</option>
                             <option value="2">2步</option>
                             <option value="3">3步</option>
@@ -464,15 +613,15 @@
                         </select>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <label for="exampleSelect" class="text-sm font-medium text-gray-700">提问案例</label>
-                        <select id="exampleSelect" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                    <div class="flex items-center gap-3">
+                        <label for="exampleSelect" class="text-sm font-semibold text-gray-700">提问案例</label>
+                        <select id="exampleSelect" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus min-w-[200px]">
                             <option value="">请选择提问案例...</option>
-                            <option value="1+1">案例1；1+1</option>
-                            <option value="通过ES查询被限流的用户，给出被限流用户列表。">案例2；通过ES查询被限流的用户，给出被限流用户列表。</option>
-                            <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。">案例3；分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。</option>
-                            <option value="检索小傅哥的相关项目，列出一份学习计划">案例4；检索小傅哥的相关项目，列出一份学习计划</option>
-                            <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">案例5；根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。</option>
+                            <option value="1+1">案例1：1+1</option>
+                            <option value="通过ES查询被限流的用户，给出被限流用户列表。">案例2：查询ES限流用户</option>
+                            <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。">案例3：Grafana分析</option>
+                            <option value="检索小傅哥的相关项目，列出一份学习计划">案例4：学习计划</option>
+                            <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">案例5：推荐入职单位</option>
                         </select>
                     </div>
                 </div>
@@ -480,9 +629,9 @@
                 <!-- 输入框和发送按钮 -->
                 <div class="flex gap-3">
                     <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
-                           class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400">
+                           class="flex-1 px-5 py-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400 bg-white shadow-sm input-focus">
                     <button id="sendBtn" onclick="sendMessage()"
-                            class="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200 font-medium flex items-center gap-2">
+                            class="px-8 py-4 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-2xl hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 font-semibold flex items-center gap-2 shadow-lg shadow-primary-500/30 btn-glow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                         </svg>
@@ -494,23 +643,23 @@
             <!-- ========== 金融分析模式面板 ========== -->
             <div id="panelTrading" class="hidden">
                 <!-- 金融分析控制面板 -->
-                <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div class="mb-4 p-4 bg-gradient-to-br from-green-50/50 to-emerald-50/30 rounded-xl border border-green-200/50 shadow-sm">
                     <div class="flex flex-wrap items-center gap-4">
-                        <div class="flex items-center gap-2">
-                            <label for="tradingTicker" class="text-sm font-medium text-gray-700">股票代码</label>
-                            <input type="text" id="tradingTicker" placeholder="例如: AAPL、NVDA、TSLA" maxlength="20"
-                                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400 w-40">
+                        <div class="flex items-center gap-3">
+                            <label for="tradingTicker" class="text-sm font-semibold text-gray-700">股票代码</label>
+                            <input type="text" id="tradingTicker" placeholder="例如: AAPL、NVDA" maxlength="20"
+                                   class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 focus:border-green-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400 bg-white input-focus w-40">
                         </div>
 
-                        <div class="flex items-center gap-2">
-                            <label for="tradingDate" class="text-sm font-medium text-gray-700">分析日期</label>
+                        <div class="flex items-center gap-3">
+                            <label for="tradingDate" class="text-sm font-semibold text-gray-700">分析日期</label>
                             <input type="date" id="tradingDate"
-                                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700">
+                                   class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 focus:border-green-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus">
                         </div>
 
-                        <div class="flex items-center gap-2">
-                            <label for="tradingDebateRounds" class="text-sm font-medium text-gray-700">辩论轮次</label>
-                            <select id="tradingDebateRounds" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                        <div class="flex items-center gap-3">
+                            <label for="tradingDebateRounds" class="text-sm font-semibold text-gray-700">辩论轮次</label>
+                            <select id="tradingDebateRounds" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 focus:border-green-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus">
                                 <option value="1">1轮</option>
                                 <option value="2" selected>2轮</option>
                                 <option value="3">3轮</option>
@@ -518,9 +667,9 @@
                             </select>
                         </div>
 
-                        <div class="flex items-center gap-2">
-                            <label for="tradingRiskRounds" class="text-sm font-medium text-gray-700">风控轮次</label>
-                            <select id="tradingRiskRounds" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200">
+                        <div class="flex items-center gap-3">
+                            <label for="tradingRiskRounds" class="text-sm font-semibold text-gray-700">风控轮次</label>
+                            <select id="tradingRiskRounds" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 focus:border-green-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus">
                                 <option value="1" selected>1轮</option>
                                 <option value="2">2轮</option>
                                 <option value="3">3轮</option>
@@ -529,24 +678,24 @@
                     </div>
 
                     <!-- 分析师多选 -->
-                    <div class="mt-3 flex items-center gap-2">
-                        <span class="text-sm font-medium text-gray-700">分析师类型</span>
+                    <div class="mt-4 flex items-center gap-3">
+                        <span class="text-sm font-semibold text-gray-700">分析师类型</span>
                         <div class="flex flex-wrap gap-2">
-                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
-                                <input type="checkbox" id="analystFundamental" value="FUNDAMENTAL" checked class="accent-primary-600">
-                                <span>基本面</span>
+                            <label class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-200 has-[:checked]:border-green-500 has-[:checked]:bg-green-50 has-[:checked]:text-green-700">
+                                <input type="checkbox" id="analystFundamental" value="FUNDAMENTAL" checked class="accent-green-600 w-4 h-4">
+                                <span class="font-medium">基本面</span>
                             </label>
-                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
-                                <input type="checkbox" id="analystTechnical" value="TECHNICAL" checked class="accent-primary-600">
-                                <span>技术面</span>
+                            <label class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-200 has-[:checked]:border-green-500 has-[:checked]:bg-green-50 has-[:checked]:text-green-700">
+                                <input type="checkbox" id="analystTechnical" value="TECHNICAL" checked class="accent-green-600 w-4 h-4">
+                                <span class="font-medium">技术面</span>
                             </label>
-                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
-                                <input type="checkbox" id="analystSentiment" value="SENTIMENT" checked class="accent-primary-600">
-                                <span>情绪面</span>
+                            <label class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-200 has-[:checked]:border-green-500 has-[:checked]:bg-green-50 has-[:checked]:text-green-700">
+                                <input type="checkbox" id="analystSentiment" value="SENTIMENT" checked class="accent-green-600 w-4 h-4">
+                                <span class="font-medium">情绪面</span>
                             </label>
-                            <label class="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-sm cursor-pointer hover:bg-primary-50 transition-colors">
-                                <input type="checkbox" id="analystNews" value="NEWS" checked class="accent-primary-600">
-                                <span>新闻面</span>
+                            <label class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-200 has-[:checked]:border-green-500 has-[:checked]:bg-green-50 has-[:checked]:text-green-700">
+                                <input type="checkbox" id="analystNews" value="NEWS" checked class="accent-green-600 w-4 h-4">
+                                <span class="font-medium">新闻面</span>
                             </label>
                         </div>
                     </div>
@@ -555,7 +704,7 @@
                 <!-- 发送按钮 -->
                 <div class="flex gap-3">
                     <button id="sendTradingBtn" onclick="sendTradingAnalysis()"
-                            class="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200 font-medium flex items-center justify-center gap-2">
+                            class="flex-1 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/30 btn-glow-green">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
@@ -565,10 +714,11 @@
             </div>
 
             <!-- 会话状态 -->
-            <div class="mt-3 text-center">
-                <div class="text-xs text-gray-500">
-                    会话ID: <span id="sessionId" class="font-mono"></span>
-                    <span id="currentModeTag" class="ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium"></span>
+            <div class="mt-4 text-center">
+                <div class="inline-flex items-center gap-3 px-4 py-2 bg-gray-100/80 rounded-full">
+                    <span class="text-xs text-gray-500">会话ID:</span>
+                    <span id="sessionId" class="font-mono text-xs text-gray-600 bg-white px-2 py-1 rounded-lg"></span>
+                    <span id="currentModeTag" class="ml-1 px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-semibold"></span>
                 </div>
             </div>
         </div>
@@ -845,26 +995,26 @@
             // 清空现有消息（保留欢迎消息）
             thinkingDiv.innerHTML = `
                 <div class="history-indicator">📜 以下为历史对话记录</div>
-                <div class="flex items-start gap-3">
-                    <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span class="text-white text-sm font-semibold">AI</span>
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                        <span class="text-white font-bold text-sm">AI</span>
                     </div>
-                    <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                    <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                         <div class="text-sm text-primary-800">
-                            <strong>AI助手:</strong> 正在加载历史对话...
+                            <strong class="font-semibold">AI助手:</strong> 正在加载历史对话...
                         </div>
                     </div>
                 </div>
             `;
             resultDiv.innerHTML = `
                 <div class="history-indicator">📜 以下为历史对话记录</div>
-                <div class="flex items-start gap-3">
-                    <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span class="text-white text-sm font-semibold">AI</span>
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                        <span class="text-white font-bold text-sm">AI</span>
                     </div>
-                    <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                    <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                         <div class="text-sm text-primary-800">
-                            <strong>AI助手:</strong> 正在加载历史对话...
+                            <strong class="font-semibold">AI助手:</strong> 正在加载历史对话...
                         </div>
                     </div>
                 </div>
@@ -904,13 +1054,13 @@
             // 如果没有历史消息
             if (!append && (!data.messages || data.messages.length === 0)) {
                 thinkingDiv.innerHTML = `
-                    <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">AI</span>
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">AI</span>
                         </div>
-                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                             <div class="text-sm text-primary-800">
-                                <strong>AI助手:</strong> 该会话暂无历史消息记录。
+                                <strong class="font-semibold">AI助手:</strong> 该会话暂无历史消息记录。
                             </div>
                         </div>
                     </div>
@@ -922,13 +1072,13 @@
             console.error('加载会话消息失败:', error);
             if (!append) {
                 thinkingDiv.innerHTML = `
-                    <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">!</span>
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">!</span>
                         </div>
-                        <div class="flex-1 bg-red-50 rounded-lg p-3">
+                        <div class="flex-1 bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-4 border border-red-100/50 shadow-sm">
                             <div class="text-sm text-red-800">
-                                <strong>错误:</strong> ${error.message}
+                                <strong class="font-semibold">错误:</strong> ${error.message}
                             </div>
                         </div>
                     </div>
@@ -953,13 +1103,13 @@
             if (msg.role === 'user') {
                 // 用户消息：同时显示在两个面板
                 const userHtml = `
-                    <div class="flex items-start gap-3 history-message">
-                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">您</span>
+                    <div class="flex items-start gap-4 history-message">
+                        <div class="w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">您</span>
                         </div>
-                        <div class="flex-1 bg-green-50 rounded-lg p-3">
+                        <div class="flex-1 bubble-user rounded-2xl p-4 shadow-sm">
                             <div class="text-sm text-green-800">
-                                <strong>您:</strong> ${escapeHtml(msg.content)}
+                                <strong class="font-semibold">您:</strong> ${escapeHtml(msg.content)}
                             </div>
                         </div>
                     </div>
@@ -976,13 +1126,13 @@
                 const latencyInfo = msg.latencyMs ? `<span class="text-xs text-gray-400 ml-2">${msg.latencyMs}ms</span>` : '';
 
                 const aiHtml = `
-                    <div class="flex items-start gap-3 history-message">
-                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">AI</span>
+                    <div class="flex items-start gap-4 history-message">
+                        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">AI</span>
                         </div>
-                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="flex-1 bubble-ai rounded-2xl p-4 shadow-sm">
                             <div class="text-sm text-primary-800">
-                                <strong>AI助手:</strong>
+                                <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}${modelInfo}${latencyInfo}
                                 <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
                             </div>
@@ -1009,13 +1159,13 @@
         messages.forEach(msg => {
             if (msg.role === 'user') {
                 const userHtml = `
-                    <div class="flex items-start gap-3 history-message">
-                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">您</span>
+                    <div class="flex items-start gap-4 history-message">
+                        <div class="w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">您</span>
                         </div>
-                        <div class="flex-1 bg-green-50 rounded-lg p-3">
+                        <div class="flex-1 bubble-user rounded-2xl p-4 shadow-sm">
                             <div class="text-sm text-green-800">
-                                <strong>您:</strong> ${escapeHtml(msg.content)}
+                                <strong class="font-semibold">您:</strong> ${escapeHtml(msg.content)}
                             </div>
                         </div>
                     </div>
@@ -1026,13 +1176,13 @@
                 const resultDivLast = resultDiv.lastElementChild;
                 const timeInfo = msg.createTime ? `<span class="text-xs text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
                 const aiHtml = `
-                    <div class="flex items-start gap-3 history-message">
-                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span class="text-white text-sm font-semibold">AI</span>
+                    <div class="flex items-start gap-4 history-message">
+                        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                            <span class="text-white font-bold text-sm">AI</span>
                         </div>
-                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                        <div class="flex-1 bubble-ai rounded-2xl p-4 shadow-sm">
                             <div class="text-sm text-primary-800">
-                                <strong>AI助手:</strong>
+                                <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}
                                 <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
                             </div>
@@ -1214,10 +1364,6 @@
         addStageMessage(type, subType, content, step);
 
         // 如果收到错误类型消息或完成标记，关闭 loading 并恢复按钮状态
-        // type='error' 是 auto_agent 的错误格式
-        // type='trading' + subType='error' 是 trading 模块的错误格式
-        // type='final' 是 final_decision 的完成格式
-        // type='trading' + subType='trading_complete' 是 trading 模块的完成格式
         if (type === 'error' || type === 'final' ||
             (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
             closeLoadingState();
@@ -1308,7 +1454,7 @@
         }
 
         const messageDiv = document.createElement('div');
-        messageDiv.className = 'flex items-start gap-3 message';
+        messageDiv.className = 'flex items-start gap-4 message';
 
         // 获取阶段信息
         const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
@@ -1330,25 +1476,25 @@
         const renderedContent = marked.parse(content);
 
         // 错误消息特殊样式
-        const errorBoxClass = isError ? 'bg-red-50 border-2 border-red-300' : 'bg-primary-50';
+        const bubbleClass = isError ? 'bubble-error' : 'bubble-ai';
         const errorIndicator = isError ? `
-            <div class="flex items-center gap-2 mb-2 text-red-600 font-semibold">
+            <div class="flex items-center gap-2 mb-3 text-red-600 font-semibold">
                 <span class="text-xl">⚠️</span>
                 <span>操作失败</span>
             </div>
         ` : '';
 
         messageDiv.innerHTML = `
-            <div class="w-8 h-8 ${isError ? 'bg-red-500' : 'bg-primary-600'} rounded-full flex items-center justify-center flex-shrink-0">
-                <span class="text-white text-sm font-semibold">${isError ? '!' : 'AI'}</span>
+            <div class="w-10 h-10 ${isError ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-primary-500 to-primary-600'} rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${isError ? 'shadow-red-500/20' : 'shadow-primary-500/20'} avatar-hover">
+                <span class="text-white font-bold text-sm">${isError ? '!' : 'AI'}</span>
             </div>
-            <div class="flex-1 ${errorBoxClass} rounded-lg p-3">
+            <div class="flex-1 ${bubbleClass} rounded-2xl p-4 shadow-sm">
                 <div class="text-sm ${isError ? 'text-red-800' : 'text-primary-800'}">
                     ${errorIndicator}
-                    <strong>${isError ? '系统提示:' : 'AI助手:'} </strong>${indicators}
+                    <strong class="${isError ? 'font-semibold' : 'font-semibold'}">${isError ? '系统提示:' : 'AI助手:'} </strong>${indicators}
                     <div class="markdown-content ${isError ? 'text-red-700' : ''}">${renderedContent}</div>
                     ${isError ? `
-                        <div class="mt-2 text-xs text-red-500">
+                        <div class="mt-3 text-xs text-red-500 flex items-center gap-1">
                             💡 提示：请检查输入是否正确，或稍后重试
                         </div>
                     ` : ''}
@@ -1377,15 +1523,15 @@
 
             [thinkingDiv, resultDiv].forEach(container => {
                 const messageDiv = document.createElement('div');
-                messageDiv.className = 'flex items-start gap-3 message';
+                messageDiv.className = 'flex items-start gap-4 message';
 
                 messageDiv.innerHTML = `
-                    <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span class="text-white text-sm font-semibold">您</span>
+                    <div class="w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20 avatar-hover">
+                        <span class="text-white font-bold text-sm">您</span>
                     </div>
-                    <div class="flex-1 bg-green-50 rounded-lg p-3">
+                    <div class="flex-1 bubble-user rounded-2xl p-4 shadow-sm">
                         <div class="text-sm text-green-800">
-                            <strong>您:</strong> ${content}
+                            <strong class="font-semibold">您:</strong> ${content}
                         </div>
                     </div>
                 `;
@@ -1414,33 +1560,27 @@
         const thinkingDiv = document.getElementById('thinkingMessages');
         const resultDiv = document.getElementById('resultMessages');
 
-        const thinkingChildren = Array.from(thinkingDiv.children);
-        thinkingChildren.slice(1).forEach(child => child.remove());
-
-        const resultChildren = Array.from(resultDiv.children);
-        resultChildren.slice(1).forEach(child => child.remove());
-
         // 恢复欢迎消息
         thinkingDiv.innerHTML = `
-            <div class="flex items-start gap-3">
-                <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white text-sm font-semibold">AI</span>
+            <div class="flex items-start gap-4 animate-fade-in">
+                <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                    <span class="text-white font-bold text-sm">AI</span>
                 </div>
-                <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                     <div class="text-sm text-primary-800">
-                        <strong>AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
+                        <strong class="font-semibold">AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
                     </div>
                 </div>
             </div>
         `;
         resultDiv.innerHTML = `
-            <div class="flex items-start gap-3">
-                <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-white text-sm font-semibold">AI</span>
+            <div class="flex items-start gap-4 animate-fade-in">
+                <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
+                    <span class="text-white font-bold text-sm">AI</span>
                 </div>
-                <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                <div class="flex-1 bg-gradient-to-br from-primary-50 to-blue-50 rounded-2xl p-4 border border-primary-100/50 shadow-sm">
                     <div class="text-sm text-primary-800">
-                        <strong>AI助手:</strong> 这里将显示AI的最终执行结果和总结。
+                        <strong class="font-semibold">AI助手:</strong> 这里将显示AI的最终执行结果和总结。
                     </div>
                 </div>
             </div>
@@ -1527,19 +1667,19 @@
         const modeTag = document.getElementById('currentModeTag');
 
         if (mode === 'general') {
-            tabGeneral.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-primary-700 shadow-sm';
-            tabTrading.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800';
+            tabGeneral.className = 'tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-white text-primary-700 shadow-sm ring-2 ring-primary-500/20';
+            tabTrading.className = 'tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-gray-600 hover:text-gray-800 hover:bg-white/50';
             panelGeneral.classList.remove('hidden');
             panelTrading.classList.add('hidden');
             modeTag.textContent = '通用对话';
-            modeTag.className = 'ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium';
+            modeTag.className = 'ml-1 px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-semibold';
         } else {
-            tabGeneral.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 text-gray-600 hover:text-gray-800';
-            tabTrading.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-white text-green-700 shadow-sm';
+            tabGeneral.className = 'tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-gray-600 hover:text-gray-800 hover:bg-white/50';
+            tabTrading.className = 'tab-indicator px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-white text-green-700 shadow-sm ring-2 ring-green-500/20';
             panelGeneral.classList.add('hidden');
             panelTrading.classList.remove('hidden');
             modeTag.textContent = '金融分析';
-            modeTag.className = 'ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium';
+            modeTag.className = 'ml-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold';
 
             // 设置默认日期为今天
             const today = new Date();
@@ -1592,10 +1732,7 @@
         const sendBtn = document.getElementById('sendTradingBtn');
         sendBtn.disabled = true;
         sendBtn.innerHTML = `
-            <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             分析中，请稍候...
         `;
 
