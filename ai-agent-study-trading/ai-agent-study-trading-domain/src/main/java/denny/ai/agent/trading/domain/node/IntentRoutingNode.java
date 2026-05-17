@@ -13,7 +13,7 @@ import denny.ai.agent.trading.domain.prompt.IntentRoutingPrompt;
 import denny.ai.agent.trading.domain.service.TradingIntentRoutingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -38,6 +38,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     public static final String TRADING_REQUEST_KEY = "trading_request";
     public static final String NEEDS_CONFIRMATION_KEY = "needs_confirmation";
     public static final String INTENT_ROUTING_RESULT_KEY = "intent_routing_result";
+    public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
 
     @Resource
     private TradingIntentRoutingService tradingIntentRoutingService;
@@ -65,11 +66,12 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         // stream() 返回 Flux<String>，通过 block() 同步获取最终内容
         List<String> contentParts = chatClient.prompt()
                 .messages(messages)
-                .advisors(PromptChatMemoryAdvisor.builder(
+                .advisors(MessageChatMemoryAdvisor.builder(
                         MessageWindowChatMemory.builder()
                                 .maxMessages(10)
                                 .build()
                 ).build())
+                .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, "intent_routing_" + requestParameter.getSessionId()))
                 .stream()
                 .content()
                 .collectList()

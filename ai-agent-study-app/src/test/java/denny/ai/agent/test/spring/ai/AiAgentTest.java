@@ -14,7 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -83,7 +83,7 @@ public class AiAgentTest {
                         """)
 //                .defaultToolCallbacks(new SyncMcpToolCallbackProvider(stdioMcpClient(), sseMcpClient01(), sseMcpClient02()).getToolCallbacks())
                 .defaultAdvisors(
-                        PromptChatMemoryAdvisor.builder(
+                        MessageChatMemoryAdvisor.builder(
                                 MessageWindowChatMemory.builder()
                                         .maxMessages(100)
                                         .build()
@@ -214,7 +214,7 @@ public class AiAgentTest {
                         请基于以上模板，优化并扩展以下prompt，确保内容专业、完整且结构清晰，注意不要携带任何引导词或解释，不要使用代码块包围。
                         """)
                 .defaultAdvisors(
-                        PromptChatMemoryAdvisor.builder(
+                        MessageChatMemoryAdvisor.builder(
                                 MessageWindowChatMemory.builder()
                                         .maxMessages(100)
                                         .build()
@@ -250,11 +250,11 @@ public class AiAgentTest {
                         	 1. 分析用户输入的内容，生成技术文章。
                         	 2. 提取，文章标题（需要含带技术点）、文章内容、文章标签（多个用英文逗号隔开）、文章简述（100字）将以上内容发布文章到CSDN
                         	 3. 获取发送到 CSDN 文章的 URL 地址。
-                        	 4. 微信公众号消息通知，平台：CSDN、主题：为文章标题、描述：为文章简述、跳转地址：为发布文章到CSDN获取 URL地址 CSDN文章链接 https 开头的地址。
+                        4. 微信公众号消息通知，平台：CSDN、主题：为文章标题、描述：为文章简述、跳转地址：为发布文章到CSDN获取 URL地址 CSDN文章链接 https 开头的地址。
                         """)
 //                .defaultTools(new SyncMcpToolCallbackProvider(sseMcpClient01(), sseMcpClient02()))
                 .defaultAdvisors(
-                        PromptChatMemoryAdvisor.builder(
+                        MessageChatMemoryAdvisor.builder(
                                 MessageWindowChatMemory.builder()
                                         .maxMessages(100)
                                         .build()

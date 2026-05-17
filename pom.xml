@@ -117,11 +117,11 @@
                 <version>1.15</version>
             </dependency>
 
-            <!-- spring ai 1.1.0 https://central.sonatype.com/artifact/org.springframework.ai/spring-ai-bom -->
+            <!-- spring ai 1.1.2 https://central.sonatype.com/artifact/org.springframework.ai/spring-ai-bom -->
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
-                <version>1.1.0</version>
+                <version>1.1.2</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -130,7 +130,7 @@
             <dependency>
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-starter-memory-mem0</artifactId>
-                <version>1.1.0.0-M4</version>
+                <version>1.1.2.3</version>
             </dependency>
 
             <!-- Yahoo Finance API（sstrickx 原版，发布在 Maven Central） -->
