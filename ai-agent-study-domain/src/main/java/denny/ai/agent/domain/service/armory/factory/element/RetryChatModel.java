@@ -1,6 +1,10 @@
 package denny.ai.agent.domain.service.armory.factory.element;
 
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.CompressionRequiredException;
+import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.util.TokenCountUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -21,6 +25,9 @@ public class RetryChatModel implements ChatModel {
     private final Set<String> retryableErrorCodes;
     private final Set<String> nonRetryableErrorCodes;
 
+    private CompressionConfig compressionConfig;
+    private DynamicContext dynamicContext;
+
     public RetryChatModel(ChatModel delegate, RetryConfig retryConfig) {
         this.delegate = delegate;
         this.retryConfig = retryConfig;
@@ -28,8 +35,19 @@ public class RetryChatModel implements ChatModel {
         this.nonRetryableErrorCodes = toSet(retryConfig.getNonRetryableErrorCodes());
     }
 
+    public void setCompressionConfig(CompressionConfig compressionConfig) {
+        this.compressionConfig = compressionConfig;
+    }
+
+    public void setDynamicContext(DynamicContext dynamicContext) {
+        this.dynamicContext = dynamicContext;
+    }
+
     @Override
     public ChatResponse call(Prompt prompt) {
+        // 主动压缩检查：检查 token 数量是否超过阈值
+        checkProactiveCompression(prompt);
+
         if (!retryConfig.isEnabled()) {
             return delegate.call(prompt);
         }
@@ -47,6 +65,12 @@ public class RetryChatModel implements ChatModel {
             } catch (Exception e) {
                 lastException = e;
                 String errorCode = extractErrorCode(e);
+
+                // 被动压缩：1261 错误时触发压缩
+                if ("1261".equals(errorCode)) {
+                    checkPassiveCompression(prompt, errorCode);
+                }
+
                 if (nonRetryableErrorCodes.contains(errorCode)) {
                     log.warn("[Retry] Blacklist matched, skip retry, errorCode={}, attempt={}, ex={}",
                             errorCode, attempt, e.getMessage());
@@ -75,6 +99,17 @@ public class RetryChatModel implements ChatModel {
 
     @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
+        // 主动压缩检查：检查 token 数量是否超过阈值
+        checkProactiveCompression(prompt);
+
+        // 流式调用降级到 call()（压缩场景不支持流式）
+        int tokenCount = TokenCountUtils.estimate(prompt.toString());
+        if (compressionConfig != null && compressionConfig.isEnabled()
+                && tokenCount > compressionConfig.getProactiveThresholdTokens()) {
+            log.info("[Stream] Token count {} exceeds threshold, degrading to call()", tokenCount);
+            return Flux.just(call(prompt));
+        }
+
         if (!retryConfig.isEnabled()) {
             return delegate.stream(prompt);
         }
@@ -92,6 +127,12 @@ public class RetryChatModel implements ChatModel {
             } catch (Exception e) {
                 lastException = e;
                 String errorCode = extractErrorCode(e);
+
+                // 被动压缩：1261 错误时触发压缩
+                if ("1261".equals(errorCode)) {
+                    checkPassiveCompression(prompt, errorCode);
+                }
+
                 if (nonRetryableErrorCodes.contains(errorCode)) {
                     log.warn("[RetryStream] Blacklist matched, skip retry, errorCode={}, attempt={}, ex={}",
                             errorCode, attempt, e.getMessage());
@@ -116,6 +157,50 @@ public class RetryChatModel implements ChatModel {
         }
         return Flux.error(lastException != null ? (lastException instanceof RuntimeException ? lastException : new RuntimeException(lastException))
                 : new IllegalStateException("stream exhausted all attempts"));
+    }
+
+    /**
+     * 主动压缩检查：token 数量超过阈值时触发压缩
+     */
+    private void checkProactiveCompression(Prompt prompt) {
+        if (compressionConfig == null || !compressionConfig.isEnabled()) {
+            return;
+        }
+
+        int tokenCount = TokenCountUtils.estimate(prompt.toString());
+
+        if (tokenCount > compressionConfig.getProactiveThresholdTokens()) {
+            log.info("[Compression] Proactive compression triggered, tokenCount={}, threshold={}",
+                    tokenCount, compressionConfig.getProactiveThresholdTokens());
+            triggerCompression(prompt);
+        }
+    }
+
+    /**
+     * 被动压缩检查：收到 1261 错误时触发压缩
+     */
+    private void checkPassiveCompression(Prompt prompt, String errorCode) {
+        if (compressionConfig == null || !compressionConfig.isEnabled()) {
+            return;
+        }
+
+        if (dynamicContext != null && !dynamicContext.isCompressionRequired()) {
+            log.info("[Compression] Passive compression triggered, errorCode={}", errorCode);
+            triggerCompression(prompt);
+        }
+    }
+
+    /**
+     * 触发压缩流程
+     */
+    private void triggerCompression(Prompt prompt) {
+        if (dynamicContext != null && !dynamicContext.isCompressionRequired()) {
+            dynamicContext.setOriginalPrompt(prompt);
+            dynamicContext.setCompressionRequired(true);
+            dynamicContext.setReturnNode("aiClientModelNode");
+            log.info("[Compression] Triggering compression, routing to compression node");
+            throw new CompressionRequiredException(prompt, "aiClientModelNode");
+        }
     }
 
     private String extractErrorCode(Exception e) {

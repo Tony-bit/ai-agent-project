@@ -8,15 +8,12 @@ import org.springframework.web.client.RestClient;
 
 /**
  * AI Client HTTP 超时配置。
- * <p>
  * 仅为 RestClient（同步请求）配置超时。
  * WebClient 使用 Spring 默认配置，流式场景超时由 OpenAI API 侧或底层连接控制。
- * <p>
  * 说明：当前 classpath 中 Netty 5 支持已被 Spring Framework 6.2.x 移除，
  * Reactor Netty 4.x 的 io.netty 包不在 domain 模块的直接依赖中，
  * 故采用保守方案，仅覆盖同步请求超时。
  *
- * status: pending
  */
 @Slf4j
 @Configuration

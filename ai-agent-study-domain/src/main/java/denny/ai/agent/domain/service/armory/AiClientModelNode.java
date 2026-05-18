@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
@@ -25,8 +26,12 @@ import java.util.Optional;
 @Service
 @Slf4j
 public class AiClientModelNode extends AbstractArmorySupport{
+
     @Resource
     private AiClientAdvisorNode aiClientAdvisorNode;
+
+    @Resource
+    private CompressionContextNode compressionContextNode;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -64,15 +69,17 @@ public class AiClientModelNode extends AbstractArmorySupport{
                                     .build()
                     ).build();
 
-            // 应用重试装饰器
-            ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig());
+            // 应用重试装饰器（含压缩配置）
+            ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig(),
+                    modelVO.getCompressionConfig(), dynamicContext);
             registerBean(getBeanName(modelVO.getModelId()), ChatModel.class, registeredModel);
         }
 
         return router(requestParameter, dynamicContext);
     }
 
-    private ChatModel applyRetryDecorator(OpenAiChatModel chatModel, RetryConfig retryConfig) {
+    private ChatModel applyRetryDecorator(OpenAiChatModel chatModel, RetryConfig retryConfig,
+                                          CompressionConfig compressionConfig, DynamicContext dynamicContext) {
         if (retryConfig == null || !retryConfig.isEnabled()) {
             return chatModel;
         }
@@ -83,11 +90,22 @@ public class AiClientModelNode extends AbstractArmorySupport{
                 retryConfig.getMaxAttempts(),
                 retryConfig.getInitialIntervalMs(),
                 retryConfig.getMultiplier());
-        return new RetryChatModel(chatModel, retryConfig);
+        RetryChatModel retryChatModel = new RetryChatModel(chatModel, retryConfig);
+        // 设置压缩配置和动态上下文
+        if (compressionConfig != null) {
+            retryChatModel.setCompressionConfig(compressionConfig);
+            retryChatModel.setDynamicContext(dynamicContext);
+        }
+        return retryChatModel;
     }
 
     @Override
     public StrategyHandler<ArmoryCommandEntity, DynamicContext, String> get(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
+        // 检查是否需要压缩
+        if (dynamicContext.isCompressionRequired()) {
+            log.info("检测到压缩需求，路由到 CompressionContextNode");
+            return compressionContextNode;
+        }
         return aiClientAdvisorNode;
     }
 

@@ -48,6 +48,11 @@ public class AiClientModelVO {
      */
     private RetryConfig retryConfig;
 
+    /**
+     * 压缩配置
+     */
+    private CompressionConfig compressionConfig;
+
     @Data
     @Builder
     @AllArgsConstructor
@@ -92,6 +97,46 @@ public class AiClientModelVO {
          * 不可重试错误 code 黑名单，命中则直接抛出不重试
          */
         private List<String> nonRetryableErrorCodes;
+    }
+
+    /**
+     * 压缩配置
+     */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class CompressionConfig {
+
+        /**
+         * 是否启用压缩
+         */
+        @Builder.Default
+        private boolean enabled = false;
+
+        /**
+         * 压缩模型ID
+         */
+        private String compressionModelId;
+
+        /**
+         * 主动压缩阈值（token数），超过此值则触发压缩
+         * 默认为 160,000（200,000 × 80%）
+         */
+        @Builder.Default
+        private int proactiveThresholdTokens = 160000;
+
+        /**
+         * 最大压缩尝试次数
+         */
+        @Builder.Default
+        private int maxCompressionAttempts = 3;
+
+        /**
+         * 摘要最大token数
+         */
+        @Builder.Default
+        private int maxSummaryTokens = 2000;
     }
 
 }

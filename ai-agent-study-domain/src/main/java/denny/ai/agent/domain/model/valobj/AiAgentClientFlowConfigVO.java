@@ -41,4 +41,9 @@ public class AiAgentClientFlowConfigVO {
      */
     private String stepPrompt;
 
+    /**
+     * 最大摘要token数（压缩场景使用）
+     */
+    private Integer maxSummaryTokens;
+
 }
