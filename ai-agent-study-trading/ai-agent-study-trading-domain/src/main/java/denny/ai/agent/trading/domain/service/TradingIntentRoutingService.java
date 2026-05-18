@@ -1,13 +1,13 @@
 package denny.ai.agent.trading.domain.service;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.ConfidenceEnum;
 import denny.ai.agent.trading.api.vo.IntentEnumVO;
 import denny.ai.agent.trading.api.vo.StockSearchResultVO;
-import denny.ai.agent.trading.domain.prompt.IntentRoutingPrompt;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.ApplicationContext;
@@ -42,6 +42,9 @@ public class TradingIntentRoutingService {
             return IntentRoutingResult.builder()
                     .intent(IntentEnumVO.UNKNOWN)
                     .confidence(ConfidenceEnum.LOW)
+                    .resolutionStatus("NOT_REQUIRED")
+                    .candidates(List.of())
+                    .nextAction("UNKNOWN_FALLBACK")
                     .reasoning("LLM 响应为空，降级为未知意图")
                     .build();
         }
@@ -53,6 +56,9 @@ public class TradingIntentRoutingService {
                 return IntentRoutingResult.builder()
                         .intent(IntentEnumVO.UNKNOWN)
                         .confidence(ConfidenceEnum.LOW)
+                        .resolutionStatus("NOT_REQUIRED")
+                        .candidates(List.of())
+                        .nextAction("UNKNOWN_FALLBACK")
                         .reasoning("无法解析 LLM 响应，降级为未知意图")
                         .build();
             }
@@ -63,23 +69,42 @@ public class TradingIntentRoutingService {
                 return IntentRoutingResult.builder()
                         .intent(IntentEnumVO.UNKNOWN)
                         .confidence(ConfidenceEnum.LOW)
+                        .resolutionStatus("NOT_REQUIRED")
+                        .candidates(List.of())
+                        .nextAction("UNKNOWN_FALLBACK")
                         .reasoning("JSON 解析失败，降级为未知意图")
                         .build();
             }
 
             IntentEnumVO intent = IntentEnumVO.valueOf(json.getString("intent"));
             ConfidenceEnum confidence = ConfidenceEnum.valueOf(json.getString("confidence"));
-            String ticker = json.getString("ticker");
-            String analysisTypeStr = json.getString("analysisType");
-            String reasoning = json.getString("reasoning");
+            String ticker = normalizeNullableString(json.getString("ticker"));
+            String analysisTypeStr = normalizeNullableString(json.getString("analysisType"));
+            String entityMention = normalizeNullableString(json.getString("entityMention"));
+            String reasoning = normalizeNullableString(json.getString("reasoning"));
+            List<StockCandidate> candidates = parseCandidates(json);
+            String resolutionStatus = normalizeNullableString(json.getString("resolutionStatus"));
+            if (resolutionStatus == null) {
+                resolutionStatus = inferResolutionStatus(intent, ticker, candidates);
+            }
+            String nextAction = normalizeNullableString(json.getString("nextAction"));
+            if (nextAction == null) {
+                nextAction = inferNextAction(intent, confidence, ticker, resolutionStatus);
+            }
+            String clarificationQuestion = normalizeNullableString(json.getString("clarificationQuestion"));
 
             List<AnalystTypeEnum> selectedAnalysts = parseAnalysisType(analysisTypeStr);
 
             return IntentRoutingResult.builder()
                     .intent(intent)
                     .confidence(confidence)
+                    .entityMention(entityMention)
                     .ticker(ticker)
                     .analysisType(analysisTypeStr)
+                    .resolutionStatus(resolutionStatus)
+                    .candidates(candidates)
+                    .nextAction(nextAction)
+                    .clarificationQuestion(clarificationQuestion)
                     .selectedAnalysts(selectedAnalysts)
                     .reasoning(reasoning)
                     .build();
@@ -88,6 +113,9 @@ public class TradingIntentRoutingService {
             return IntentRoutingResult.builder()
                     .intent(IntentEnumVO.UNKNOWN)
                     .confidence(ConfidenceEnum.LOW)
+                    .resolutionStatus("NOT_REQUIRED")
+                    .candidates(List.of())
+                    .nextAction("UNKNOWN_FALLBACK")
                     .reasoning("解析失败，降级为未知意图")
                     .build();
         }
@@ -219,6 +247,57 @@ public class TradingIntentRoutingService {
         };
     }
 
+    private List<StockCandidate> parseCandidates(JSONObject json) {
+        JSONArray candidatesJson = json.getJSONArray("candidates");
+        if (candidatesJson == null || candidatesJson.isEmpty()) {
+            return List.of();
+        }
+        return candidatesJson.toJavaList(StockCandidate.class);
+    }
+
+    private String inferResolutionStatus(IntentEnumVO intent, String ticker, List<StockCandidate> candidates) {
+        if (intent != IntentEnumVO.STOCK_ANALYSIS) {
+            return "NOT_REQUIRED";
+        }
+        if (ticker != null && !ticker.isBlank()) {
+            return "RESOLVED";
+        }
+        if (candidates != null && !candidates.isEmpty()) {
+            return "AMBIGUOUS";
+        }
+        return "NOT_FOUND";
+    }
+
+    private String inferNextAction(IntentEnumVO intent, ConfidenceEnum confidence, String ticker, String resolutionStatus) {
+        if (intent == IntentEnumVO.GENERAL_CHAT) {
+            return "CONTINUE_GENERAL_CHAT";
+        }
+        if (intent != IntentEnumVO.STOCK_ANALYSIS) {
+            return "UNKNOWN_FALLBACK";
+        }
+        if ("AMBIGUOUS".equals(resolutionStatus)) {
+            return "ASK_DISAMBIGUATION";
+        }
+        if ("NOT_FOUND".equals(resolutionStatus)) {
+            return "ASK_CLARIFICATION";
+        }
+        if ("RESOLVED".equals(resolutionStatus) && ticker != null && !ticker.isBlank()) {
+            return confidence == ConfidenceEnum.HIGH ? "START_TRADING_ANALYSIS" : "ASK_CLARIFICATION";
+        }
+        return "UNKNOWN_FALLBACK";
+    }
+
+    private String normalizeNullableString(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed;
+    }
+
     /**
      * 意图路由结果内部类。
      */
@@ -238,6 +317,11 @@ public class TradingIntentRoutingService {
         private ConfidenceEnum confidence;
 
         /**
+         * 用户原文中提到的股票名、公司名或简称。
+         */
+        private String entityMention;
+
+        /**
          * 股票代码
          */
         private String ticker;
@@ -248,6 +332,26 @@ public class TradingIntentRoutingService {
         private String analysisType;
 
         /**
+         * 股票实体解析状态：RESOLVED / NOT_FOUND / AMBIGUOUS / NOT_REQUIRED。
+         */
+        private String resolutionStatus;
+
+        /**
+         * 多候选股票列表。
+         */
+        private List<StockCandidate> candidates;
+
+        /**
+         * 下一步动作。
+         */
+        private String nextAction;
+
+        /**
+         * 需要向用户追问时的问题。
+         */
+        private String clarificationQuestion;
+
+        /**
          * 选定的分析师类型列表
          */
         private List<AnalystTypeEnum> selectedAnalysts;
@@ -256,5 +360,14 @@ public class TradingIntentRoutingService {
          * 推理说明
          */
         private String reasoning;
+    }
+
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class StockCandidate {
+        private String ticker;
+        private String name;
     }
 }

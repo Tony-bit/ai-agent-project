@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 意图路由节点。
@@ -39,6 +38,13 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     public static final String NEEDS_CONFIRMATION_KEY = "needs_confirmation";
     public static final String INTENT_ROUTING_RESULT_KEY = "intent_routing_result";
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
+    public static final String CLARIFICATION_QUESTION_KEY = "clarification_question";
+    public static final String ROUTING_CANDIDATES_KEY = "routing_candidates";
+    public static final String PENDING_ENTITY_MENTION_KEY = "pending_entity_mention";
+
+    private static final String ACTION_START_TRADING_ANALYSIS = "START_TRADING_ANALYSIS";
+    private static final String ACTION_ASK_CLARIFICATION = "ASK_CLARIFICATION";
+    private static final String ACTION_ASK_DISAMBIGUATION = "ASK_DISAMBIGUATION";
 
     @Resource
     private TradingIntentRoutingService tradingIntentRoutingService;
@@ -89,7 +95,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         sendIntentRoutingEvent(dynamicContext, result);
 
         if (result.getIntent() == IntentEnumVO.STOCK_ANALYSIS) {
-            handleStockAnalysisIntent(requestParameter, dynamicContext, result);
+            handleStockAnalysisIntent(dynamicContext, requestParameter.getSessionId(), result);
         } else {
             log.info("非股票分析意图，不设置 trading_request，继续流转到 Step1AnalyzerNode");
         }
@@ -125,89 +131,93 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         return null;
     }
 
-    private void handleStockAnalysisIntent(ExecuteCommandEntity requestParameter,
-                                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+    private void handleStockAnalysisIntent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                          String sessionId,
                                           TradingIntentRoutingService.IntentRoutingResult result) {
         String ticker = result.getTicker();
+        String nextAction = result.getNextAction();
 
-        // 兜底：如果 ticker 为 null 且意图是 STOCK_ANALYSIS，尝试从消息中提取公司名称并搜索
-        if (ticker == null && result.getIntent() == IntentEnumVO.STOCK_ANALYSIS) {
-            String companyName = extractCompanyName(requestParameter.getMessage());
-            if (companyName != null && !companyName.isEmpty()) {
-                log.info("开始通过公司名搜索股票: company={}", companyName);
-                ticker = tradingIntentRoutingService.searchTickerByName(companyName);
-                if (ticker != null) {
-                    log.info("Java 兜底搜索成功: company={}, ticker={}", companyName, ticker);
-                } else {
-                    log.warn("Java 兜底搜索失败，将以 ticker=null 继续流程: company={}", companyName);
-                }
-            } else {
-                log.warn("无法从消息中提取有效公司名: {}", requestParameter.getMessage());
-            }
+        if (ACTION_START_TRADING_ANALYSIS.equals(nextAction) && !hasText(ticker)) {
+            log.warn("LLM 请求启动股票分析但 ticker 为空，降级为澄清: entity={}, resolutionStatus={}",
+                    result.getEntityMention(), result.getResolutionStatus());
+            markNeedsClarification(dynamicContext, result, "请提供要分析的股票代码或确认股票名称。");
+            return;
         }
 
-        if (result.getConfidence() == ConfidenceEnum.HIGH) {
+        if (ACTION_START_TRADING_ANALYSIS.equals(nextAction) && hasText(ticker)) {
             StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
                     .ticker(ticker)
                     .selectedAnalysts(result.getSelectedAnalysts())
                     .maxDebateRounds(2)
                     .maxRiskRounds(1)
-                    .sessionId(requestParameter.getSessionId())
+                    .sessionId(sessionId)
                     .build();
 
             dynamicContext.setValue(TRADING_REQUEST_KEY, tradingRequest);
-            log.info("高置信度股票分析意图，设置 trading_request: ticker={}", ticker);
-
-        } else if (result.getConfidence() == ConfidenceEnum.MEDIUM) {
-            dynamicContext.setValue(NEEDS_CONFIRMATION_KEY, true);
-            dynamicContext.setValue("pending_ticker", ticker);
-            dynamicContext.setValue("pending_analysts", result.getSelectedAnalysts());
-            log.info("中置信度股票分析意图，等待用户确认: ticker={}", ticker);
-
-        } else {
-            log.info("低置信度股票分析意图，不触发交易流程: ticker={}", ticker);
+            log.info("股票分析意图已解析，设置 trading_request: ticker={}, entity={}, resolutionStatus={}",
+                    ticker, result.getEntityMention(), result.getResolutionStatus());
+            return;
         }
+
+        if (ACTION_ASK_CLARIFICATION.equals(nextAction)
+                || ACTION_ASK_DISAMBIGUATION.equals(nextAction)
+                || result.getConfidence() == ConfidenceEnum.MEDIUM) {
+            markNeedsClarification(dynamicContext, result, null);
+            log.info("股票分析意图需要用户确认: nextAction={}, ticker={}, entity={}, resolutionStatus={}",
+                    nextAction, ticker, result.getEntityMention(), result.getResolutionStatus());
+            return;
+        }
+
+        log.info("股票分析意图未触发交易流程: nextAction={}, confidence={}, ticker={}, resolutionStatus={}",
+                nextAction, result.getConfidence(), ticker, result.getResolutionStatus());
     }
 
-    /**
-     * 从消息中提取公司名称。
-     */
-    private String extractCompanyName(String message) {
-        if (message == null || message.isEmpty()) {
-            return null;
+    private void markNeedsClarification(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                        TradingIntentRoutingService.IntentRoutingResult result,
+                                        String fallbackQuestion) {
+        String question = hasText(result.getClarificationQuestion())
+                ? result.getClarificationQuestion()
+                : fallbackQuestion;
+        if (!hasText(question)) {
+            question = buildDefaultClarificationQuestion(result);
         }
-        // 去除常见前缀（按长度降序排列，确保长前缀优先匹配）
-        String[] prefixes = {
-                "帮我分析一下", "帮我看看", "帮我查一下", "帮我找一下",
-                "分析一下", "看看", "查一下", "找一下",
-                "分析", "查看", "查询", "查找",
-                "帮我", "我想了解", "请帮我", "请问"
-        };
-        String temp = message.trim();
-        for (String prefix : prefixes) {
-            if (temp.startsWith(prefix)) {
-                temp = temp.substring(prefix.length()).trim();
-                break; // 只去除第一个匹配的前缀
-            }
+
+        dynamicContext.setValue(NEEDS_CONFIRMATION_KEY, true);
+        dynamicContext.setValue("pending_ticker", result.getTicker());
+        dynamicContext.setValue("pending_analysts", result.getSelectedAnalysts());
+        dynamicContext.setValue(PENDING_ENTITY_MENTION_KEY, result.getEntityMention());
+        dynamicContext.setValue(ROUTING_CANDIDATES_KEY, result.getCandidates());
+        dynamicContext.setValue(CLARIFICATION_QUESTION_KEY, question);
+
+        sendClarificationEvent(dynamicContext, question);
+    }
+
+    private String buildDefaultClarificationQuestion(TradingIntentRoutingService.IntentRoutingResult result) {
+        if ("AMBIGUOUS".equals(result.getResolutionStatus())) {
+            return "找到多个候选股票，请确认要分析哪一个。";
         }
-        // 如果去除前缀后是"的股票"结尾，去掉
-        if (temp.endsWith("的股票")) {
-            temp = temp.substring(0, temp.length() - 4).trim();
+        if (hasText(result.getEntityMention())) {
+            return String.format("没有找到“%s”对应的A股股票，请提供股票代码或确认名称。", result.getEntityMention());
         }
-        // 去除常见后缀
-        String[] suffixes = {"怎么样", "如何", "好吗", "股票"};
-        for (String suffix : suffixes) {
-            if (temp.endsWith(suffix)) {
-                temp = temp.substring(0, temp.length() - suffix.length()).trim();
-            }
-        }
-        // 如果剩余内容太短（<2字符）或太长（>4字符），认为是无效提取
-        // A股公司名最长4个字，如"贵州茅台"、"宁德时代"
-        if (temp.length() < 2 || temp.length() > 4) {
-            log.warn("公司名提取结果可疑（长度不在2-4之间），返回 null: original={}, extracted={}", message, temp);
-            return null;
-        }
-        return temp;
+        return "请提供要分析的股票名称或6位股票代码。";
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private void sendClarificationEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                        String question) {
+        AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
+                .type("intent_routing")
+                .subType("clarification_required")
+                .step(0)
+                .content(question)
+                .completed(false)
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        sendSseResult(dynamicContext, event);
     }
 
     private void sendIntentRoutingEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
