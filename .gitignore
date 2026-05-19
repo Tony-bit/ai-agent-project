@@ -1,5 +1,9 @@
 # Maven
 target/
+
+# Git worktrees
+.worktrees/
+
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
