@@ -51,8 +51,9 @@ public final class RetryableExceptionTypes {
     }
 
     private static boolean matchesAnyPrefix(String className, Set<String> prefixes) {
+        String simpleName = className.contains(".") ? className.substring(className.lastIndexOf(".") + 1) : className;
         for (String prefix : prefixes) {
-            if (className.contains(prefix)) {
+            if (simpleName.equals(prefix)) {
                 return true;
             }
         }

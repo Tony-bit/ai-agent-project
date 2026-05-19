@@ -66,11 +66,12 @@ public class RetryChatModel implements ChatModel {
             return delegate.stream(prompt);
         }
 
+        int maxAttempts = Math.min(retryConfig.getMaxAttempts(), 10);
         int attempt = 0;
-        long interval = retryConfig.getInitialIntervalMs();
+        long interval = Math.max(0, retryConfig.getInitialIntervalMs());
         RuntimeException lastException = null;
 
-        while (attempt < retryConfig.getMaxAttempts()) {
+        while (attempt < maxAttempts) {
             attempt++;
             try {
                 return delegate.stream(prompt);
@@ -88,15 +89,16 @@ public class RetryChatModel implements ChatModel {
                     return Flux.error(lastException);
                 }
                 if (retryableErrorCodes().contains(errorCode) || RetryableExceptionTypes.isRetryable(e)) {
-                    if (attempt >= retryConfig.getMaxAttempts()) {
+                    if (attempt >= maxAttempts) {
                         log.error("[RetryStream] Max attempts {} reached, giving up, attempt={}, errorCode={}, ex={}",
-                                retryConfig.getMaxAttempts(), attempt, errorCode, e.getMessage());
+                                maxAttempts, attempt, errorCode, e.getMessage());
                         return Flux.error(lastException);
                     }
                     log.warn("[RetryStream] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
-                            attempt, retryConfig.getMaxAttempts(), interval, errorCode, e.getMessage());
+                            attempt, maxAttempts, interval, errorCode, e.getMessage());
                     sleep(interval);
-                    interval = Math.min((long) (interval * retryConfig.getMultiplier()), retryConfig.getMaxIntervalMs());
+                    long multiplier = retryConfig.getMultiplier() < 0 ? 1 : (long) retryConfig.getMultiplier();
+                    interval = Math.min(interval * multiplier, retryConfig.getMaxIntervalMs());
                 } else {
                     log.warn("[RetryStream] Non-retryable exception, rethrow directly, errorCode={}, attempt={}, ex={}",
                             errorCode, attempt, e.getMessage());

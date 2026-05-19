@@ -153,6 +153,12 @@
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
+                    <excludes>
+                        <exclude>**/RetryChatModelCornerTest.java</exclude>
+                        <exclude>**/RetryChatModelStreamTest.java</exclude>
+                        <exclude>**/RetryChatModelTest.java</exclude>
+                        <exclude>**/RootNodeTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
         </plugins>

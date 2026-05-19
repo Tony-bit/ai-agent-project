@@ -45,6 +45,7 @@ public class RedisConfig {
     @Value("${redis.sdk.config.ping-interval:60000}")
     private long pingInterval;
 
+    @SuppressWarnings("unchecked")
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
@@ -61,7 +62,7 @@ public class RedisConfig {
 
         LettucePoolingClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder()
                 .commandTimeout(Duration.ofMillis(connectTimeout))
-                .poolConfig(pool)
+                .poolConfig((GenericObjectPoolConfig) pool)
                 .build();
 
         return new LettuceConnectionFactory(config, clientConfig);

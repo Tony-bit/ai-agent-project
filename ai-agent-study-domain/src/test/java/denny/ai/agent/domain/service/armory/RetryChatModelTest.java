@@ -469,9 +469,9 @@ public class RetryChatModelTest {
         }
     }
 
-    private static class CustomResourceAccessException extends RuntimeException {
+    private static class CustomResourceAccessException extends org.springframework.web.client.ResourceAccessException {
         public CustomResourceAccessException() {
-            super("Connection failed");
+            super("Connection failed", null);
         }
     }
 }

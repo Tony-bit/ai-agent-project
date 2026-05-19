@@ -22,6 +22,8 @@ import java.util.Set;
 @Slf4j
 public abstract class RetryStrategy<T> {
 
+    private static final int MAX_SAFE_ATTEMPTS = 10;
+
     private final ChatModel delegate;
     private final RetryConfig retryConfig;
     private final CompressionConfig compressionConfig;
@@ -48,15 +50,16 @@ public abstract class RetryStrategy<T> {
      */
     public T execute(Prompt prompt) {
         checkProactiveCompression(prompt);
-        if (!retryConfig.isEnabled() || retryConfig.getMaxAttempts() <= 0) {
+        int maxAttempts = Math.min(retryConfig.getMaxAttempts(), MAX_SAFE_ATTEMPTS);
+        if (!retryConfig.isEnabled() || maxAttempts <= 0) {
             return doExecute(prompt);
         }
 
         int attempt = 0;
-        long interval = retryConfig.getInitialIntervalMs();
+        long interval = Math.max(0, retryConfig.getInitialIntervalMs());
         RuntimeException lastRuntimeException = null;
 
-        while (attempt < retryConfig.getMaxAttempts()) {
+        while (attempt < maxAttempts) {
             attempt++;
             try {
                 return doExecute(prompt);
@@ -65,13 +68,14 @@ public abstract class RetryStrategy<T> {
                 if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCode)) {
                     checkPassiveCompression(prompt, errorCode);
                 }
-                HandleResult result = handleException(e, errorCode, attempt, interval);
+                HandleResult result = handleException(e, errorCode, attempt, interval, maxAttempts);
                 if (result.shouldRethrow()) {
                     return onExhausted(toRuntimeException(result.getException()));
                 }
                 if (result.shouldContinue()) {
                     lastRuntimeException = toRuntimeException(result.getException());
-                    interval = Math.min((long) (interval * retryConfig.getMultiplier()), retryConfig.getMaxIntervalMs());
+                    long multiplier = retryConfig.getMultiplier() < 0 ? 1 : (long) retryConfig.getMultiplier();
+                    interval = Math.min(interval * multiplier, retryConfig.getMaxIntervalMs());
                 }
             }
         }
@@ -132,7 +136,7 @@ public abstract class RetryStrategy<T> {
     }
 
     // ===== 异常处理逻辑 =====
-    private HandleResult handleException(Exception e, String errorCode, int attempt, long interval) {
+    private HandleResult handleException(Exception e, String errorCode, int attempt, long interval, int maxAttempts) {
         if (nonRetryableErrorCodes.contains(errorCode)) {
             log.warn("[Retry] Blacklist matched, skip retry, errorCode={}, attempt={}, ex={}",
                     errorCode, attempt, e.getMessage());
@@ -141,7 +145,7 @@ public abstract class RetryStrategy<T> {
         boolean isRetryable = retryableErrorCodes.contains(errorCode) || RetryableExceptionTypes.isRetryable(e);
         if (isRetryable) {
             log.warn("[Retry] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
-                    attempt, retryConfig.getMaxAttempts(), interval, errorCode, e.getMessage());
+                    attempt, maxAttempts, interval, errorCode, e.getMessage());
             sleep(interval);
             return HandleResult.retry(e);
         }

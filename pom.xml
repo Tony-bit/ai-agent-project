@@ -58,7 +58,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.3</version>
+        <version>3.5.10</version>
     </parent>
 
     <dependencyManagement>
@@ -130,7 +130,7 @@
             <dependency>
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-starter-memory-mem0</artifactId>
-                <version>1.1.2.3</version>
+                <version>1.1.2.2</version>
             </dependency>
 
             <!-- Yahoo Finance API（sstrickx 原版，发布在 Maven Central） -->
