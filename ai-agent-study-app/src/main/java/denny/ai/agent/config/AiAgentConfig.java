@@ -1,8 +1,7 @@
 package denny.ai.agent.config;
 
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0Client;
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0Server;
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import denny.ai.agent.infrastructure.mem0.Mem0RestClient;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -14,8 +13,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.client.RestTemplate;
+
+import java.time.Duration;
 
 @Configuration
 public class AiAgentConfig {
@@ -74,25 +76,20 @@ public class AiAgentConfig {
     }
 
     @Bean
-    public Mem0Client mem0Client(
-            @Value("${spring.ai.alibaba.mem0.client.base-url}") String baseUrl,
+    public RestTemplate mem0RestTemplate(
             @Value("${spring.ai.alibaba.mem0.client.timeout-seconds:120}") int timeoutSeconds) {
-        return Mem0Client.builder()
-                .baseUrl(baseUrl)
-                .timeoutSeconds(timeoutSeconds)
-                .build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        Duration timeout = Duration.ofSeconds(timeoutSeconds);
+        requestFactory.setConnectTimeout(timeout);
+        requestFactory.setReadTimeout(timeout);
+        return new RestTemplate(requestFactory);
     }
 
     @Bean
-    public Mem0Server mem0Server(
-            @Value("${spring.ai.alibaba.mem0.server.version}") String version) {
-        return Mem0Server.builder()
-                .version(version)
-                .build();
-    }
-
-    @Bean
-    public Mem0ServiceClient mem0ServiceClient(Mem0Client mem0Client, Mem0Server mem0Server) {
-        return new Mem0ServiceClient(mem0Client, mem0Server, new DefaultResourceLoader());
+    public Mem0RestClient mem0RestClient(
+            @Value("${spring.ai.alibaba.mem0.client.base-url}") String baseUrl,
+            RestTemplate mem0RestTemplate,
+            ObjectMapper objectMapper) {
+        return new Mem0RestClient(mem0RestTemplate, baseUrl, objectMapper);
     }
 }

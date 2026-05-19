@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * Mem0 记忆检索结果值对象
  * <p>
- * 封装 Mem0ServiceClient.searchMemories() 的返回结果，
+ * 封装 Mem0 REST API 记忆检索返回结果，
  * 屏蔽底层响应结构，直接暴露业务关心的字段。
  * </p>
  *

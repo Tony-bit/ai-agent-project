@@ -60,7 +60,7 @@ public class Mem0MemoryControllerTest {
         String sessionId = UUID.randomUUID().toString().substring(0, 8);
         String content = "我喜欢吃鱼，内容ID=" + sessionId;
 
-        // 1. 添加记忆（走 Mem0ServiceClient -> Mem0 REST API）
+        // 1. 添加记忆（走 Mem0RestClient -> Mem0 REST API）
         Map<String, String> requestBody = new HashMap<>();
         requestBody.put("userId", TEST_USER_ID);
         requestBody.put("agentId", TEST_AGENT_ID);

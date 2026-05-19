@@ -1,10 +1,10 @@
 package denny.ai.agent.infrastructure.service;
 
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
-import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
 import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
 import denny.ai.agent.infrastructure.dao.IChatSessionDao;
 import denny.ai.agent.infrastructure.dao.po.ChatSessionPO;
+import denny.ai.agent.infrastructure.mem0.Mem0RestClient;
+import denny.ai.agent.infrastructure.mem0.dto.Mem0Dtos;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,7 +29,7 @@ public class ChatSessionMemorySyncService implements ISessionMemoryPersistenceSe
     private IChatSessionDao chatSessionDao;
 
     @Resource
-    private Mem0ServiceClient mem0ServiceClient;
+    private Mem0RestClient mem0RestClient;
 
     /**
      * 将指定会话的会话内容同步到 Mem0 长期记忆
@@ -48,10 +48,10 @@ public class ChatSessionMemorySyncService implements ISessionMemoryPersistenceSe
         }
 
         // 2. 构造批量 messages（每条记录拆分为 user + assistant 两条）
-        List<Mem0ServerRequest.Message> messages = unsyncedSessions.stream()
+        List<Mem0Dtos.Message> messages = unsyncedSessions.stream()
                 .flatMap(session -> {
-                    Mem0ServerRequest.Message userMsg = new Mem0ServerRequest.Message("user", session.getFirstQuery());
-                    Mem0ServerRequest.Message assistantMsg = new Mem0ServerRequest.Message("assistant", session.getLastResponse());
+                    Mem0Dtos.Message userMsg = new Mem0Dtos.Message("user", session.getFirstQuery());
+                    Mem0Dtos.Message assistantMsg = new Mem0Dtos.Message("assistant", session.getLastResponse());
                     return Stream.of(userMsg, assistantMsg);
                 })
                 .collect(Collectors.toList());
@@ -59,11 +59,11 @@ public class ChatSessionMemorySyncService implements ISessionMemoryPersistenceSe
         // 取第一条的 agentId 作为本次写入的 agentId（业务上同一 session 的 agentId 一致）
         String agentId = unsyncedSessions.get(0).getAgentId();
 
-        mem0ServiceClient.addMemory(
-                Mem0ServerRequest.MemoryCreate.builder()
-                        .userId(userId)
-                        .agentId(agentId)
-                        .runId(sessionId)
+        mem0RestClient.addMemory(
+                Mem0RestClient.MemoryCreate.builder()
+                        .user_id(userId)
+                        .agent_id(agentId)
+                        .run_id(sessionId)
                         .messages(messages)
                         .build()
         );

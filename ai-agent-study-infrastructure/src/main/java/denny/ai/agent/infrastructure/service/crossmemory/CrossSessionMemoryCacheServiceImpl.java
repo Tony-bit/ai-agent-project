@@ -1,10 +1,8 @@
 package denny.ai.agent.infrastructure.service.crossmemory;
 
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
-import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
-import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerResp;
 import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
 import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
+import denny.ai.agent.infrastructure.mem0.Mem0RestClient;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +27,7 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private Mem0ServiceClient mem0ServiceClient;
+    private Mem0RestClient mem0RestClient;
 
     @Resource
     private CrossSessionMemoryProperties crossSessionMemoryProperties;
@@ -84,12 +82,12 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
      */
     private String queryFromMem0(String userId) {
         try {
-            Mem0ServerRequest.SearchRequest searchRequest = Mem0ServerRequest.SearchRequest.mem0Builder()
+            Mem0RestClient.SearchRequest searchRequest = Mem0RestClient.SearchRequest.builder()
                     .query("用户相关信息和偏好")
-                    .userId(userId)
-                    .topK(crossSessionMemoryProperties.getCrossSessionMemoryTopK())
+                    .user_id(userId)
+                    .limit(crossSessionMemoryProperties.getCrossSessionMemoryTopK())
                     .build();
-            Mem0ServerResp resp = mem0ServiceClient.searchMemories(searchRequest);
+            Mem0RestClient.Mem0ServerResp resp = mem0RestClient.searchMemories(searchRequest);
             return formatMem0Result(resp);
         } catch (Exception e) {
             log.warn("Mem0 查询跨会话记忆失败，降级返回空, userId={}, error={}", userId, e.getMessage());
@@ -100,13 +98,13 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
     /**
      * 将 Mem0ServerResp 格式化为 Prompt 上下文字符串
      */
-    private String formatMem0Result(Mem0ServerResp resp) {
+    private String formatMem0Result(Mem0RestClient.Mem0ServerResp resp) {
         if (resp == null || resp.getResults() == null || resp.getResults().isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder("\n\n[用户跨会话长期记忆]\n");
         int i = 1;
-        for (Mem0ServerResp.Mem0Results item : resp.getResults()) {
+        for (Mem0RestClient.Mem0ServerResp.Mem0Results item : resp.getResults()) {
             sb.append(i++).append(". ").append(item.getMemory());
             if (item.getMetadata() != null && !item.getMetadata().isEmpty()) {
                 sb.append(" (metadata: ").append(item.getMetadata()).append(")");

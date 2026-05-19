@@ -1,44 +1,29 @@
 package denny.ai.agent.trigger.http;
 
-import com.alibaba.cloud.ai.memory.mem0.core.Mem0ServiceClient;
-import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerRequest;
-import com.alibaba.cloud.ai.memory.mem0.model.Mem0ServerResp;
 import denny.ai.agent.api.response.Response;
+import denny.ai.agent.infrastructure.mem0.Mem0RestClient;
+import denny.ai.agent.infrastructure.mem0.dto.Mem0Dtos;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
-/**
+ /**
  * Mem0 长期记忆 HTTP 接口层
- * 提供记忆的增删查改能力，底层调用 Mem0 REST API Server (localhost:8888)
+ * 提供记忆的增删查改能力，底层调用 Mem0 REST API Server (localhost:8889)
  *
  * @author denny
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/mem0")
-@ConditionalOnBean(Mem0ServiceClient.class)
 public class Mem0MemoryController {
 
-    private final Mem0ServiceClient mem0ServiceClient;
+    private final Mem0RestClient mem0RestClient;
 
-    public Mem0MemoryController(Mem0ServiceClient mem0ServiceClient) {
-        this.mem0ServiceClient = mem0ServiceClient;
+    public Mem0MemoryController(Mem0RestClient mem0RestClient) {
+        this.mem0RestClient = mem0RestClient;
     }
-
-    /**
-     * 初始化 ChatClient（延迟注入，避免循环依赖）
-     */
-//    @org.springframework.context.annotation.Lazy
-//    @org.springframework.beans.factory.annotation.Autowired
-//    public void setChatClient(ChatClient.Builder chatClientBuilder) {
-//        this.chatClient = chatClientBuilder
-//                .defaultAdvisors(Mem0ChatMemoryAdvisor.builder(vectorStore).build())
-//                .build();
-//    }
 
     /**
      * 添加记忆
@@ -47,11 +32,11 @@ public class Mem0MemoryController {
     public Response<Void> addMemory(@RequestBody AddMemoryRequest request) {
         log.info("Mem0 添加记忆, userId={}, agentId={}, content={}",
                 request.getUserId(), request.getAgentId(), request.getContent());
-        mem0ServiceClient.addMemory(
-                Mem0ServerRequest.MemoryCreate.builder()
-                        .userId(request.getUserId())
-                        .agentId(request.getAgentId())
-                        .messages(List.of(new Mem0ServerRequest.Message("user", request.getContent())))
+        mem0RestClient.addMemory(
+                Mem0RestClient.MemoryCreate.builder()
+                        .user_id(request.getUserId())
+                        .agent_id(request.getAgentId())
+                        .messages(List.of(new Mem0Dtos.Message("user", request.getContent())))
                         .build()
         );
         return Response.ok();
@@ -62,11 +47,11 @@ public class Mem0MemoryController {
      */
     @GetMapping("/memories")
     public Response<?> getMemories(
-            @RequestParam String userId,
-            @RequestParam(required = false) String agentId) {
+            @RequestParam("userId") String userId,
+            @RequestParam(value = "agentId", required = false) String agentId) {
         log.info("Mem0 查询所有记忆, userId={}, agentId={}", userId, agentId);
         try {
-            Object resp = mem0ServiceClient.getAllMemories(userId, agentId, null);
+            Object resp = mem0RestClient.getAllMemories(userId, agentId, null);
             return Response.ok(resp);
         } catch (Exception e) {
             log.error("Mem0 查询记忆失败, userId={}", userId, e);
@@ -78,19 +63,19 @@ public class Mem0MemoryController {
      * 语义搜索记忆
      */
     @GetMapping("/search")
-    public Response<Mem0ServerResp> searchMemory(
-            @RequestParam String userId,
-            @RequestParam String query,
-            @RequestParam(required = false) String sessionId,
-            @RequestParam(defaultValue = "10") int limit) {
+    public Response<Mem0RestClient.Mem0ServerResp> searchMemory(
+            @RequestParam("userId") String userId,
+            @RequestParam("query") String query,
+            @RequestParam(value = "sessionId", required = false) String sessionId,
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
         log.info("Mem0 语义搜索, userId={}, query={}, sessionId={}", userId, query, sessionId);
-        Mem0ServerRequest.SearchRequest request = Mem0ServerRequest.SearchRequest.mem0Builder()
+        Mem0RestClient.SearchRequest request = Mem0RestClient.SearchRequest.builder()
                 .query(query)
-                .userId(userId)
-                .runId(sessionId != null && !sessionId.isBlank() ? sessionId : null)
-                .topK(limit)
+                .user_id(userId)
+                .run_id(sessionId != null && !sessionId.isBlank() ? sessionId : null)
+                .limit(limit)
                 .build();
-        Mem0ServerResp result = mem0ServiceClient.searchMemories(request);
+        Mem0RestClient.Mem0ServerResp result = mem0RestClient.searchMemories(request);
         return Response.ok(result);
     }
 
@@ -98,9 +83,8 @@ public class Mem0MemoryController {
      * 清空用户全部记忆
      */
     @DeleteMapping("/memories")
-    public Response<Void> deleteAllMemory(@RequestParam String userId) {
+    public Response<Void> deleteAllMemory(@RequestParam("userId") String userId) {
         log.info("Mem0 清空用户记忆, userId={}", userId);
-//        mem0ServiceClient.deleteAllMemory(userId, null, null);
         return Response.ok();
     }
 
@@ -110,7 +94,6 @@ public class Mem0MemoryController {
     @PostMapping("/configure")
     public Response<Void> configure() {
         log.info("Mem0 配置初始化");
-//        mem0ServiceClient.configure(Map.of());
         return Response.ok();
     }
 
