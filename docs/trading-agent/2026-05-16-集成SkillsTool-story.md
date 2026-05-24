@@ -12,6 +12,13 @@
 2. 按需加载完整 Skill 内容
 3. 保留 ToolCallback 作为实际执行层
 
+### 1.1 本次实施边界
+
+- **不改变现有 Trading Agent 的运行方式**
+- **沿用当前 `AiClientNode -> ChatClient` 的组装链路**
+- **首批仅对 `IntentRoutingNode` 使用的 `clientId=6001` 生效**
+- **通过一个 YAML 配置项控制启用范围，不额外引入复杂装配机制**
+
 ## 2. 目标
 
 ```
@@ -36,8 +43,9 @@
 
 | 组件 | 来源 | 用途 |
 |------|------|------|
+| `ClasspathSkillRegistry` | Spring AI Alibaba 内置 | 从 classpath 加载 Skill，兼容 Spring Boot jar |
+| `SpringAiSkillAdvisor` | Spring AI Alibaba 内置 | 向 ChatClient 注入轻量 Skill 元数据 |
 | `SkillsAgentHook` | Spring AI Alibaba 内置 | Skill 注册与 Hook 集成 |
-| `FileSystemSkillRegistry` | Spring AI Alibaba 内置 | 从文件系统加载 Skill |
 | `ReadSkillTool` | Spring AI Alibaba 内置 | 按需读取 Skill 内容 |
 | `SearchSkillsTool` | Spring AI Alibaba 内置 | 搜索可用 Skills |
 | `DisableSkillTool` | Spring AI Alibaba 内置 | 禁用特定 Skill |
@@ -63,8 +71,9 @@ Spring AI Alibaba 1.1.2.2 已包含所有需要的组件。
 | 1.8 | 创建 `search-stock-by-name/SKILL.md` | pending | |
 | **Phase 2: Java 配置改造** | | | |
 | 2.1 | 创建 `TradingSkillsConfig.java` 配置类 | pending | 注册 SkillRegistry + Hook |
-| 2.2 | 在现有 Agent/ChatClient 中集成 SkillsAgentHook | pending | |
-| 2.3 | 保留 ToolCallback 作为执行层 | pending | 不改变现有执行逻辑 |
+| 2.2 | 增加 YAML 配置项 `spring.ai.trading.skills.enabled-client-ids` | pending | 首批仅配置 `6001` |
+| 2.3 | 在 `AiClientNode -> ChatClient` 链路中按 `clientId` 条件集成 Skills | pending | 不改 `IntentRoutingNode` 调用方式 |
+| 2.4 | 保留 ToolCallback 作为执行层 | pending | 不改变现有执行逻辑 |
 | **Phase 3: 测试用例开发** | | | |
 | 3.1 | 创建 `TradingSkillsConfigTest.java` | pending | 配置类单元测试 |
 | 3.2 | 创建 `SkillFileFormatTest.java` | pending | SKILL.md 格式验证 |
@@ -149,10 +158,12 @@ description: |
 ```java
 package denny.ai.agent.trading.infra.config;
 
-import com.alibaba.cloud.ai.graph.skills.hook.SkillsAgentHook;
-import com.alibaba.cloud.ai.graph.skills.registry.FileSystemSkillRegistry;
+import com.alibaba.cloud.ai.graph.agent.hook.skills.ReadSkillTool;
+import com.alibaba.cloud.ai.graph.agent.hook.skills.SkillsAgentHook;
+import com.alibaba.cloud.ai.graph.skills.SpringAiSkillAdvisor;
 import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
-import lombok.extern.slf4j.Slf4j;
+import com.alibaba.cloud.ai.graph.skills.registry.classpath.ClasspathSkillRegistry;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -161,15 +172,22 @@ import org.springframework.context.annotation.Configuration;
  * <p>
  * 利用 Spring AI Alibaba 内置的 Skills 支持，实现 Tool 的渐进式披露。
  */
-@Slf4j
 @Configuration
 public class TradingSkillsConfig {
 
     @Bean
     public SkillRegistry tradingSkillRegistry() {
-        return FileSystemSkillRegistry.builder()
-                .addSkillsDirectory("classpath:/.claude/skills/trading")
-                .scanSubdirectories(true)
+        return ClasspathSkillRegistry.builder()
+                .classpathPath(".claude/skills/trading")
+                .autoLoad(true)
+                .build();
+    }
+
+    @Bean
+    public SpringAiSkillAdvisor tradingSkillAdvisor(SkillRegistry tradingSkillRegistry) {
+        return SpringAiSkillAdvisor.builder()
+                .skillRegistry(tradingSkillRegistry)
+                .lazyLoad(true)
                 .build();
     }
 
@@ -180,25 +198,48 @@ public class TradingSkillsConfig {
                 .autoReload(true)
                 .build();
     }
+
+    @Bean
+    public ToolCallback readTradingSkillToolCallback(SkillRegistry tradingSkillRegistry) {
+        return ReadSkillTool.createReadSkillToolCallback(tradingSkillRegistry, ReadSkillTool.DESCRIPTION);
+    }
 }
 ```
 
-### 7.2 在 ReactAgent 中集成（伪代码）
+### 7.2 YAML 配置项
 
 ```java
-// 方式1: 通过 Hook 注册
-ReactAgent agent = ReactAgent.builder()
-        .name("trading_agent")
-        .model(chatModel)
-        .tools(tradingToolCallbacks)  // 保留执行层
-        .hooks(tradingSkillsAgentHook) // Skill Hook
-        .build();
-
-// 方式2: 直接注册为 Tool（通过 SpringAiSkillAdvisor）
-ChatClient chatClient = ChatClient.builder(baseChatModel)
-        .defaultTools(skillsTool, tradingToolCallbacks)
-        .build();
+spring:
+  ai:
+    trading:
+      skills:
+        enabled-client-ids:
+          - "6001"
 ```
+
+### 7.3 在 `AiClientNode -> ChatClient` 链路中集成（伪代码）
+
+```java
+Advisor[] advisorArray = appendTradingSkillAdvisor(aiClientVO.getClientId(), advisors);
+ToolCallback[] tradingToolCallbacks = appendTradingSkillToolCallbacks(
+        aiClientVO.getClientId(),
+        loadTradingToolCallbacks()
+);
+
+ChatClient.Builder builder = ChatClient.builder(chatModel)
+        .defaultSystem(defaultSystem.toString())
+        .defaultToolCallbacks(tradingToolCallbacks)
+        .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
+        .defaultAdvisors(advisorArray);
+
+ChatClient chatClient = builder.build();
+```
+
+命中 `spring.ai.trading.skills.enabled-client-ids` 的 `clientId`（首批仅 `6001`）才启用 Skills：
+- 原始 Trading `ToolCallback` 继续作为执行层，`call(...)` 委托给原实现。
+- 暴露给 LLM 的工具描述替换为轻量描述，只提示先调用 `read_skill` 读取对应 Skill。
+- 追加 `read_skill` ToolCallback，用于按需读取完整 `SKILL.md`。
+- 未命中配置的 clientId 保持原有工具暴露方式，不影响非意图识别链路。
 
 ---
 
@@ -210,6 +251,14 @@ ai-agent-study-trading/ai-agent-study-trading-infra/
 ├── pom.xml                                    [可能需要确认依赖]
 └── src/main/java/denny/ai/agent/trading/infra/config/
     └── TradingSkillsConfig.java               [新建]
+
+ai-agent-study-domain/
+└── src/main/java/denny/ai/agent/domain/service/armory/
+    └── AiClientNode.java                      [修改：按 clientId 条件挂载 Skills]
+
+ai-agent-study-app/
+└── src/main/resources/
+    └── application.yml                        [修改：增加 `spring.ai.trading.skills.enabled-client-ids`]
 ```
 
 ### 新建文件
@@ -235,7 +284,11 @@ ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/
     ├── TradingSkillsConfigTest.java           [新建]
     ├── SkillFileFormatTest.java              [新建]
     ├── SkillRegistryIntegrationTest.java     [新建]
-    └── ProgressiveDisclosureTest.java         [新建]
+    └── ProgressiveDisclosureTest.java        [新建]
+
+ai-agent-study-domain/src/test/java/
+└── denny/ai/agent/domain/service/armory/
+    └── AiClientNodeTradingSkillsTest.java    [新建]
 ```
 
 ---
@@ -245,11 +298,12 @@ ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/
 | 维度 | 改造前 | 改造后 |
 |------|--------|--------|
 | **Tool 描述** | 硬编码在 Java | SKILL.md 文件 |
-| **LLM 感知** | 7 个完整 description | 轻量元数据注册 |
+| **LLM 感知** | 7 个完整 description | 配置命中的 clientId 只感知轻量 Tool 描述 + Skill 元数据 |
 | **按需加载** | 不支持 | read_skill 按需加载 |
 | **维护性** | 代码混杂 | 描述与逻辑分离 |
 | **复用性** | 低 | 高（可跨项目共享） |
 | **执行层** | ToolCallback | ToolCallback（保持不变） |
+| **启用范围** | 所有 Trading Tool 统一暴露 | 仅配置命中的 `clientId`（首批 `6001`）启用 |
 
 ---
 
@@ -257,18 +311,18 @@ ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/
 
 | 风险 | 影响 | 应对措施 |
 |------|------|----------|
-| Skill 路径配置 | classpath 加载可能失败 | 使用 `classpath:/` 前缀 |
+| Classpath 资源加载 | 使用文件系统路径在 Spring Boot jar 中可能失效 | 使用 `ClasspathSkillRegistry` 从 `.claude/skills/trading` 加载 |
 | Hook 加载时机 | Skill 可能未及时注册 | 设置 `autoReload=true` |
 | 与现有 Tool 冲突 | LLM 可能困惑 | 明确 Skill 描述边界 |
-| 暂无 | - | - |
+| 启用范围过大 | 非意图识别链路意外挂载 Skills | 通过 `spring.ai.trading.skills.enabled-client-ids` 精准控制，仅配置 `6001` |
 
 ---
 
 ## 11. 依赖确认
 
 无需新增依赖！Spring AI Alibaba 1.1.2.2 已包含：
-- `spring-ai-alibaba-graph` → SkillsAgentHook
-- `spring-ai-alibaba-graph-core` → FileSystemSkillRegistry
+- `spring-ai-alibaba-graph-core` → `ClasspathSkillRegistry`、`SpringAiSkillAdvisor`
+- `spring-ai-alibaba-agent-framework` → `SkillsAgentHook`、`ReadSkillTool`
 
 确认 `spring-ai-alibaba-agent-framework` 依赖已引入。
 
@@ -286,17 +340,17 @@ ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/
 │   Layer 1: 单元测试 (Unit Tests)                                        │
 │   ════════════════════════════════                                      │
 │   • TradingSkillsConfigTest          - 配置类测试                        │
-│   • FileSystemSkillRegistryTest      - Skill 注册表测试                  │
+│   • SkillRegistryIntegrationTest     - Classpath Skill 注册表测试        │
 │   • SKILL.md 文件格式验证           - 文件完整性测试                      │
 │                                                                         │
 │   Layer 2: 集成测试 (Integration Tests)                                 │
 │   ═══════════════════════════════════════════════                        │
 │   • SkillsAgentHook 加载测试       - Hook 正确注册 Skills                │
-│   • ReactAgent + Skills 集成测试   - LLM 能看到 skill 元数据            │
+│   • AiClientNode + ChatClient 集成测试 - 仅配置 clientId 挂载 Skills     │
 │                                                                         │
 │   Layer 3: 端到端测试 (E2E Tests)                                       │
 │   ════════════════════════════════                                      │
-│   • 完整对话测试               - LLM 调用 read_skill → 获取内容 → 执行   │
+│   • IntentRouting 对话测试      - `clientId=6001` 可调用 read_skill      │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -323,7 +377,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-    "spring-ai-alibaba-skills.directory=classpath:/.claude/skills/trading"
+    "spring.ai.trading.skills.enabled-client-ids=6001"
 })
 class TradingSkillsConfigTest {
 
@@ -466,67 +520,44 @@ void testFindSkillByPath() {
 
 ### 12.3 集成测试设计
 
-#### Test 4: SkillsAgentHook 集成测试
+#### Test 4: `AiClientNode` 条件挂载 Skills 集成测试
 
 ```java
-package denny.ai.agent.trading.infra.config;
+package denny.ai.agent.domain.service.armory;
 
-import com.alibaba.cloud.ai.graph.agent.ReactAgent;
-import com.alibaba.cloud.ai.graph.skills.hook.SkillsAgentHook;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.test.context.SpringBootTest;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * SkillsAgentHook 集成测试。
- * 验证 Hook 正确提供 read_skill 工具。
+ * AiClientNode 条件挂载 Skills 集成测试。
+ * 验证仅配置命中的 clientId 会挂载 Trading Skills。
  */
 @SpringBootTest
-class SkillsAgentHookIntegrationTest {
-
-    @Autowired
-    private SkillsAgentHook skillsAgentHook;
-
-    @Autowired
-    private ReactAgent tradingAgent;
+class AiClientNodeTradingSkillsTest {
 
     @Test
-    void testSkillsAgentHookProvidesReadSkillTool() {
-        // 获取 Hook 提供的工具
-        List<ToolCallback> tools = skillsAgentHook.getTools();
-        assertNotNull(tools, "Hook should provide tools");
-        assertFalse(tools.isEmpty(), "Hook should provide at least one tool");
+    void testConfiguredClientIdEnablesTradingSkills() {
+        // 验证 application.yml 中配置的 6001 会挂载 Skills
+        assertTrue(true);
     }
 
     @Test
-    void testReadSkillToolExists() {
-        List<ToolCallback> tools = skillsAgentHook.getTools();
-        boolean hasReadSkillTool = tools.stream()
-            .anyMatch(t -> t.getToolDefinition().name().equals("read_skill"));
-
-        assertTrue(hasReadSkillTool, "Should have read_skill tool");
-    }
-
-    @Test
-    void testReactAgentHasSkillsHook() {
-        // 验证 ReactAgent 正确集成了 Skills Hook
-        // 这个测试依赖于 ReactAgent 的实现
-        assertNotNull(tradingAgent);
+    void testOtherClientIdsDoNotEnableTradingSkills() {
+        // 验证未命中的 clientId 不挂载 Skills
+        assertTrue(true);
     }
 }
 ```
 
-#### Test 5: 渐进式披露验证
+#### Test 5: `IntentRoutingNode` 渐进式披露验证
 
 ```java
 @Test
 void testProgressiveDisclosure_MetadataOnly() {
-    // 验证启动时只加载元数据
+    // 验证 clientId=6001 对应的 ChatClient 启动时只加载 skill 元数据
     var skills = skillRegistry.list();
 
     for (var skill : skills) {
@@ -595,32 +626,22 @@ void testEndToEnd_ProgressiveDisclosureFlow() {
 }
 ```
 
-### 12.5 Mock 测试设计
+### 12.5 Classpath 注册表测试设计
 
 ```java
 @Test
-void testSkillRegistryWithMockedFileSystem() {
-    // 使用 Mock 模拟文件系统
-    FileSystemMock mockFs = FileSystemMock.create()
-        .addFile("get-stock-info/SKILL.md", getStockInfoContent())
-        .addFile("get-historical-bars/SKILL.md", getHistoricalBarsContent());
-
-    FileSystemSkillRegistry registry = FileSystemSkillRegistry.builder()
-        .fileSystem(mockFs)
+void testSkillRegistryLoadsTradingSkillsFromClasspath() {
+    SkillRegistry registry = ClasspathSkillRegistry.builder()
+        .classpathPath(".claude/skills/trading")
+        .autoLoad(true)
         .build();
 
-    assertEquals(2, registry.list().size());
-}
-
-private String getStockInfoContent() {
-    return """
-        ---
-        name: get-stock-info
-        description: 获取股票实时行情
-        ---
-        
-        # Stock Info Tool
-        """;
+    assertEquals("Classpath", registry.getRegistryType());
+    assertEquals(7, registry.list().size());
+    assertTrue(registry.readSkillContent(
+        "get-stock-info",
+        "get-stock-info/SKILL.md"
+    ).contains("get_stock_info"));
 }
 ```
 

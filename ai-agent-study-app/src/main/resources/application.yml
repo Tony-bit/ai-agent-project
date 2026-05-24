@@ -9,6 +9,9 @@ spring:
     import: optional:classpath:config.yml
   ai:
     trading:
+      skills:
+        enabled-client-ids:
+          - "6001"
       data-source:
         provider: tushare
         tushare-token: ${TUSHARE_TOKEN:e054d234d3479bb5c6e7e1146c361d511a7cd9c8bb6de49d37b385c0}
