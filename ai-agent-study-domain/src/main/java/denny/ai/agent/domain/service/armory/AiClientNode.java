@@ -15,11 +15,17 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -30,8 +36,16 @@ import java.util.Map;
 @Service
 public class AiClientNode extends AbstractArmorySupport {
 
+    private static final String TRADING_SKILLS_ENABLED_CLIENT_IDS =
+            "spring.ai.trading.skills.enabled-client-ids";
+    private static final String TRADING_SKILL_ADVISOR_BEAN = "tradingSkillAdvisor";
+    private static final String TRADING_SKILL_READ_TOOL_BEAN = "readTradingSkillToolCallback";
+
     @Resource
     private ApplicationContext applicationContext;
+
+    @Resource
+    private Environment environment;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -62,10 +76,12 @@ public class AiClientNode extends AbstractArmorySupport {
             for (String advisorBeanName : aiClientVO.getAdvisorBeanNameList()) {
                 advisors.add(getBean(advisorBeanName));
             }
+            appendTradingSkillAdvisor(aiClientVO.getClientId(), advisors);
             advisors.sort(AnnotationAwareOrderComparator.INSTANCE);
 
             // 从 Spring 容器加载所有 Trading ToolCallbacks
-            ToolCallback[] tradingToolCallbacks = loadTradingToolCallbacks();
+            ToolCallback[] tradingToolCallbacks = appendTradingSkillToolCallbacks(
+                    aiClientVO.getClientId(), loadTradingToolCallbacks());
 
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
@@ -93,6 +109,73 @@ public class AiClientNode extends AbstractArmorySupport {
         return AiAgentEnumVO.AI_CLIENT.getDataName();
     }
 
+    List<String> getTradingSkillsEnabledClientIds() {
+        if (environment == null) {
+            return List.of();
+        }
+        return Binder.get(environment)
+                .bind(TRADING_SKILLS_ENABLED_CLIENT_IDS, Bindable.listOf(String.class))
+                .orElse(List.of())
+                .stream()
+                .filter(clientId -> clientId != null && !clientId.isBlank())
+                .toList();
+    }
+
+    ToolCallback[] appendTradingSkillToolCallbacks(String clientId, ToolCallback[] baseToolCallbacks) {
+        if (!getTradingSkillsEnabledClientIds().contains(clientId)) {
+            return baseToolCallbacks;
+        }
+        if (!applicationContext.containsBean(TRADING_SKILL_READ_TOOL_BEAN)) {
+            return baseToolCallbacks;
+        }
+
+        List<ToolCallback> merged = Arrays.stream(baseToolCallbacks)
+                .map(this::toLightweightTradingToolCallback)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        merged.add(applicationContext.getBean(TRADING_SKILL_READ_TOOL_BEAN, ToolCallback.class));
+        return merged.toArray(new ToolCallback[0]);
+    }
+
+    void appendTradingSkillAdvisor(String clientId, List<Advisor> advisors) {
+        if (!getTradingSkillsEnabledClientIds().contains(clientId)) {
+            return;
+        }
+        if (!applicationContext.containsBean(TRADING_SKILL_ADVISOR_BEAN)) {
+            return;
+        }
+
+        advisors.add(applicationContext.getBean(TRADING_SKILL_ADVISOR_BEAN, Advisor.class));
+    }
+
+    private ToolCallback toLightweightTradingToolCallback(ToolCallback delegate) {
+        ToolDefinition original = delegate.getToolDefinition();
+        String skillName = original.name().replace('_', '-');
+        ToolDefinition lightweightDefinition = ToolDefinition.builder()
+                .name(original.name())
+                .description("Execute trading skill `" + skillName
+                        + "`. Call `read_skill` with `skill_name` `" + skillName
+                        + "` for full usage guidance before calling this tool.")
+                .inputSchema(original.inputSchema())
+                .build();
+
+        return new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return lightweightDefinition;
+            }
+
+            @Override
+            public ToolMetadata getToolMetadata() {
+                return delegate.getToolMetadata();
+            }
+
+            @Override
+            public String call(String functionInput) {
+                return delegate.call(functionInput);
+            }
+        };
+    }
+
     /**
      * 从 Spring 容器加载所有 Trading 相关的 ToolCallback Bean。
      * 容器中所有 ToolCallback 类型的 Bean（由 TradingToolCallbackProvider 注册）都会被自动加载。
@@ -100,6 +183,7 @@ public class AiClientNode extends AbstractArmorySupport {
     private ToolCallback[] loadTradingToolCallbacks() {
         try {
             Map<String, ToolCallback> toolCallbackBeans = applicationContext.getBeansOfType(ToolCallback.class);
+            toolCallbackBeans.remove(TRADING_SKILL_READ_TOOL_BEAN);
             if (toolCallbackBeans.isEmpty()) {
                 log.info("未找到 Trading ToolCallback Bean，跳过注册");
                 return new ToolCallback[0];
