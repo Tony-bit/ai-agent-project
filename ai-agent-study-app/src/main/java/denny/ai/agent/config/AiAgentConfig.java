@@ -47,7 +47,7 @@ public class AiAgentConfig {
     public PgVectorStore pgVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
                                       @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-                .vectorTableName("vector_store")
+                .vectorTableName("store_openai")
                 .build();
     }
 
@@ -66,7 +66,7 @@ public class AiAgentConfig {
     public PgVectorStore intentFewshotVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
                                                  @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-                .vectorTableName("intent_fewshot_vector_store")
+                .vectorTableName("intent_fewshot_sample")
                 .build();
     }
 

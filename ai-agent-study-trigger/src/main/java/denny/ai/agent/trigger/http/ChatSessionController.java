@@ -50,7 +50,7 @@ public class ChatSessionController {
     @GetMapping("/{sessionId}/messages")
     public Response<MessageListResult> getSessionMessages(
             @PathVariable(name = "sessionId") String sessionId,
-            @RequestParam(required = false) Integer cursorIndex) {
+            @RequestParam(name = "cursorIndex", required = false) Integer cursorIndex) {
         log.info("获取会话消息: sessionId={}, cursorIndex={}", sessionId, cursorIndex);
         MessageListResult result = chatSessionQueryService.getSessionMessages(sessionId, cursorIndex);
         return Response.ok(result);
