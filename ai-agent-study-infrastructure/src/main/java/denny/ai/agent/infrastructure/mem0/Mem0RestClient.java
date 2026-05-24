@@ -81,6 +81,21 @@ public class Mem0RestClient {
         }
     }
 
+    public String getPersona(String userId) {
+        try {
+            String url = baseUrl + "/mem0/persona/" + userId;
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            if (response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                return data != null ? data.toString() : null;
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("Mem0 getPersona 失败, userId={}, error={}", userId, e.getMessage());
+            return null;
+        }
+    }
+
     private HttpEntity<Map<String, Object>> jsonEntity(Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

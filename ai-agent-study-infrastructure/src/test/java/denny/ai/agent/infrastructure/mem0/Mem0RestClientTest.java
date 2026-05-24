@@ -20,6 +20,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 
 class Mem0RestClientTest {
 
@@ -130,5 +131,68 @@ class Mem0RestClientTest {
 
         assertNotNull(response);
         mockServer.verify();
+    }
+
+    /**
+     * TC-Mem0-001: getPersona 正常返回画像数据
+     */
+    @Test
+    void getPersonaShouldReturnPersonaData() {
+        mockServer.expect(requestTo("http://localhost:8889/mem0/persona/user-001"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data": "用户画像: 喜欢咖啡, 工作狂, 常用上海地点"}
+                        """, MediaType.APPLICATION_JSON));
+
+        String persona = client.getPersona("user-001");
+
+        assertNotNull(persona);
+        assertEquals("用户画像: 喜欢咖啡, 工作狂, 常用上海地点", persona);
+        mockServer.verify();
+    }
+
+    /**
+     * TC-Mem0-002: getPersona 无画像时返回 null
+     */
+    @Test
+    void getPersonaShouldReturnNullWhenNoData() {
+        mockServer.expect(requestTo("http://localhost:8889/mem0/persona/user-new"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        String persona = client.getPersona("user-new");
+
+        assertEquals(null, persona);
+        mockServer.verify();
+    }
+
+    /**
+     * TC-Mem0-003: getPersona Mem0 服务异常时返回 null（不抛异常）
+     */
+    @Test
+    void getPersonaShouldReturnNullOnError() {
+        mockServer.expect(requestTo("http://localhost:8889/mem0/persona/user-error"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withServerError());
+
+        String persona = client.getPersona("user-error");
+
+        assertEquals(null, persona);
+    }
+
+    /**
+     * TC-Mem0-004: getPersona 响应体无 data 字段时返回 null
+     */
+    @Test
+    void getPersonaShouldReturnNullWhenDataFieldMissing() {
+        mockServer.expect(requestTo("http://localhost:8889/mem0/persona/user-no-data"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"status": "ok"}
+                        """, MediaType.APPLICATION_JSON));
+
+        String persona = client.getPersona("user-no-data");
+
+        assertEquals(null, persona);
     }
 }

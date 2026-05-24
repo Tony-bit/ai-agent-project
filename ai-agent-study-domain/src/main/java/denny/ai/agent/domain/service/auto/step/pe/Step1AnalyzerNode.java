@@ -51,14 +51,14 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
         // 跨会话情景记忆注入
         if (crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
             try {
-                String formattedMemories = crossSessionMemoryCacheService.getCrossSessionMemories(requestParameter.getUserId());
-                dynamicContext.setValue("crossSessionMemories", formattedMemories);
-                log.info("已注入跨会话记忆到上下文, userId={}, hasMemory={}",
-                        requestParameter.getUserId(), !formattedMemories.isEmpty());
+                String memories = crossSessionMemoryCacheService.getCrossSessionMemories(requestParameter.getUserId());
+                dynamicContext.setValue("persona", memories);
+                log.info("已注入用户画像到上下文, userId={}, hasPersona={}",
+                        requestParameter.getUserId(), !memories.isEmpty());
             } catch (Exception e) {
                 log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
                         requestParameter.getUserId(), e.getMessage());
-                dynamicContext.setValue("crossSessionMemories", "");
+                dynamicContext.setValue("persona", "");
             }
         }
 
@@ -87,7 +87,7 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                     dynamicContext.getMaxStep(),
                     !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
                     dynamicContext.getCurrentTask(),
-                    dynamicContext.getValue("crossSessionMemories")
+                    dynamicContext.getValue("persona")
             );
 
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);

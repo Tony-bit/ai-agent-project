@@ -14,7 +14,7 @@ public interface ICrossSessionMemoryCacheService {
     /**
      * Redis 缓存 Key 前缀
      */
-    String CACHE_KEY_PREFIX = "mem0:cross-session:";
+    String CACHE_KEY_PREFIX = "mem0:persona:";
 
     /**
      * 默认缓存 TTL（分钟）

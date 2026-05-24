@@ -126,6 +126,15 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- spring ai alibaba 1.1.2.2 https://github.com/alibaba/spring-ai-alibaba -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-bom</artifactId>
+                <version>1.1.2.2</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <!-- Yahoo Finance API（sstrickx 原版，发布在 Maven Central） -->
             <dependency>
                 <groupId>com.yahoofinance-api</groupId>

@@ -108,6 +108,12 @@
 
         <!-- spring ai v1.0.0 stop -->
 
+        <!-- spring ai alibaba 1.1.2.2 -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-agent-framework</artifactId>
+        </dependency>
+
         <!-- 工程模块；启动依赖 trigger->domain, infrastructure-->
         <dependency>
             <groupId>denny.ai.agent</groupId>

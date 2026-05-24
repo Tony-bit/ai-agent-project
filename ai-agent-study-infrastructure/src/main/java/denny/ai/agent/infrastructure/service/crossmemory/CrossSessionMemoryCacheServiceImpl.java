@@ -50,12 +50,13 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
             }
 
             // 未命中，查 Mem0 并写入缓存
-            String memories = queryFromMem0(userId);
-            if (!memories.isEmpty()) {
-                stringRedisTemplate.opsForValue().set(cacheKey, memories, DEFAULT_TTL_MINUTES, TimeUnit.MINUTES);
+            String persona = mem0RestClient.getPersona(userId);
+            if (persona != null && !persona.isEmpty()) {
+                stringRedisTemplate.opsForValue().set(cacheKey, persona, DEFAULT_TTL_MINUTES, TimeUnit.MINUTES);
                 log.info("跨会话记忆已写入缓存, userId={}, ttl={}min", userId, DEFAULT_TTL_MINUTES);
+                return formatPersonaResult(persona);
             }
-            return memories;
+            return "";
 
         } catch (Exception e) {
             log.error("跨会话记忆缓存异常，降级查 Mem0, userId={}, error={}", userId, e.getMessage(), e);
@@ -78,39 +79,28 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
     }
 
     /**
-     * 从 Mem0 查询跨会话记忆并格式化
+     * 从 Mem0 查询用户画像并格式化
      */
     private String queryFromMem0(String userId) {
         try {
-            Mem0RestClient.SearchRequest searchRequest = Mem0RestClient.SearchRequest.builder()
-                    .query("用户相关信息和偏好")
-                    .user_id(userId)
-                    .limit(crossSessionMemoryProperties.getCrossSessionMemoryTopK())
-                    .build();
-            Mem0RestClient.Mem0ServerResp resp = mem0RestClient.searchMemories(searchRequest);
-            return formatMem0Result(resp);
+            String persona = mem0RestClient.getPersona(userId);
+            if (persona != null && !persona.isEmpty()) {
+                return formatPersonaResult(persona);
+            }
+            return "";
         } catch (Exception e) {
-            log.warn("Mem0 查询跨会话记忆失败，降级返回空, userId={}, error={}", userId, e.getMessage());
+            log.warn("Mem0 查询用户画像失败，降级返回空, userId={}, error={}", userId, e.getMessage());
             return "";
         }
     }
 
     /**
-     * 将 Mem0ServerResp 格式化为 Prompt 上下文字符串
+     * 将用户画像格式化为 Prompt 上下文字符串
      */
-    private String formatMem0Result(Mem0RestClient.Mem0ServerResp resp) {
-        if (resp == null || resp.getResults() == null || resp.getResults().isEmpty()) {
+    private String formatPersonaResult(String persona) {
+        if (persona == null || persona.isEmpty()) {
             return "";
         }
-        StringBuilder sb = new StringBuilder("\n\n[用户跨会话长期记忆]\n");
-        int i = 1;
-        for (Mem0RestClient.Mem0ServerResp.Mem0Results item : resp.getResults()) {
-            sb.append(i++).append(". ").append(item.getMemory());
-            if (item.getMetadata() != null && !item.getMetadata().isEmpty()) {
-                sb.append(" (metadata: ").append(item.getMetadata()).append(")");
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
+        return "\n\n[用户画像]\n" + persona;
     }
 }
