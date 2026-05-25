@@ -2,9 +2,9 @@ package denny.ai.agent.domain.service.auto.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
-import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
+import denny.ai.agent.domain.model.valobj.MemoryProperties;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
+import denny.ai.agent.domain.service.persona.IUserPersonaCacheService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,9 +37,9 @@ import static org.mockito.Mockito.*;
 public class AbstractExecuteSupportTest {
 
     @Mock
-    private ICrossSessionMemoryCacheService crossSessionMemoryCacheService;
+    private IUserPersonaCacheService userPersonaCacheService;
 
-    private CrossSessionMemoryProperties crossSessionMemoryProperties;
+    private MemoryProperties memoryProperties;
 
     private TestableExecuteSupport support;
 
@@ -51,12 +51,12 @@ public class AbstractExecuteSupportTest {
     public void setUp() throws Exception {
         support = new TestableExecuteSupport();
 
-        crossSessionMemoryProperties = new CrossSessionMemoryProperties();
-        crossSessionMemoryProperties.setInjectCrossSessionMemory(true);
+        memoryProperties = new MemoryProperties();
+        memoryProperties.setInjectPersona(true);
 
         // 通过反射注入父类私有依赖
-        setSuperField(support, "crossSessionMemoryCacheService", crossSessionMemoryCacheService);
-        setSuperField(support, "crossSessionMemoryProperties", crossSessionMemoryProperties);
+        setSuperField(support, "userPersonaCacheService", userPersonaCacheService);
+        setSuperField(support, "memoryProperties", memoryProperties);
 
         dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         request = ExecuteCommandEntity.builder()
@@ -77,7 +77,7 @@ public class AbstractExecuteSupportTest {
     @Test
     public void testInjectPersona_NormalInjection() {
         String cachedPersona = "用户画像: 咖啡爱好者";
-        when(crossSessionMemoryCacheService.getCrossSessionMemories("test-user-001"))
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
                 .thenReturn(cachedPersona);
 
         support.callParentInjectPersonaContext(dynamicContext, request);
@@ -97,7 +97,7 @@ public class AbstractExecuteSupportTest {
         support.callParentInjectPersonaContext(dynamicContext, request);
 
         // cacheService 不应被调用
-        verify(crossSessionMemoryCacheService, never()).getCrossSessionMemories(anyString());
+        verify(userPersonaCacheService, never()).getUserPersona(anyString());
         assertEquals(existingPersona, dynamicContext.getValue("persona"));
     }
 
@@ -106,11 +106,11 @@ public class AbstractExecuteSupportTest {
      */
     @Test
     public void testInjectPersona_SkippedWhenDisabled() {
-        crossSessionMemoryProperties.setInjectCrossSessionMemory(false);
+        memoryProperties.setInjectPersona(false);
 
         support.callParentInjectPersonaContext(dynamicContext, request);
 
-        verify(crossSessionMemoryCacheService, never()).getCrossSessionMemories(anyString());
+        verify(userPersonaCacheService, never()).getUserPersona(anyString());
         assertNull("注入关闭时，persona 应为 null", dynamicContext.getValue("persona"));
     }
 
@@ -119,7 +119,7 @@ public class AbstractExecuteSupportTest {
      */
     @Test
     public void testInjectPersona_CacheMissFallsBackToMem0() {
-        when(crossSessionMemoryCacheService.getCrossSessionMemories("test-user-001"))
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
                 .thenReturn("\n\n[用户画像]\n工作狂");
 
         support.callParentInjectPersonaContext(dynamicContext, request);
@@ -133,7 +133,7 @@ public class AbstractExecuteSupportTest {
      */
     @Test
     public void testInjectPersona_ExceptionFallsBackToEmpty() {
-        when(crossSessionMemoryCacheService.getCrossSessionMemories("test-user-001"))
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
                 .thenThrow(new RuntimeException("Redis 连接失败"));
 
         support.callParentInjectPersonaContext(dynamicContext, request);
@@ -144,14 +144,14 @@ public class AbstractExecuteSupportTest {
     /**
      * TC-Support-006: properties 为 null 时跳过注入
      * <p>
-     * 当 Spring 未能注入 CrossSessionMemoryProperties 时，
+     * 当 Spring 未能注入 MemoryProperties 时，
      * injectPersonaContext 应直接返回，不抛出 NPE。
      * </p>
      */
     @Test
     public void testInjectPersona_SkippedWhenPropertiesNull() throws Exception {
         // 将 properties 设置为 null，模拟未注入的场景
-        setSuperField(support, "crossSessionMemoryProperties", null);
+        setSuperField(support, "memoryProperties", null);
 
         // 执行时不应抛异常
         support.callParentInjectPersonaContext(dynamicContext, request);
@@ -166,7 +166,7 @@ public class AbstractExecuteSupportTest {
     @Test
     public void testPreContextInjection_CallsInjectPersonaContext() {
         String cachedPersona = "用户画像: 测试用户";
-        when(crossSessionMemoryCacheService.getCrossSessionMemories("test-user-001"))
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
                 .thenReturn(cachedPersona);
 
         support.callParentInjectPersonaContext(dynamicContext, request);
@@ -177,14 +177,14 @@ public class AbstractExecuteSupportTest {
     /**
      * TC-Support-008: cacheService 为 null 时跳过注入
      * <p>
-     * 当 Spring 未能注入 ICrossSessionMemoryCacheService 时，
+     * 当 Spring 未能注入 IUserPersonaCacheService 时，
      * injectPersonaContext 应直接返回，不抛出 NPE。
      * </p>
      */
     @Test
     public void testInjectPersona_SkippedWhenCacheServiceNull() throws Exception {
         // 将 cacheService 设置为 null，模拟未注入的场景
-        setSuperField(support, "crossSessionMemoryCacheService", null);
+        setSuperField(support, "userPersonaCacheService", null);
 
         // 执行时不应抛异常
         support.callParentInjectPersonaContext(dynamicContext, request);

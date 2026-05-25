@@ -39,3 +39,11 @@ logging:
   level:
     root: info
   config: classpath:logback-spring.xml
+
+# AI Memory 配置
+ai:
+  memory:
+    inject-persona: true
+    persona-top-k: 5
+    persona-ttl-minutes: 5
+    episodic-memory-limit: 5

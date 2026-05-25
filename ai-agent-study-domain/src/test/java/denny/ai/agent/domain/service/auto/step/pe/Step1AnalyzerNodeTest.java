@@ -1,9 +1,9 @@
 package denny.ai.agent.domain.service.auto.step.pe;
 
-import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
+import denny.ai.agent.domain.model.valobj.MemoryProperties;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
+import denny.ai.agent.domain.service.persona.IUserPersonaCacheService;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -61,7 +61,7 @@ public class Step1AnalyzerNodeTest {
      */
     @Test
     public void testCacheKeyPrefix_IsPersona() {
-        assertEquals("mem0:persona:", ICrossSessionMemoryCacheService.CACHE_KEY_PREFIX);
+        assertEquals("mem0:persona:", IUserPersonaCacheService.CACHE_KEY_PREFIX);
     }
 
     /**
@@ -69,10 +69,10 @@ public class Step1AnalyzerNodeTest {
      */
     @Test
     public void testInjectDisabled_DoesNotInjectContext() {
-        CrossSessionMemoryProperties props = new CrossSessionMemoryProperties();
-        props.setInjectCrossSessionMemory(false);
+        MemoryProperties props = new MemoryProperties();
+        props.setInjectPersona(false);
 
-        if (props.isInjectCrossSessionMemory()) {
+        if (props.isInjectPersona()) {
             dynamicContext.setValue("persona", "some data");
         }
 
@@ -94,36 +94,36 @@ public class Step1AnalyzerNodeTest {
     /**
      * TC-Pe-006: 验证节点不再持有缓存字段，依赖父类注入
      * <p>
-     * 验证 Step1AnalyzerNode 不再持有 crossSessionMemoryCacheService 和
-     * crossSessionMemoryProperties 字段，画像注入已统一迁移至
+     * 验证 Step1AnalyzerNode 不再持有 userPersonaCacheService 和
+     * memoryProperties 字段，画像注入已统一迁移至
      * AbstractExecuteSupport.injectPersonaContext()。
      * </p>
      */
     @Test
     public void testNodeReliesOnParentClassInjection() {
-        // 验证 Step1AnalyzerNode 类中没有 ICrossSessionMemoryCacheService 字段
+        // 验证 Step1AnalyzerNode 类中没有 IUserPersonaCacheService 字段
         boolean hasCacheServiceField = false;
         for (Field field : Step1AnalyzerNode.class.getDeclaredFields()) {
-            if (field.getType().equals(ICrossSessionMemoryCacheService.class)) {
+            if (field.getType().equals(IUserPersonaCacheService.class)) {
                 hasCacheServiceField = true;
                 break;
             }
         }
         assertFalse(
-                "Step1AnalyzerNode 不应持有 ICrossSessionMemoryCacheService 字段，"
+                "Step1AnalyzerNode 不应持有 IUserPersonaCacheService 字段，"
                         + "画像注入已迁移至 AbstractExecuteSupport",
                 hasCacheServiceField);
 
-        // 验证 Step1AnalyzerNode 类中没有 CrossSessionMemoryProperties 字段
+        // 验证 Step1AnalyzerNode 类中没有 MemoryProperties 字段
         boolean hasPropsField = false;
         for (Field field : Step1AnalyzerNode.class.getDeclaredFields()) {
-            if (field.getType().equals(CrossSessionMemoryProperties.class)) {
+            if (field.getType().equals(MemoryProperties.class)) {
                 hasPropsField = true;
                 break;
             }
         }
         assertFalse(
-                "Step1AnalyzerNode 不应持有 CrossSessionMemoryProperties 字段，"
+                "Step1AnalyzerNode 不应持有 MemoryProperties 字段，"
                         + "画像注入已迁移至 AbstractExecuteSupport",
                 hasPropsField);
     }

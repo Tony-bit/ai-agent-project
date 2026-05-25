@@ -50,10 +50,10 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     protected ChatMemoryPersistenceService chatMemoryPersistenceService;
 
     @Resource
-    private denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService crossSessionMemoryCacheService;
+    private denny.ai.agent.domain.service.persona.IUserPersonaCacheService userPersonaCacheService;
 
     @Resource
-    private denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties crossSessionMemoryProperties;
+    private denny.ai.agent.domain.model.valobj.MemoryProperties memoryProperties;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
@@ -152,27 +152,27 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             log.debug("userId 为空，跳过画像注入");
             return;
         }
-        if (crossSessionMemoryProperties == null) {
-            log.error("CrossSessionMemoryProperties 未注入，跳过画像注入, userId={}", request.getUserId());
+        if (memoryProperties == null) {
+            log.error("MemoryProperties 未注入，跳过画像注入, userId={}", request.getUserId());
             return;
         }
-        if (!crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
+        if (!memoryProperties.isInjectPersona()) {
             return;
         }
         if (dynamicContext.getValue("persona") != null) {
             return;
         }
-        if (crossSessionMemoryCacheService == null) {
-            log.warn("ICrossSessionMemoryCacheService 未注入，跳过画像注入, userId={}", request.getUserId());
+        if (userPersonaCacheService == null) {
+            log.warn("IUserPersonaCacheService 未注入，跳过画像注入, userId={}", request.getUserId());
             return;
         }
         try {
-            String memories = crossSessionMemoryCacheService.getCrossSessionMemories(request.getUserId());
+            String memories = userPersonaCacheService.getUserPersona(request.getUserId());
             dynamicContext.setValue("persona", memories);
             log.info("已注入用户画像到上下文, userId={}, hasPersona={}",
                     request.getUserId(), !memories.isEmpty());
         } catch (Exception e) {
-            log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
+            log.warn("用户画像检索失败，降级处理: userId={}, error={}",
                     request.getUserId(), e.getMessage());
             dynamicContext.setValue("persona", "");
         }

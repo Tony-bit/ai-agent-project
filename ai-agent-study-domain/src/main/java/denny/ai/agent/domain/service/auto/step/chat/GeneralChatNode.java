@@ -9,9 +9,12 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.oss.OSSUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.List;
 import java.util.Map;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
@@ -33,6 +36,9 @@ public class GeneralChatNode extends AbstractExecuteSupport {
 
     @Resource
     private OSSUploadService ossUploadService;
+
+    @Autowired(required = false)
+    private List<ToolCallback> searchEpisodicMemoryCallbacks;
 
     private static final String RECOGNIZED_INTENT_KEY = "recognizedIntent";
 
@@ -71,16 +77,22 @@ public class GeneralChatNode extends AbstractExecuteSupport {
                 .timestamp(System.currentTimeMillis())
                 .build());
 
-        String systemPrompt = resolveSystemPrompt(recognizedIntent);
+        String systemPrompt = buildSystemPrompt(recognizedIntent, request.getUserId());
 
         ChatClient chatClient = getChatClientByClientId("3001", 0);
 
-        String response = chatClient.prompt()
+        var promptBuilder = chatClient.prompt()
                 .system(systemPrompt)
                 .user(request.getMessage())
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
+
+        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
+            promptBuilder.tools(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
+            log.info("通用对话已注入情景记忆 Tool, toolCount={}", searchEpisodicMemoryCallbacks.size());
+        }
+
+        String response = promptBuilder.call().content();
 
         sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                 .type("content")
@@ -133,12 +145,17 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         String multimodalMessage = userMessage + "\n\n[图片]: " + ossUrl;
 
         // Step 4: 调用多模态对话
-        String response = chatClient.prompt()
+        var promptBuilder = chatClient.prompt()
                 .system(GENERAL_CHAT_SYSTEM_PROMPT)
                 .user(multimodalMessage)
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0))
-                .call().content();
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0));
+
+        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
+            promptBuilder.tools(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
+        }
+
+        String response = promptBuilder.call().content();
 
         sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                 .type("content")
@@ -155,6 +172,14 @@ public class GeneralChatNode extends AbstractExecuteSupport {
 
         log.info("多模态对话完成: ossUrl={}, responseLength={}", ossUrl, response.length());
         return response;
+    }
+
+    private String buildSystemPrompt(IntentTypeEnum recognizedIntent, String userId) {
+        String basePrompt = resolveSystemPrompt(recognizedIntent);
+        if (userId != null && !userId.isBlank()) {
+            return basePrompt + String.format("\n\n[上下文] 当前用户ID: %s", userId);
+        }
+        return basePrompt;
     }
 
     private String resolveSystemPrompt(IntentTypeEnum recognizedIntent) {
