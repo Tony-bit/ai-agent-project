@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
@@ -39,6 +40,9 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     @Resource
     private AiClientNode aiClientNode;
 
+    @Resource
+    private SkillRegistry skillRegistry;
+
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
         log.info("Ai Agent 构建节点，Advisor 顾问角色{}", JSON.toJSONString(requestParameter));
@@ -76,6 +80,6 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
-        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository, observabilityService);
+        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository, observabilityService, skillRegistry);
     }
 }

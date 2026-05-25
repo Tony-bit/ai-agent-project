@@ -22,7 +22,7 @@ public class IntentRoutingPrompt {
         3. PE_CALCULATION: 用户提出数学计算、数据处理、统计建模等需要精确计算的任务
         4. PE_RETRIEVAL: 用户查询知识库、文档检索、信息汇总等知识类任务
         5. INSPECTION: 用户请求系统巡检、健康检查、状态监控等运维任务
-        6. GENERAL_CHAT: 闲聊、问候、无法归类的对话
+        6. GENERAL_CHAT: 闲聊、问候、记忆查询（如询问个人偏好、之前聊过的内容）、无法归类的对话
         7. AMBIGUOUS: 意图模糊或复合语义，需要进一步澄清
         8. UNKNOWN: 无法明确判断
 

@@ -38,7 +38,6 @@ public class AiClientNode extends AbstractArmorySupport {
 
     private static final String TRADING_SKILLS_ENABLED_CLIENT_IDS =
             "spring.ai.trading.skills.enabled-client-ids";
-    private static final String TRADING_SKILL_ADVISOR_BEAN = "tradingSkillAdvisor";
     private static final String TRADING_SKILL_READ_TOOL_BEAN = "readTradingSkillToolCallback";
 
     @Resource
@@ -76,7 +75,6 @@ public class AiClientNode extends AbstractArmorySupport {
             for (String advisorBeanName : aiClientVO.getAdvisorBeanNameList()) {
                 advisors.add(getBean(advisorBeanName));
             }
-            appendTradingSkillAdvisor(aiClientVO.getClientId(), advisors);
             advisors.sort(AnnotationAwareOrderComparator.INSTANCE);
 
             // 从 Spring 容器加载所有 Trading ToolCallbacks
@@ -134,17 +132,6 @@ public class AiClientNode extends AbstractArmorySupport {
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         merged.add(applicationContext.getBean(TRADING_SKILL_READ_TOOL_BEAN, ToolCallback.class));
         return merged.toArray(new ToolCallback[0]);
-    }
-
-    void appendTradingSkillAdvisor(String clientId, List<Advisor> advisors) {
-        if (!getTradingSkillsEnabledClientIds().contains(clientId)) {
-            return;
-        }
-        if (!applicationContext.containsBean(TRADING_SKILL_ADVISOR_BEAN)) {
-            return;
-        }
-
-        advisors.add(applicationContext.getBean(TRADING_SKILL_ADVISOR_BEAN, Advisor.class));
     }
 
     private ToolCallback toLightweightTradingToolCallback(ToolCallback delegate) {

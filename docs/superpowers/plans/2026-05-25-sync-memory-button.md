@@ -1,10 +1,11 @@
 # 同步记忆按钮功能设计方案
 
 **Metadata:**
-- 状态: draft
+- 状态: **pass**
 - 预估工时: 1h
 - 日期: 2026-05-25
 - 版本: v1
+- 完成时间: 2026-05-25 13:40
 
 > **For agentic workers:** Use superpowers:subagent-driven-development to implement this plan.
 
@@ -14,10 +15,10 @@
 
 | 序号 | 任务项 | 状态 |
 |------|--------|------|
-| 1 | 后端新增同步接口 | pending |
-| 2 | 前端新增同步按钮 | pending |
-| 3 | 编写单测 | pending |
-| 4 | 编译验证 | pending |
+| 1 | 后端新增同步接口 | pass |
+| 2 | 前端新增同步按钮 | pass |
+| 3 | 编写单测 | pass |
+| 4 | 编译验证 | pass |
 
 ---
 
@@ -180,14 +181,23 @@ async function syncMemory() {
 
 ## 8. 测试验证
 
-### 8.1 后端单测
+### 8.1 Controller 单测（ChatSessionControllerTest）
 
-- 测试接口参数校验
-- 测试无记忆需同步场景
-- 测试同步成功场景
-- 测试同步失败场景（Mock Mem0 调用）
+| 场景 | 输入 | 预期结果 |
+|------|------|----------|
+| 正常同步 | 有效的 sessionId + userId | 返回 200，Service 被调用 |
+| Service 异常 | Mock Service 抛异常 | Controller 捕获异常，返回错误码 |
 
-### 8.2 手动验证
+### 8.2 集成测试（Mem0MemoryControllerTest 扩展）
+
+| 场景 | 描述 | 验证点 |
+|------|------|--------|
+| 无需同步 | 全部 `addMemory=1` | 返回 200，日志提示"没有需要同步" |
+| 同步成功 | 有未同步记录 | 返回 200，DB 状态更新为 1 |
+| 幂等性 | 同步两次 | 第二次跳过，不重复写入 Mem0 |
+| 事务回滚 | Mem0 异常 | DB 状态未更新，保持 0 |
+
+### 8.3 手动验证
 
 1. 打开前端页面
 2. 发起几次对话

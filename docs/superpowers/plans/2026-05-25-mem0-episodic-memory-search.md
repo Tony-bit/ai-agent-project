@@ -14,19 +14,20 @@
 
 | 序号 | 任务项 | 状态 |
 |------|--------|------|
-| 1 | 重命名 CrossSessionMemoryProperties → MemoryProperties | pending |
-| 2 | 重命名 ICrossSessionMemoryCacheService → IUserPersonaCacheService | pending |
-| 3 | 更新所有引用文件 | pending |
-| 4 | 新增 IEpisodicMemoryService | pending |
-| 5 | 新增 EpisodicMemoryServiceImpl | pending |
-| 6 | 新增 AbstractToolCallback 公共类 | pending |
-| 7 | 新增 EpisodicMemoryToolCallbacks | pending |
-| 8 | 新增 EpisodicMemoryToolCallbackProvider | pending |
-| 9 | 修改 GeneralChatNode 注入 Tool | pending |
-| 10 | 更新配置文件 application-*.yml | pending |
-| 11 | 删除旧文件 | pending |
-| 12 | 编写单测 | pending |
-| 13 | 编译验证 | pending |
+| 1 | 修改意图识别Prompt，将"记忆查询"纳入GENERAL_CHAT | **done** |
+| 2 | 重命名 CrossSessionMemoryProperties → MemoryProperties | pending |
+| 3 | 重命名 ICrossSessionMemoryCacheService → IUserPersonaCacheService | pending |
+| 4 | 更新所有引用文件 | pending |
+| 5 | 新增 IEpisodicMemoryService | pending |
+| 6 | 新增 EpisodicMemoryServiceImpl | pending |
+| 7 | 新增 AbstractToolCallback 公共类 | pending |
+| 8 | 新增 EpisodicMemoryToolCallbacks | pending |
+| 9 | 新增 EpisodicMemoryToolCallbackProvider | pending |
+| 10 | 修改 GeneralChatNode 注入 Tool | pending |
+| 11 | 更新配置文件 application-*.yml | pending |
+| 12 | 删除旧文件 | pending |
+| 13 | 编写单测 | pending |
+| 14 | 编译验证 | pending |
 
 ---
 
