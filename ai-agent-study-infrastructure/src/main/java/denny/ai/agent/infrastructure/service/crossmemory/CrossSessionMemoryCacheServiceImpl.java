@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 跨会话长期记忆缓存服务实现
  * <p>
- * 缓存策略：Redis 命中则刷新 TTL，未命中则查 Mem0 → 回填 Redis。
+ * 缓存策略：Redis 命中则固定 TTL（不刷新），未命中则查 Mem0 → 回填 Redis。
  * </p>
  *
  * @author denny
@@ -43,9 +43,8 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
         try {
             String cached = stringRedisTemplate.opsForValue().get(cacheKey);
             if (cached != null && !cached.isEmpty()) {
-                // 命中缓存，刷新 TTL
-                Boolean updated = stringRedisTemplate.expire(cacheKey, DEFAULT_TTL_MINUTES, TimeUnit.MINUTES);
-                log.info("跨会话记忆命中缓存，已刷新 TTL, userId={}, updated={}", userId, updated);
+                // 命中缓存，固定 TTL，不刷新
+                log.info("跨会话记忆命中缓存, userId={}", userId);
                 return cached;
             }
 
@@ -61,20 +60,6 @@ public class CrossSessionMemoryCacheServiceImpl implements ICrossSessionMemoryCa
         } catch (Exception e) {
             log.error("跨会话记忆缓存异常，降级查 Mem0, userId={}, error={}", userId, e.getMessage(), e);
             return queryFromMem0(userId);
-        }
-    }
-
-    @Override
-    public void refreshTtl(String userId) {
-        if (stringRedisTemplate == null) {
-            return;
-        }
-        String cacheKey = CACHE_KEY_PREFIX + userId;
-        try {
-            stringRedisTemplate.expire(cacheKey, DEFAULT_TTL_MINUTES, TimeUnit.MINUTES);
-            log.debug("跨会话记忆 TTL 已刷新, userId={}", userId);
-        } catch (Exception e) {
-            log.warn("刷新 TTL 失败, userId={}, error={}", userId, e.getMessage());
         }
     }
 

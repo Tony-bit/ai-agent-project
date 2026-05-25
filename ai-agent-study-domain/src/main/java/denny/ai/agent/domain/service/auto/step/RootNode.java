@@ -59,6 +59,9 @@ public class RootNode extends AbstractExecuteSupport {
                 dynamicContext.getDataObjects().keySet());
 
         long startAt = System.currentTimeMillis();
+        // 统一注入用户画像（幂等：子节点已注入则跳过）
+        injectPersonaContext(dynamicContext, requestParameter);
+
         String result = router(requestParameter, dynamicContext);
         long latencyMs = System.currentTimeMillis() - startAt;
 

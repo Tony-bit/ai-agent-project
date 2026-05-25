@@ -1,10 +1,13 @@
 package denny.ai.agent.domain.service.auto.step.pe;
 
 import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
+import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.lang.reflect.Field;
 
 import static org.junit.Assert.*;
 
@@ -17,6 +20,7 @@ import static org.junit.Assert.*;
  * 3. TC-Pe-003: 验证缓存 key 前缀为 mem0:persona:
  * 4. TC-Pe-004: 验证注入开关关闭时不注入上下文
  * 5. TC-Pe-005: 验证画像格式化为包含 [用户画像] 前缀
+ * 6. TC-Pe-006: 验证节点不再持有缓存字段，依赖父类注入
  * </p>
  *
  * @author denny
@@ -85,5 +89,42 @@ public class Step1AnalyzerNodeTest {
 
         assertTrue("格式化后应包含 [用户画像] 前缀", formatted.contains("[用户画像]"));
         assertTrue("格式化后应包含原始画像内容", formatted.contains("喜欢咖啡, 工作狂"));
+    }
+
+    /**
+     * TC-Pe-006: 验证节点不再持有缓存字段，依赖父类注入
+     * <p>
+     * 验证 Step1AnalyzerNode 不再持有 crossSessionMemoryCacheService 和
+     * crossSessionMemoryProperties 字段，画像注入已统一迁移至
+     * AbstractExecuteSupport.injectPersonaContext()。
+     * </p>
+     */
+    @Test
+    public void testNodeReliesOnParentClassInjection() {
+        // 验证 Step1AnalyzerNode 类中没有 ICrossSessionMemoryCacheService 字段
+        boolean hasCacheServiceField = false;
+        for (Field field : Step1AnalyzerNode.class.getDeclaredFields()) {
+            if (field.getType().equals(ICrossSessionMemoryCacheService.class)) {
+                hasCacheServiceField = true;
+                break;
+            }
+        }
+        assertFalse(
+                "Step1AnalyzerNode 不应持有 ICrossSessionMemoryCacheService 字段，"
+                        + "画像注入已迁移至 AbstractExecuteSupport",
+                hasCacheServiceField);
+
+        // 验证 Step1AnalyzerNode 类中没有 CrossSessionMemoryProperties 字段
+        boolean hasPropsField = false;
+        for (Field field : Step1AnalyzerNode.class.getDeclaredFields()) {
+            if (field.getType().equals(CrossSessionMemoryProperties.class)) {
+                hasPropsField = true;
+                break;
+            }
+        }
+        assertFalse(
+                "Step1AnalyzerNode 不应持有 CrossSessionMemoryProperties 字段，"
+                        + "画像注入已迁移至 AbstractExecuteSupport",
+                hasPropsField);
     }
 }

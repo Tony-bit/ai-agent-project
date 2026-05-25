@@ -49,6 +49,12 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     @Resource
     protected ChatMemoryPersistenceService chatMemoryPersistenceService;
 
+    @Resource
+    private denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService crossSessionMemoryCacheService;
+
+    @Resource
+    private denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties crossSessionMemoryProperties;
+
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
 
@@ -127,6 +133,48 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             );
         } catch (Exception e) {
             log.warn("会话持久化失败，降级处理: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 将跨会话用户画像（persona）注入到 DynamicContext。
+     * <p>
+     * 从 Mem0/Redis 获取用户画像并写入 dynamicContext.setValue("persona", memories)。
+     * 幂等：若 persona 已存在则跳过；配置关闭时跳过；异常时降级为空字符串。
+     *
+     * @param dynamicContext 动态上下文，非空
+     * @param request       执行命令实体，从中取 userId，非空
+     */
+    protected void injectPersonaContext(
+            denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+            denny.ai.agent.domain.model.entity.ExecuteCommandEntity request) {
+        if (StringUtils.isBlank(request.getUserId())) {
+            log.debug("userId 为空，跳过画像注入");
+            return;
+        }
+        if (crossSessionMemoryProperties == null) {
+            log.error("CrossSessionMemoryProperties 未注入，跳过画像注入, userId={}", request.getUserId());
+            return;
+        }
+        if (!crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
+            return;
+        }
+        if (dynamicContext.getValue("persona") != null) {
+            return;
+        }
+        if (crossSessionMemoryCacheService == null) {
+            log.warn("ICrossSessionMemoryCacheService 未注入，跳过画像注入, userId={}", request.getUserId());
+            return;
+        }
+        try {
+            String memories = crossSessionMemoryCacheService.getCrossSessionMemories(request.getUserId());
+            dynamicContext.setValue("persona", memories);
+            log.info("已注入用户画像到上下文, userId={}, hasPersona={}",
+                    request.getUserId(), !memories.isEmpty());
+        } catch (Exception e) {
+            log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
+                    request.getUserId(), e.getMessage());
+            dynamicContext.setValue("persona", "");
         }
     }
 

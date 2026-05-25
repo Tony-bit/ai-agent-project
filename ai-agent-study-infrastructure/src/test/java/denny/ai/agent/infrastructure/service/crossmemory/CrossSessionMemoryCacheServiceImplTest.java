@@ -23,12 +23,13 @@ import static org.mockito.Mockito.*;
  * <p>
  * 测试覆盖：
  * 1. TC-Cache-001: 缓存 key 前缀为 mem0:persona:
- * 2. TC-Cache-002: Redis 命中时返回格式化后的画像
+ * 2. TC-Cache-002: Redis 命中时返回缓存值（不刷新 TTL）
  * 3. TC-Cache-003: Redis 未命中时调用 Mem0 并回填缓存
  * 4. TC-Cache-004: Mem0 返回空时返回空字符串，不写入缓存
  * 5. TC-Cache-005: Mem0 查询异常时降级返回空字符串
  * 6. TC-Cache-006: Redis 未配置时直接查 Mem0
- * 7. TC-Cache-007: refreshTtl 正常刷新 TTL
+ * 7. TC-Cache-007: 命中缓存时不刷新 TTL（固定5分钟）
+ * 8. TC-Cache-008: Redis 命中空字符串时不刷新 TTL
  * </p>
  *
  * @author denny
@@ -77,16 +78,16 @@ public class CrossSessionMemoryCacheServiceImplTest {
      * TC-Cache-002: Redis 命中时返回格式化后的画像
      */
     @Test
-    public void testCacheHit_ReturnsFormattedPersona() {
+    public void testCacheHit_ReturnsCachedValue() {
         String rawPersona = "用户画像: 喜欢咖啡";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("mem0:persona:user-001")).thenReturn(rawPersona);
-        when(stringRedisTemplate.expire(eq("mem0:persona:user-001"), eq(30L), eq(TimeUnit.MINUTES))).thenReturn(true);
 
         String result = service.getCrossSessionMemories("user-001");
 
         assertEquals(rawPersona, result);
-        verify(stringRedisTemplate).expire(eq("mem0:persona:user-001"), eq(30L), eq(TimeUnit.MINUTES));
+        // 固定 TTL 不刷新，验证 expire 未被调用
+        verify(stringRedisTemplate, never()).expire(anyString(), anyLong(), any());
     }
 
     /**
@@ -107,7 +108,7 @@ public class CrossSessionMemoryCacheServiceImplTest {
         verify(valueOperations).set(
                 eq("mem0:persona:user-002"),
                 eq(rawPersona),
-                eq(30L),
+                eq(5L),
                 eq(TimeUnit.MINUTES));
     }
 
@@ -156,15 +157,22 @@ public class CrossSessionMemoryCacheServiceImplTest {
     }
 
     /**
-     * TC-Cache-007: refreshTtl 正常刷新 TTL
+     * TC-Cache-007: 命中缓存时不刷新 TTL（固定5分钟）
+     * <p>
+     * 验证新行为：缓存命中后不调用 expire() 刷新 TTL，
+     * 缓存固定存 5 分钟，到期后重新从 Mem0 查询。
+     * </p>
      */
     @Test
-    public void testRefreshTtl_RefreshesSuccessfully() {
-        when(stringRedisTemplate.expire(eq("mem0:persona:user-001"), eq(30L), eq(TimeUnit.MINUTES))).thenReturn(true);
+    public void testCacheHit_DoesNotRefreshTtl() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("mem0:persona:user-001")).thenReturn("用户画像: 咖啡爱好者");
 
-        service.refreshTtl("user-001");
+        String result = service.getCrossSessionMemories("user-001");
 
-        verify(stringRedisTemplate).expire(eq("mem0:persona:user-001"), eq(30L), eq(TimeUnit.MINUTES));
+        assertEquals("用户画像: 咖啡爱好者", result);
+        // 关键断言：命中缓存时不调用 expire
+        verify(stringRedisTemplate, never()).expire(anyString(), anyLong(), any());
     }
 
     /**

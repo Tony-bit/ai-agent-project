@@ -4,13 +4,10 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
-import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
 import lombok.extern.slf4j.Slf4j;
-import jakarta.annotation.Resource;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,12 +24,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class Step1AnalyzerNode extends AbstractExecuteSupport {
 
-    @Resource
-    private ICrossSessionMemoryCacheService crossSessionMemoryCacheService;
-
-    @Resource
-    private CrossSessionMemoryProperties crossSessionMemoryProperties;
-
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n🎯 === 执行第 {} 步 ===", dynamicContext.getStep());
@@ -46,20 +37,6 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             String traceId = observabilityService.startTrace(requestParameter.getSessionId(), requestParameter.getMessage(), metadata);
             dynamicContext.setTraceId(traceId);
             log.info("📡 Langfuse trace initialized, traceId={}", traceId);
-        }
-
-        // 跨会话情景记忆注入
-        if (crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
-            try {
-                String memories = crossSessionMemoryCacheService.getCrossSessionMemories(requestParameter.getUserId());
-                dynamicContext.setValue("persona", memories);
-                log.info("已注入用户画像到上下文, userId={}, hasPersona={}",
-                        requestParameter.getUserId(), !memories.isEmpty());
-            } catch (Exception e) {
-                log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
-                        requestParameter.getUserId(), e.getMessage());
-                dynamicContext.setValue("persona", "");
-            }
         }
 
         // 获取配置信息

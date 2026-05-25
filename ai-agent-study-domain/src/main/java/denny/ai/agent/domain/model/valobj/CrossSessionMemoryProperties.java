@@ -27,4 +27,9 @@ public class CrossSessionMemoryProperties {
      * 跨会话记忆默认查询条数
      */
     private int crossSessionMemoryTopK = 5;
+
+    /**
+     * 跨会话记忆 Redis 缓存 TTL（分钟），默认 5 分钟
+     */
+    private int crossSessionMemoryTtlMinutes = 5;
 }
