@@ -3,7 +3,7 @@ name: search-stock-by-name
 description: |
   根据股票中文名称搜索对应的股票代码。
   适用场景：用户只提供公司名、简称或存在歧义时必须先使用。
-  注意：这是股票分析前置工具，工具执行层为 TradingToolCallbacks。
+  这是股票分析前置工具。
 ---
 
 # 根据名称搜索股票
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `search-stock-by-name`
 - **Tool Name**: `search_stock_by_name`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 当用户没有提供股票代码，只提供公司名、简称或自然语言提及时，先通过该工具解析候选股票代码。

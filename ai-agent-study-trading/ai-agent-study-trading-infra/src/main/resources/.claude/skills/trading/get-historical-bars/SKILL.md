@@ -3,7 +3,7 @@ name: get-historical-bars
 description: |
   获取 A 股股票的历史 K 线数据，包含开高低收和成交量。
   适用场景：需要分析历史走势、波动区间、趋势结构时使用。
-  注意：日期格式必须为 yyyy-MM-dd，工具执行层为 TradingToolCallbacks。
+  日期格式必须为 yyyy-MM-dd。
 ---
 
 # 获取历史 K 线
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-historical-bars`
 - **Tool Name**: `get_historical_bars`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定时间区间内的日线 OHLCV 数据，用于趋势分析、区间涨跌判断和技术指标前置判断。

@@ -3,7 +3,7 @@ name: get-stock-info
 description: |
   获取 A 股股票的实时行情信息，包括当前价格、估值、市值和成交量等关键指标。
   适用场景：需要先确认股票当前价格、涨跌、估值或基础市场信息时使用。
-  注意：仅支持 6 位 A 股代码，工具执行层为 TradingToolCallbacks。
+  仅支持 6 位 A 股代码。
 ---
 
 # 获取股票实时信息
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-stock-info`
 - **Tool Name**: `get_stock_info`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定 A 股股票的实时基础信息，通常用于分析开场阶段，帮助模型快速建立对标的的价格和估值认知。

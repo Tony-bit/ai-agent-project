@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -8,11 +9,15 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from mem0 import Memory
+import openai
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Load environment variables
 load_dotenv()
+
+OPENAI_API_KEY = os.environ.get("AI_DASHSCOPE_API_KEY")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "/app/history/history.db")
 
 
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "postgres")
@@ -22,10 +27,6 @@ POSTGRES_DB = os.environ.get("POSTGRES_DB", "postgres")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
 POSTGRES_COLLECTION_NAME = os.environ.get("POSTGRES_COLLECTION_NAME", "memories")
-
-OPENAI_API_KEY = os.environ.get("AI_DASHSCOPE_API_KEY")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "/app/history/history.db")
 
 DEFAULT_CONFIG = {
     "version": "v1.1",
@@ -38,6 +39,7 @@ DEFAULT_CONFIG = {
             "user": POSTGRES_USER,
             "password": POSTGRES_PASSWORD,
             "collection_name": POSTGRES_COLLECTION_NAME,
+            "embedding_model_dims": 1536,
         },
     },
     # 不接入图谱，只用 db + 向量存储（pgvector）
@@ -46,7 +48,8 @@ DEFAULT_CONFIG = {
         "config": {
             "api_key": DEEPSEEK_API_KEY,
             "temperature": 0.2,
-            "model": "deepseek-chat"
+            "model": "deepseek-chat",
+            "max_tokens": 4096  # 增加 max_tokens 确保 JSON 输出完整
         }
     },
     "embedder": {
@@ -54,7 +57,8 @@ DEFAULT_CONFIG = {
         "config": {
             "api_key": OPENAI_API_KEY,
             "model": "text-embedding-v4",
-            "openai_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            "openai_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "embedding_dims": 1536,
         }
     },
     "history_db_path": HISTORY_DB_PATH,
@@ -89,6 +93,10 @@ class MemoryCreate(BaseModel):
     agent_id: Optional[str] = None
     run_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+
+
+class MemoryUpdate(BaseModel):
+    data: str = Field(..., description="New content to update the memory with.")
 
 
 class SearchRequest(BaseModel):
@@ -182,10 +190,10 @@ def search_memories(search_req: SearchRequest):
 
 
 @app.put("/memories/{memory_id}", summary="Update a memory")
-def update_memory(memory_id: str, updated_memory: Dict[str, Any]):
-    """Update an existing memory."""
+def update_memory(memory_id: str, updated_memory: MemoryUpdate):
+    """Update an existing memory with new content."""
     try:
-        return MEMORY_INSTANCE.update(memory_id=memory_id, data=updated_memory)
+        return MEMORY_INSTANCE.update(memory_id=memory_id, data=updated_memory.data)
     except Exception as e:
         logging.exception("Error in update_memory:")
         raise HTTPException(status_code=500, detail=str(e))
@@ -240,6 +248,41 @@ def reset_memory():
         return {"message": "All memories reset"}
     except Exception as e:
         logging.exception("Error in reset_memory:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# =============================================================================
+# Persona 相关端点（调用 mem0ai 原生方法）
+# =============================================================================
+
+@app.get(
+    "/mem0/persona/{user_id}",
+    summary="Get user persona",
+    description="Get user persona as a natural language text via mem0ai native method.",
+)
+def get_persona(user_id: str):
+    """Get user persona by calling mem0ai's native get_persona method."""
+    try:
+        persona = MEMORY_INSTANCE.get_persona(user_id=user_id)
+        return JSONResponse(content={"data": persona})
+    except Exception as e:
+        logging.exception("Error in get_persona:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/mem0/persona/{user_id}/metadata",
+    summary="Get user persona metadata",
+    description="Get user persona metadata as a structured dict via mem0ai native method.",
+)
+def get_persona_metadata(user_id: str):
+    """Get user persona metadata by calling mem0ai's native get_persona_metadata method."""
+    try:
+        metadata = MEMORY_INSTANCE.get_persona_metadata(user_id=user_id)
+        return JSONResponse(content={"metadata": metadata})
+    except Exception as e:
+        logging.exception("Error in get_persona_metadata:")
         raise HTTPException(status_code=500, detail=str(e))
 
 

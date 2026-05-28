@@ -14,7 +14,6 @@ import org.springframework.util.StringUtils;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -75,7 +74,10 @@ public class IntentFewshotService {
     }
 
     /**
-     * 新增样本（自动生成 embedding）
+     * 新增样本
+     * <p>
+     * 注意：embedding 由 PgVectorStore 自动生成并存储
+     * </p>
      *
      * @param queryText   用户 query 原文
      * @param intentCode 意图编码
@@ -88,8 +90,9 @@ public class IntentFewshotService {
                 .exampleJson(exampleJson)
                 .status(IntentFewshotSample.STATUS_ENABLED)
                 .build();
-        generateEmbedding(sample);
+        // 保存到 MySQL（仅存储文本信息）
         intentFewshotSampleRepository.save(sample);
+        // 同步到 PGvector（PgVectorStore 自动生成 embedding）
         syncToVectorStore(sample);
         log.info("Few-Shot 样本新增完成: id={}, intentCode={}", sample.getId(), intentCode);
     }
@@ -117,7 +120,6 @@ public class IntentFewshotService {
             return;
         }
         sample.setExampleJson(exampleJson);
-        generateEmbedding(sample);
         intentFewshotSampleRepository.update(sample);
         syncToVectorStore(sample);
         log.info("Few-Shot 样本更新完成: id={}", id);
@@ -133,24 +135,12 @@ public class IntentFewshotService {
         return intentFewshotSampleRepository.queryByIntentCode(intentCode);
     }
 
-    private void generateEmbedding(IntentFewshotSample sample) {
-        try {
-            var embeddings = embeddingModel.embed(List.of(sample.getQueryText()));
-            if (embeddings != null && !embeddings.isEmpty()) {
-                sample.setDimension(embeddings.get(0).length);
-                sample.setEmbedding(embeddings.get(0).toString());
-            }
-        } catch (Exception e) {
-            log.warn("Embedding 生成失败，跳过向量存储: queryText={}, error={}",
-                    sample.getQueryText(), e.getMessage());
-        }
-    }
-
     private void syncToVectorStore(IntentFewshotSample sample) {
         try {
             Document doc = sampleToDocument(sample);
             List<Document> docs = new ArrayList<>();
             docs.add(doc);
+            // PgVectorStore 会在 accept 时自动为 doc 生成 embedding 并存储
             intentFewshotVectorStore.accept(docs);
             log.debug("样本同步到 PGvector 完成: id={}", sample.getId());
         } catch (Exception e) {

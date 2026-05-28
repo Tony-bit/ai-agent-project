@@ -3,7 +3,7 @@ name: get-sentiment
 description: |
   获取 A 股股票的市场情绪数据，包括综合情绪评分、分析师评级和情绪趋势。
   适用场景：需要判断市场偏好、情绪温度或辅助择时时使用。
-  注意：情绪信号波动较快，工具执行层为 TradingToolCallbacks。
+  情绪信号波动较快。
 ---
 
 # 获取市场情绪
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-sentiment`
 - **Tool Name**: `get_sentiment`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回股票的情绪评分、看涨看跌比例和不同周期情绪趋势，用于识别市场态度和短期风险偏好。

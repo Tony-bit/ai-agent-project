@@ -22,7 +22,7 @@ CREATE TABLE public.store_openai (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     content     TEXT        NOT NULL,
     metadata    JSONB,
-    embedding   VECTOR(1536)
+    embedding   VECTOR(768)
 );
 
 -- 创建索引
@@ -39,7 +39,7 @@ CREATE TABLE public.vector_store_openai (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     content     TEXT        NOT NULL,
     metadata    JSONB,
-    embedding   VECTOR(1536)
+    embedding   VECTOR(768)
 );
 
 -- 创建索引
@@ -124,7 +124,7 @@ CREATE TRIGGER update_intent_fewshot_sample_updated_at
 -- ===============================================================
 
 COMMENT ON TABLE public.store_openai IS '通用向量存储表';
-COMMENT ON COLUMN public.store_openai.embedding IS '向量维度: 1536';
+COMMENT ON COLUMN public.store_openai.embedding IS '向量维度: 768';
 COMMENT ON TABLE public.vector_store_openai IS '向量存储表（兼容旧版本）';
 COMMENT ON TABLE public.intent_fewshot_sample IS '意图识别 Few-Shot 样本表';
 COMMENT ON TABLE public.memories IS 'Mem0 记忆存储表';

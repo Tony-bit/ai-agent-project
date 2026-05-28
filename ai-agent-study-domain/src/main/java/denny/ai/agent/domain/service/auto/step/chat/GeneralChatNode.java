@@ -51,9 +51,6 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         请重新描述您的需求，我会尽力帮助您。
         """;
 
-    private static final String GENERAL_CHAT_SYSTEM_PROMPT = """
-        你是一个友好的AI助手，请根据用户的问题提供有帮助的回答。
-        """;
 
     @Override
     protected String doApply(ExecuteCommandEntity request,
@@ -87,10 +84,10 @@ public class GeneralChatNode extends AbstractExecuteSupport {
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
 
-        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
-            promptBuilder.tools(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
-            log.info("通用对话已注入情景记忆 Tool, toolCount={}", searchEpisodicMemoryCallbacks.size());
-        }
+//        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
+//            promptBuilder.toolCallbacks(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
+//            log.info("通用对话已注入情景记忆 Tool, toolCount={}", searchEpisodicMemoryCallbacks.size());
+//        }
 
         String response = promptBuilder.call().content();
 
@@ -144,16 +141,12 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         String userMessage = request.getMessage() != null ? request.getMessage() : "请描述这张图片的内容";
         String multimodalMessage = userMessage + "\n\n[图片]: " + ossUrl;
 
-        // Step 4: 调用多模态对话
+        // Step 4: 调用多模态对话（prompt 已通过 clientId 从数据库加载）
         var promptBuilder = chatClient.prompt()
-                .system(GENERAL_CHAT_SYSTEM_PROMPT)
+                .system("")
                 .user(multimodalMessage)
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0));
-
-        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
-            promptBuilder.tools(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
-        }
 
         String response = promptBuilder.call().content();
 
@@ -175,18 +168,11 @@ public class GeneralChatNode extends AbstractExecuteSupport {
     }
 
     private String buildSystemPrompt(IntentTypeEnum recognizedIntent, String userId) {
-        String basePrompt = resolveSystemPrompt(recognizedIntent);
+        // prompt 已从数据库加载（通过 clientId=3001），这里只追加 userId 上下文
         if (userId != null && !userId.isBlank()) {
-            return basePrompt + String.format("\n\n[上下文] 当前用户ID: %s", userId);
+            return String.format("[上下文] 当前用户ID: %s", userId);
         }
-        return basePrompt;
-    }
-
-    private String resolveSystemPrompt(IntentTypeEnum recognizedIntent) {
-        if (recognizedIntent == IntentTypeEnum.AMBIGUOUS) {
-            return AMBIGUOUS_SYSTEM_PROMPT;
-        }
-        return GENERAL_CHAT_SYSTEM_PROMPT;
+        return "";
     }
 
     private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {

@@ -309,4 +309,5 @@ public class IntentRoutingServiceTest {
 
         assertEquals("无推理过程", result.getReasoning());
     }
+
 }

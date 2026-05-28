@@ -14,6 +14,7 @@ services:
       - ai_shared
     volumes:
       - ./history:/app/history
+      - d:/Code/mem0-main/mem0:/usr/local/lib/python3.12/site-packages/mem0
 #    depends_on:
 #      postgres:
 #        condition: service_healthy

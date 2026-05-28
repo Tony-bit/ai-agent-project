@@ -3,7 +3,7 @@ name: get-fundamental-data
 description: |
   获取 A 股股票的基本面数据，包括估值、盈利能力、增长、现金流和偿债能力。
   适用场景：需要做价值分析、财务健康度分析或股票对比时使用。
-  注意：适合中长期分析，工具执行层为 TradingToolCallbacks。
+  适合中长期分析。
 ---
 
 # 获取基本面数据
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-fundamental-data`
 - **Tool Name**: `get_fundamental_data`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回股票的估值和财务指标，用于判断公司盈利质量、成长性和估值是否合理。

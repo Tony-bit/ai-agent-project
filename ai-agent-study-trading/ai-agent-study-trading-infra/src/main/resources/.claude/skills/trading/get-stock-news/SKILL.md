@@ -3,7 +3,7 @@ name: get-stock-news
 description: |
   获取指定 A 股股票的近期新闻列表，包括标题、来源、时间、摘要和情感得分。
   适用场景：需要了解近期事件驱动、舆情变化或消息面风险时使用。
-  注意：可通过 limit 控制返回条数，工具执行层为 TradingToolCallbacks。
+  可通过 limit 控制返回条数。
 ---
 
 # 获取股票新闻
@@ -11,7 +11,6 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-stock-news`
 - **Tool Name**: `get_stock_news`
-- **执行层**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定股票的近期新闻，帮助模型识别催化剂、负面舆情和短期事件风险。

@@ -1,7 +1,5 @@
 package denny.ai.agent.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import denny.ai.agent.infrastructure.mem0.Mem0RestClient;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -13,11 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.client.RestTemplate;
-
-import java.time.Duration;
 
 @Configuration
 public class AiAgentConfig {
@@ -73,23 +67,5 @@ public class AiAgentConfig {
     @Bean
     public TokenTextSplitter tokenTextSplitter() {
         return new TokenTextSplitter();
-    }
-
-    @Bean
-    public RestTemplate mem0RestTemplate(
-            @Value("${spring.ai.alibaba.mem0.client.timeout-seconds:120}") int timeoutSeconds) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        Duration timeout = Duration.ofSeconds(timeoutSeconds);
-        requestFactory.setConnectTimeout(timeout);
-        requestFactory.setReadTimeout(timeout);
-        return new RestTemplate(requestFactory);
-    }
-
-    @Bean
-    public Mem0RestClient mem0RestClient(
-            @Value("${spring.ai.alibaba.mem0.client.base-url}") String baseUrl,
-            RestTemplate mem0RestTemplate,
-            ObjectMapper objectMapper) {
-        return new Mem0RestClient(mem0RestTemplate, baseUrl, objectMapper);
     }
 }
