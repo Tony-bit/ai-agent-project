@@ -4,11 +4,13 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
+import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 
@@ -122,5 +124,99 @@ public class TradingStarter {
         stateContext.getTradingContext().setStockInfo(stockInfo);
         log.info("交易 Agent 初始化完成: ticker={}, analysts={}",
                 stockInfo.getTicker(), stateContext.getSelectedAnalysts());
+    }
+
+    /**
+     * 为多任务执行场景准备的同步执行方法。
+     * <p>
+     * 与 start() 的区别：
+     * - 不发送 SSE 事件（emitter 为 null 时降级）
+     * - 不关闭 emitter
+     * - 不管理 tradingLatch
+     * - 直接执行并返回交易结果文本
+     * </p>
+     *
+     * @param subTaskContent   子任务内容（从 SubTask.content 获取）
+     * @param slots            子任务槽位信息（包含 stockCode 等）
+     * @param dynamicContext    动态上下文
+     * @return 交易分析结果的文本描述
+     */
+    @SuppressWarnings("unchecked")
+    public String startForSubTask(String subTaskContent, Map<String, Object> slots,
+                                  DynamicContext dynamicContext) {
+        log.info("TradingStarter.startForSubTask: content={}, slots={}", subTaskContent, slots);
+
+        String stockCode = slots != null && slots.get("stockCode") != null
+                ? slots.get("stockCode").toString() : subTaskContent;
+
+        StockAnalysisRequestVO request = StockAnalysisRequestVO.builder()
+                .ticker(stockCode)
+                .sessionId(dynamicContext.getValue("sessionId") != null
+                        ? dynamicContext.getValue("sessionId").toString() : null)
+                .build();
+
+        StringBuilder resultBuilder = new StringBuilder();
+        BiConsumer<String, Object> noOpSseSender = (type, event) -> {
+            // 不发送任何 SSE
+        };
+
+        TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, noOpSseSender);
+
+        try {
+            populateStockInfo(stateContext);
+        } catch (Exception e) {
+            log.error("获取股票信息失败: ticker={}", request.getTicker(), e);
+            return "无法获取股票信息: " + e.getMessage();
+        }
+
+        dynamicContext.setValue("trading_context", stateContext.getTradingContext());
+
+        TradingDriver driver = new TradingDriver(stateContext, tradingDispatcher);
+        try {
+            TradingDriver.setCurrent(driver);
+            stateContext.transitionTo(TradingPhase.INIT);
+            tradingDispatcher.onEvent(TradingEvent.START_TRADING, stateContext);
+        } catch (Exception e) {
+            log.error("交易分析执行异常: {}", e.getMessage(), e);
+            return "交易分析执行异常: " + e.getMessage();
+        } finally {
+            TradingDriver.clear();
+        }
+
+        String result = buildResultFromContext(stateContext);
+        if (result == null || result.isBlank()) {
+            return "交易分析完成（无详细结果）";
+        }
+        return result;
+    }
+
+    private String buildResultFromContext(TradingStateContext stateContext) {
+        StringBuilder sb = new StringBuilder();
+        TradingContextVO ctx = stateContext.getTradingContext();
+        if (ctx == null) {
+            return null;
+        }
+        if (ctx.getStockInfo() != null) {
+            sb.append("【股票信息】").append(ctx.getStockInfo()).append("\n");
+        }
+        if (ctx.getTechnicalReport() != null) {
+            sb.append("【技术分析】").append(ctx.getTechnicalReport()).append("\n");
+        }
+        if (ctx.getFundamentalReport() != null) {
+            sb.append("【基本面分析】").append(ctx.getFundamentalReport()).append("\n");
+        }
+        if (ctx.getSentimentReport() != null) {
+            sb.append("【情绪分析】").append(ctx.getSentimentReport()).append("\n");
+        }
+        if (ctx.getNewsReport() != null) {
+            sb.append("【新闻分析】").append(ctx.getNewsReport()).append("\n");
+        }
+        if (ctx.getInvestmentDebate() != null && ctx.getInvestmentDebate().getConclusion() != null) {
+            sb.append("【投资辩论结论】").append(ctx.getInvestmentDebate().getConclusion()).append("\n");
+        }
+        if (ctx.getFinalDecision() != null) {
+            sb.append("【最终决策】").append(ctx.getFinalDecision()).append("\n");
+        }
+        return sb.toString().trim();
     }
 }

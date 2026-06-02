@@ -22,7 +22,7 @@ public class IntentRoutingPrompt {
         3. PE_CALCULATION: 用户提出数学计算、数据处理、统计建模等需要精确计算的任务
         4. PE_RETRIEVAL: 用户查询知识库、文档检索、信息汇总等知识类任务
         5. INSPECTION: 用户请求系统巡检、健康检查、状态监控等运维任务
-        6. GENERAL_CHAT: 闲聊、问候、记忆查询（如询问个人偏好、之前聊过的内容）、无法归类的对话
+        6. GENERAL_CHAT: 闲聊、问候、记忆查询（如询问个人偏好、之前聊过的内容）、询问个人身份信息（如询问自己的职业、身份、角色等）、无法归类的对话
         7. AMBIGUOUS: 意图模糊或复合语义，需要进一步澄清
         8. UNKNOWN: 无法明确判断
 
@@ -89,5 +89,77 @@ public class IntentRoutingPrompt {
             sb.append(i + 1).append(". ").append(historyMessages.get(i)).append("\n");
         }
         return sb.toString();
+    }
+
+    public static final String MULTI_TASK_DECOMPOSE_PROMPT = """
+        ## 角色
+        你是一个专业的意图分解助手，负责分析用户输入并将其拆分为多个可独立执行的子任务。
+
+        ## 意图类型与执行节点映射
+        | 意图类型 | 执行节点 (executorNode) | 说明 |
+        |----------|------------------------|------|
+        | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
+        | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
+        | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
+        | PE_RETRIEVAL | step1AnalyzerNode | 知识检索、信息汇总 |
+        | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
+        | GENERAL_CHAT | generalChatNode | 闲聊、问候、通用问答 |
+
+        ## 分解规则
+        1. 每个子任务应该是独立的、可单独执行的
+        2. 子任务之间应尽量无依赖（串行执行）
+        3. 按实体粒度分解：不同股票/实体拆成独立任务
+        4. 每个 SubTask 必须指定 executorNode（对应执行节点名称）
+
+        ## 应该触发多任务分解的场景
+        - 复杂多步骤任务（3个或更多步骤）
+        - 用户明确提到多个实体（"分析茅台、比亚迪、五粮液"）
+        - 用户明确请求多个任务（编号或逗号分隔）
+
+        ## 不应触发多任务分解的场景
+        - 单一、简单的任务
+        - 琐碎的任务（"你好"、"谢谢"）
+        - 可在3步内完成的任务
+        - 纯对话/信息性请求
+
+        ## 输出要求
+        请严格按以下JSON格式输出，不要包含任何额外内容：
+        {
+          "multiTask": true/false,
+          "needsClarification": true/false,
+          "missingInfo": ["槽位名1"],
+          "clarificationPrompt": "请提供 xxx",
+          "reasoning": "分解判断理由",
+          "taskList": [
+            {
+              "taskId": "sub-1",
+              "taskIndex": 1,
+              "totalTasks": 2,
+              "content": "分析贵州茅台走势",
+              "intent": "STOCK_ANALYSIS",
+              "executorNode": "tradingStarter",
+              "confidence": "HIGH",
+              "slots": {"stockCode": "600519", "stockQueryType": "TECHNICAL"}
+            }
+          ]
+        }
+        """;
+
+    /**
+     * 构建多任务分解 Prompt
+     *
+     * @param userMessage     当前用户消息
+     * @param historyMessages 历史消息列表
+     */
+    public static String buildMultiTaskDecomposePrompt(String userMessage, List<String> historyMessages) {
+        String historySection = buildHistorySection(historyMessages);
+        StringBuilder prompt = new StringBuilder();
+        prompt.append(MULTI_TASK_DECOMPOSE_PROMPT);
+        prompt.append("\n\n## 历史上下文（最近对话）\n");
+        prompt.append(historySection);
+        prompt.append("\n\n## 用户输入\n");
+        prompt.append("用户: ").append(userMessage).append("\n");
+        prompt.append("输出:");
+        return prompt.toString();
     }
 }
