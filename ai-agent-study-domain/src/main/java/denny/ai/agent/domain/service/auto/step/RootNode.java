@@ -52,7 +52,8 @@ public class RootNode extends AbstractExecuteSupport {
         // 当前任务信息
         dynamicContext.setCurrentTask(requestParameter.getMessage());
         // 最大任务步骤
-        dynamicContext.setMaxStep(requestParameter.getMaxStep());
+        Integer maxStep = requestParameter.getMaxStep();
+        dynamicContext.setMaxStep(maxStep != null ? maxStep : 1);
 
         log.debug(">>> [RootNode.doApply] router前检查 - currentTask={}, dataObjects={}",
                 dynamicContext.getCurrentTask(),
