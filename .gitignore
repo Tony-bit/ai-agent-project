@@ -47,6 +47,7 @@ Thumbs.db
 *~
 
 # Temporary files
+scripts/
 *.tmp
 *.temp
 *.swp
@@ -59,6 +60,7 @@ Thumbs.db
 *.pid.lock
 
 # Maven local repository artifacts extracted in project dir (avoid cluttering git)
+.m2-repo/
 .m2/
 META-INF/
 io/

@@ -160,6 +160,9 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
         String summary = summarizeResults(originalMessage, taskList, dynamicContext);
 
         log.info("=== LLM 汇总完成，长度={} ===", summary.length());
+
+        dynamicContext.setValue("generalChatResponse", summary);
+
         return summary;
     }
 

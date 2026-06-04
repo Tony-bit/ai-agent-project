@@ -33,7 +33,7 @@ spring:
       mem0:
         client:
           base-url: http://127.0.0.1:8889
-          timeout-seconds: 120
+          timeout-seconds: 5
         server:
           version: v0.1.116
           vector-store:
@@ -190,7 +190,8 @@ chat:
 
 logging:
   level:
-    web: DEBUG # 这将打印所有Controller映射的详细信息
+    web: WARN # 这将打印所有Controller映射的详细信息
+    denny.ai.agent: INFO
     # 可选：同时开启Spring核心日志，看扫描过程
 #    org.springframework.context: DEBUG
 #    root: info

@@ -262,12 +262,12 @@ private String streamToEmitter(DefaultAutoAgentExecuteStrategyFactory.DynamicCon
                                 .build());
                         latch.countDown();
                     },
-                    // onComplete: 完成
+                    // onComplete: 完成（仅发完成标识，不重复发完整内容，避免前端收到重复帧）
                     () -> {
                         sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                                 .type("content")
                                 .subType(subType)
-                                .content(fullContent.toString())
+                                .content("")
                                 .completed(true)
                                 .timestamp(System.currentTimeMillis())
                                 .build());

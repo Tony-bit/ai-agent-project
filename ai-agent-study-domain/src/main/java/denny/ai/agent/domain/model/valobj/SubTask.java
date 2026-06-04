@@ -84,6 +84,12 @@ public class SubTask {
     private String errorMessage;
 
     /**
+     * 模型配置类型（用于选择 ChatClient）
+     * 默认 0 表示使用通用模型
+     */
+    private Integer taskType = 0;
+
+    /**
      * 任务状态枚举
      */
     public enum SubTaskStatus {

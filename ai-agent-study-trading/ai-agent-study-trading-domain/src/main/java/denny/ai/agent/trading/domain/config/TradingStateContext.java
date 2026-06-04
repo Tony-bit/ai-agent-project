@@ -167,13 +167,13 @@ public class TradingStateContext {
     /**
      * 通知交易流程结束，使 TradingStarter 的 latch countDown
      */
-    public void countDownTradingLatch() {
-        CountDownLatch latch = dynamicContext.getValue("tradingLatch");
+    public void countDownTaskLatch() {
+        CountDownLatch latch = dynamicContext.getValue("taskLatch");
         if (latch != null) {
             latch.countDown();
-            log.info("交易流程全部完成，latch 倒计时");
+            log.info("任务流程全部完成，taskLatch 倒计时");
         } else {
-            log.warn("tradingLatch 不存在，可能已倒计时");
+            log.warn("taskLatch 不存在，可能已倒计时");
         }
     }
 

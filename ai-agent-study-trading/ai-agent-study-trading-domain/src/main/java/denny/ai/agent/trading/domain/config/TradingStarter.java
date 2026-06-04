@@ -67,8 +67,8 @@ public class TradingStarter {
         dynamicContext.setValue("trading_context", stateContext.getTradingContext());
 
         // ★ 5. 创建 CountDownLatch，供并行分析师流程完成后 countdown
-        CountDownLatch tradingLatch = new CountDownLatch(1);
-        dynamicContext.setTradingLatch(tradingLatch);
+        CountDownLatch taskLatch = new CountDownLatch(1);
+        dynamicContext.setValue("taskLatch", taskLatch);
 
         // 6. 设置 ThreadLocal Driver，启动状态机
         //    onEvent() 同步返回，异步任务在后台线程池运行
@@ -80,13 +80,13 @@ public class TradingStarter {
             TradingDriver.clear();
             // 等所有异步任务完成（LATCH 被 countDown 后才继续）
             try {
-                tradingLatch.await();
+                taskLatch.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("tradingLatch await 被中断: {}", e.getMessage());
+                log.warn("taskLatch await 被中断: {}", e.getMessage());
             }
-            tradingLatch.countDown();
-            log.info("tradingLatch 已倒计时，异步任务全部完成");
+            taskLatch.countDown();
+            log.info("taskLatch 已倒计时，异步任务全部完成");
             // 发送最终 SSE 并关闭 emitter
             finishAndCloseSse(stateContext, dynamicContext);
         }
@@ -132,7 +132,6 @@ public class TradingStarter {
      * 与 start() 的区别：
      * - 不发送 SSE 事件（emitter 为 null 时降级）
      * - 不关闭 emitter
-     * - 不管理 tradingLatch
      * - 直接执行并返回交易结果文本
      * </p>
      *
@@ -171,6 +170,10 @@ public class TradingStarter {
 
         dynamicContext.setValue("trading_context", stateContext.getTradingContext());
 
+        // ★ 为子任务创建独立的 latch，确保等待异步任务完成
+        CountDownLatch taskLatch = new CountDownLatch(1);
+        dynamicContext.setValue("taskLatch", taskLatch);
+
         TradingDriver driver = new TradingDriver(stateContext, tradingDispatcher);
         try {
             TradingDriver.setCurrent(driver);
@@ -181,6 +184,14 @@ public class TradingStarter {
             return "交易分析执行异常: " + e.getMessage();
         } finally {
             TradingDriver.clear();
+            // ★ 等待异步任务完成后再返回
+            try {
+                taskLatch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("taskLatch await 被中断: {}", e.getMessage());
+            }
+            log.info("子任务异步任务完成，taskLatch 已倒计时");
         }
 
         String result = buildResultFromContext(stateContext);

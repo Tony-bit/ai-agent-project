@@ -236,7 +236,7 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
                             sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                                     .type("content")
                                     .subType(subType)
-                                    .content(fullContent.toString())
+                                    .content("")
                                     .completed(true)
                                     .timestamp(System.currentTimeMillis())
                                     .build());

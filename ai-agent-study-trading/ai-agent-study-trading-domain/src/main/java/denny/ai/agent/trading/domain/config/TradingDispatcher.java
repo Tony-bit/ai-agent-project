@@ -266,7 +266,7 @@ public class TradingDispatcher {
     private void handleFinalReport(TradingEvent event, TradingStateContext stateContext) {
         log.info("handleFinalReport 收到事件: {}", event);
         if (event == TradingEvent.PORTFOLIO_COMPLETE) {
-            stateContext.countDownTradingLatch();
+            stateContext.countDownTaskLatch();
         }
     }
 

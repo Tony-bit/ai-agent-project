@@ -94,7 +94,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
         try {
             String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
                 emitter.send(sseData);
-            log.info("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
+            log.debug("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
         } catch (Exception e) {
             log.error("【SSE致命错误】发送SSE结果失败：type={}, subType={}, sessionId={}, error={}, exClass={}",
                     result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName(), e);

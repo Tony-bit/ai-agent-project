@@ -745,6 +745,9 @@
     let eventSource = null;
     let currentStepMessages = new Map();
 
+    // 流式消息累积缓存：key = "type-subType-step", value = { div, content }
+    const streamingMessageCache = new Map();
+
     let sessionCursorTime = null;
     let sessionCursorId = null;
     let isLoadingSessions = false;
@@ -1299,11 +1302,38 @@
             return;
         }
 
+        // 跳过流式开始的空消息（completed=false 的空 content）
+        if (completed === false && type === 'content') {
+            // 流式内容消息：累积追加到同一消息元素
+            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
+            let cached = streamingMessageCache.get(cacheKey);
+
+            if (!cached) {
+                // 首次：创建新消息元素并缓存
+                cached = { div: addStageMessage(type, subType, content, step), content: content };
+                streamingMessageCache.set(cacheKey, cached);
+            } else {
+                // 追加：更新内容
+                cached.content += content;
+                updateMessageContent(cached.div, cached.content);
+            }
+
+            scrollToBottom(document.getElementById('thinkingMessages'));
+            return;
+        }
+
+        // 其他类型消息（完成、错误、final、system 等）：正常处理
         addStageMessage(type, subType, content, step);
 
         if (type === 'error' || type === 'final' ||
             (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
             closeLoadingState();
+        }
+
+        // 完成后清理缓存
+        if (completed) {
+            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
+            streamingMessageCache.delete(cacheKey);
         }
     }
 
@@ -1428,6 +1458,17 @@
 
         scrollToBottom(targetContainer);
         return messageDiv;
+    }
+
+    function updateMessageContent(messageDiv, content) {
+        const renderedContent = marked.parse(content);
+        const contentDiv = messageDiv.querySelector('.markdown-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = renderedContent;
+            messageDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
     }
 
     function addMessage(content, type) {

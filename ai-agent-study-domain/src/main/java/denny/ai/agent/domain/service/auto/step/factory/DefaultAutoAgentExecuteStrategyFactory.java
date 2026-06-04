@@ -61,11 +61,10 @@ public class DefaultAutoAgentExecuteStrategyFactory {
         private Map<String, Object> dataObjects = new HashMap<>();
 
         /**
-         * 交易流程 CountDownLatch。
-         * 用于 TradingStarter.start() 的 finally 等待并行分析师流程完成，
-         * 避免 SSE emitter 在节点执行期间被提前关闭。
+         * 任务完成信号量。
+         * 用于等待子任务/Agent 执行完成后再返回结果。
          */
-        private CountDownLatch tradingLatch;
+        private CountDownLatch taskLatch;
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);

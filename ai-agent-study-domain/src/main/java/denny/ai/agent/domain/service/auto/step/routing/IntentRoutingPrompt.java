@@ -139,10 +139,16 @@ public class IntentRoutingPrompt {
               "intent": "STOCK_ANALYSIS",
               "executorNode": "tradingStarter",
               "confidence": "HIGH",
+              "taskType": 0,
               "slots": {"stockCode": "600519", "stockQueryType": "TECHNICAL"}
             }
           ]
         }
+
+        ## taskType 字段说明
+        - taskType 必须为整数，表示执行该子任务使用的模型配置编号
+        - 推荐使用 taskType=0（通用模型），除非任务需要特殊模型
+        - taskType 仅限非负整数，禁止包含字母或特殊字符
         """;
 
     /**
