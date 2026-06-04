@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -62,6 +63,11 @@ public class SubTask {
      * 任务专属槽位（如股票代码、查询类型等）
      */
     private Map<String, Object> slots;
+
+    /**
+     * 依赖的前置任务 ID 列表
+     */
+    private List<String> dependsOn;
 
     /**
      * 任务状态
