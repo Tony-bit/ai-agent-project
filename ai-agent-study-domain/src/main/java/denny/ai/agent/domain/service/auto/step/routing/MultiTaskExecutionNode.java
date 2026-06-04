@@ -16,6 +16,8 @@ import jakarta.annotation.Resource;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 多任务执行节点
@@ -35,6 +37,7 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
 
     public static final String TASK_LIST_KEY = "taskList";
     public static final String ORIGINAL_MESSAGE_KEY = "originalMessage";
+    private static final String DEPENDENCY_PLACEHOLDER_PATTERN = "<\\$DEPENDENCY\\$\\s+taskId=\"([^\"]+)\"\\s*/>";
 
     @Resource
     private GeneralChatNode generalChatNode;
@@ -56,11 +59,11 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
 
     public String executeSubTask(SubTask subTask,
                                 DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-
         String executorNode = subTask.getExecutorNode();
+        String executableContent = buildExecutionContext(subTask, dynamicContext);
         log.info(">>> 执行子任务 [{}/{}]: taskId={}, executorNode={}, content={}",
                 subTask.getTaskIndex(), subTask.getTotalTasks(),
-                subTask.getTaskId(), executorNode, subTask.getContent());
+                subTask.getTaskId(), executorNode, executableContent);
 
         long startAt = System.currentTimeMillis();
 
@@ -73,11 +76,13 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
                 throw new IllegalStateException("未找到执行节点: " + executorNode);
             }
 
-            String result = executor.executeSubTask(subTask, dynamicContext);
+            SubTask executableTask = createExecutableTask(subTask, executableContent);
+            String result = executor.executeSubTask(executableTask, dynamicContext);
 
             subTask.setStatus(SubTask.SubTaskStatus.COMPLETED);
             subTask.setResult(result);
             subTask.setLatencyMs(System.currentTimeMillis() - startAt);
+            dynamicContext.putSubTaskResult(subTask.getTaskId(), subTask);
 
             log.info("<<< 子任务完成: taskId={}, executorNode={}, 耗时={}ms",
                     subTask.getTaskId(), executorNode, subTask.getLatencyMs());
@@ -90,6 +95,7 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
             subTask.setStatus(SubTask.SubTaskStatus.FAILED);
             subTask.setErrorMessage(e.getMessage());
             subTask.setLatencyMs(System.currentTimeMillis() - startAt);
+            dynamicContext.putSubTaskResult(subTask.getTaskId(), subTask);
             throw e;
         }
     }
@@ -160,7 +166,59 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
         String summary = summarizeResults(originalMessage, taskList, dynamicContext);
 
         log.info("=== LLM 汇总完成，长度={} ===", summary.length());
+        storeSummaryResponse(dynamicContext, summary);
         return summary;
+    }
+
+    private SubTask createExecutableTask(SubTask subTask, String executableContent) {
+        return SubTask.builder()
+                .taskId(subTask.getTaskId())
+                .taskIndex(subTask.getTaskIndex())
+                .totalTasks(subTask.getTotalTasks())
+                .content(executableContent)
+                .intent(subTask.getIntent())
+                .executorNode(subTask.getExecutorNode())
+                .confidence(subTask.getConfidence())
+                .slots(subTask.getSlots())
+                .dependsOn(subTask.getDependsOn())
+                .status(subTask.getStatus())
+                .result(subTask.getResult())
+                .latencyMs(subTask.getLatencyMs())
+                .errorMessage(subTask.getErrorMessage())
+                .taskType(subTask.getTaskType())
+                .build();
+    }
+
+    private String buildExecutionContext(SubTask task,
+                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        List<String> dependsOn = task.getDependsOn();
+        if (dependsOn == null || dependsOn.isEmpty()) {
+            return task.getContent();
+        }
+
+        String content = task.getContent();
+        Pattern pattern = Pattern.compile(DEPENDENCY_PLACEHOLDER_PATTERN);
+        Matcher matcher = pattern.matcher(content);
+        StringBuffer buffer = new StringBuffer();
+
+        while (matcher.find()) {
+            String dependencyTaskId = matcher.group(1);
+            SubTask dependencyTask = dynamicContext.getSubTaskResult(dependencyTaskId);
+            String dependencyResult = dependencyTask != null && dependencyTask.getResult() != null
+                    ? dependencyTask.getResult()
+                    : "";
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(dependencyResult));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
+    }
+
+    private void storeSummaryResponse(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                      String summary) {
+        if (dynamicContext.getValue("generalChatResponse") == null) {
+            dynamicContext.setValue("generalChatResponse", summary);
+        }
+        dynamicContext.setValue("multiTaskSummaryResponse", summary);
     }
 
     private String summarizeResults(String originalMessage, List<SubTask> taskList,

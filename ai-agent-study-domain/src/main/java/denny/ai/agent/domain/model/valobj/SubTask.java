@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -64,6 +65,11 @@ public class SubTask {
     private Map<String, Object> slots;
 
     /**
+     * 依赖的前置任务 ID 列表
+     */
+    private List<String> dependsOn;
+
+    /**
      * 任务状态
      */
     private SubTaskStatus status;
@@ -82,6 +88,12 @@ public class SubTask {
      * 任务执行错误信息
      */
     private String errorMessage;
+
+    /**
+     * 模型配置类型（用于选择 ChatClient）
+     * 默认 0 表示使用通用模型
+     */
+    private Integer taskType = 0;
 
     /**
      * 任务状态枚举

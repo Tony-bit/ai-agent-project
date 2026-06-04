@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,9 @@ import static org.mockito.Mockito.*;
  * 6. TC-MTE-008: buildSummaryPrompt 包含失败任务的错误信息
  * 7. TC-MTE-009: 任务成功时，result 和 latencyMs 被正确设置
  * 8. TC-MTE-010: 任务失败时，errorMessage 被正确设置
+ * 9. TC-MTE-011: 有依赖任务时注入依赖结果
+ * 10. TC-MTE-012: 无依赖任务时保持原始内容
+ * 11. TC-MTE-013: 汇总后保留已有 generalChatResponse
  * </p>
  *
  * @author denny
@@ -181,7 +185,7 @@ public class MultiTaskExecutionNodeTest {
                 .taskIndex(1).totalTasks(1).content("分析茅台")
                 .status(SubTask.SubTaskStatus.COMPLETED).result("茅台技术面良好").build();
 
-        java.lang.reflect.Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
+        Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
                 "buildSummaryPrompt", String.class, List.class);
         method.setAccessible(true);
 
@@ -201,7 +205,7 @@ public class MultiTaskExecutionNodeTest {
                 .taskIndex(1).totalTasks(1).content("分析茅台")
                 .status(SubTask.SubTaskStatus.FAILED).errorMessage("行情服务不可用").build();
 
-        java.lang.reflect.Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
+        Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
                 "buildSummaryPrompt", String.class, List.class);
         method.setAccessible(true);
 
@@ -250,5 +254,75 @@ public class MultiTaskExecutionNodeTest {
 
         assertEquals("服务异常", subTask.getErrorMessage());
         assertNull(subTask.getResult());
+    }
+
+    /**
+     * TC-MTE-011: 有依赖任务时注入依赖结果
+     */
+    @Test
+    public void testBuildExecutionContext_injectsDependencyResult() throws Exception {
+        SubTask dependencyTask = SubTask.builder()
+                .taskId("sub-1")
+                .content("先解释向量数据库")
+                .result("向量数据库用于存储和检索向量表示。")
+                .status(SubTask.SubTaskStatus.COMPLETED)
+                .build();
+        dynamicContext.setValue("subTaskResults", Map.of("sub-1", dependencyTask));
+
+        SubTask currentTask = SubTask.builder()
+                .taskId("sub-2")
+                .content("基于 <$DEPENDENCY$ taskId=\"sub-1\" /> 继续介绍 RAG")
+                .executorNode("generalChatNode")
+                .dependsOn(List.of("sub-1"))
+                .build();
+
+        Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
+                "buildExecutionContext", SubTask.class, DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class);
+        method.setAccessible(true);
+
+        String executableContent = (String) method.invoke(multiTaskExecutionNode, currentTask, dynamicContext);
+
+        assertTrue(executableContent.contains("向量数据库用于存储和检索向量表示。"));
+        assertFalse(executableContent.contains("<$DEPENDENCY$"));
+    }
+
+    /**
+     * TC-MTE-012: 无依赖任务时保持原始内容
+     */
+    @Test
+    public void testBuildExecutionContext_withoutDependency_keepsOriginalContent() throws Exception {
+        SubTask currentTask = SubTask.builder()
+                .taskId("sub-3")
+                .content("直接介绍 Spring AI")
+                .executorNode("generalChatNode")
+                .dependsOn(List.of())
+                .build();
+
+        Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
+                "buildExecutionContext", SubTask.class, DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class);
+        method.setAccessible(true);
+
+        String executableContent = (String) method.invoke(multiTaskExecutionNode, currentTask, dynamicContext);
+
+        assertEquals("直接介绍 Spring AI", executableContent);
+    }
+
+    /**
+     * TC-MTE-013: 汇总后保留已有 generalChatResponse
+     */
+    @Test
+    public void testStoreSummaryResponse_preservesExistingGeneralChatResponse() throws Exception {
+        dynamicContext.setValue("generalChatResponse", "子任务节点已经产出的通用回复");
+
+        Method method = MultiTaskExecutionNode.class.getDeclaredMethod(
+                "storeSummaryResponse",
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class,
+                String.class);
+        method.setAccessible(true);
+
+        method.invoke(multiTaskExecutionNode, dynamicContext, "最终汇总回复");
+
+        assertEquals("子任务节点已经产出的通用回复", dynamicContext.getValue("generalChatResponse"));
+        assertEquals("最终汇总回复", dynamicContext.getValue("multiTaskSummaryResponse"));
     }
 }
