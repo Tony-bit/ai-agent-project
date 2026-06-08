@@ -168,7 +168,7 @@ public class OSSTest {
         String apiKey = "sk-b1050a5b1a7e41bcaddc968acdf637a6";
 
         TextEmbeddingReq requestBody = TextEmbeddingReq.builder()
-                .model("qwen3-vl-embedding")
+                .model("text-embedding-v3")
                 .input(TextEmbeddingReq.Input.builder().contents(Arrays.asList(
                         TextEmbeddingReq.Embedding.builder()
                                 .text("多模态向量模型")

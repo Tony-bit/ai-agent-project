@@ -30,7 +30,7 @@ public class AiAgentConfig {
     public EmbeddingModel customDashscopeEmbeddingModel(
             @Value("${rag.embedding.config.base-url}") String apiUrl,
             @Value("${rag.embedding.config.api-key}") String apiKey,
-            @Value("${rag.embedding.config.model:qwen3-vl-embedding}") String model,
+            @Value("${rag.embedding.config.model:text-embedding-v3}") String model,
             @Value("${rag.embedding.config.dimension:768}") Integer dimension) {
         Integer actualDimension = (dimension == null || dimension <= 0) ? null : dimension;
         return new DashscopeEmbeddingModel(apiUrl, apiKey, model, actualDimension);
@@ -48,8 +48,8 @@ public class AiAgentConfig {
     /**
      * 意图识别 Few-Shot 样本向量存储。
      * <p>
-     * 使用 {@link #pgVectorStore}，表名为 intent_fewshot_vector_store，
-     * 与通用 RAG 知识库（vector_store 表）数据隔离。
+     * 使用独立的 PgVectorStore 表 `intent_fewshot_vector_store` 作为向量检索副本，
+     * 与业务样本表 `intent_fewshot_sample_768` 以及通用 RAG 知识库 `store_openai` 数据隔离。
      * </p>
      *
      * @param jdbcTemplate      JDBC 模板
@@ -60,7 +60,7 @@ public class AiAgentConfig {
     public PgVectorStore intentFewshotVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
                                                  @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-                .vectorTableName("intent_fewshot_sample")
+                .vectorTableName("intent_fewshot_vector_store")
                 .build();
     }
 

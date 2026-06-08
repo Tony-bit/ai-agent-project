@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.*;
-import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,6 +60,28 @@ class TushareStockDataProviderTest {
                 return result;
             }
             return super.call(apiName, params, fields);
+        }
+
+        @Override
+        public <T> List<T> callGeneric(Class<T> dtoClass, String apiName,
+                                       Map<String, Object> params, String fields) {
+            List<Map<String, String>> result = handler.handle(apiName, params, fields);
+            if (result == null) {
+                return super.callGeneric(dtoClass, apiName, params, fields);
+            }
+            List<T> converted = new ArrayList<>(result.size());
+            for (Map<String, String> row : result) {
+                try {
+                    T dto = dtoClass.getDeclaredConstructor().newInstance();
+                    var objectMapperField = TushareApiClient.class.getDeclaredField("objectMapper");
+                    objectMapperField.setAccessible(true);
+                    var objectMapper = (com.fasterxml.jackson.databind.ObjectMapper) objectMapperField.get(this);
+                    converted.add(objectMapper.convertValue(row, dtoClass));
+                } catch (Exception e) {
+                    throw new RuntimeException("测试 DTO 转换失败", e);
+                }
+            }
+            return converted;
         }
     }
 
@@ -152,9 +173,30 @@ class TushareStockDataProviderTest {
     void getHistoricalBars_success() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("daily".equals(apiName)) {
+                assertEquals("trade_date,open,high,low,close,vol,amount,change,pct_chg", fields);
                 return List.of(
-                        Map.of("trade_date", "20240101", "open", "10.0", "high", "10.8", "low", "9.8", "close", "10.5", "vol", "1000000"),
-                        Map.of("trade_date", "20240102", "open", "10.5", "high", "11.0", "low", "10.2", "close", "10.8", "vol", "1200000")
+                        Map.of(
+                                "trade_date", "20240101",
+                                "open", "10.0",
+                                "high", "10.8",
+                                "low", "9.8",
+                                "close", "10.5",
+                                "vol", "1000000",
+                                "amount", "10500000.50",
+                                "change", "0.50",
+                                "pct_chg", "5.00"
+                        ),
+                        Map.of(
+                                "trade_date", "20240102",
+                                "open", "10.5",
+                                "high", "11.0",
+                                "low", "10.2",
+                                "close", "10.8",
+                                "vol", "1200000",
+                                "amount", "12960000.00",
+                                "change", "0.30",
+                                "pct_chg", "2.86"
+                        )
                 );
             }
             return Collections.emptyList();
@@ -174,6 +216,9 @@ class TushareStockDataProviderTest {
         assertEquals(new BigDecimal("9.8"), bar1.getLow());
         assertEquals(new BigDecimal("10.5"), bar1.getAdjustedClose());
         assertEquals(1000000L, bar1.getVolume());
+        assertEquals(new BigDecimal("10500000.50"), bar1.getAmount());
+        assertEquals(new BigDecimal("0.50"), bar1.getChange());
+        assertEquals(5.00, bar1.getPctChg());
 
         OHLCVBarVO bar2 = result.get(1);
         assertEquals("2024-01-02", bar2.getDate());
@@ -182,6 +227,9 @@ class TushareStockDataProviderTest {
         assertEquals(new BigDecimal("10.2"), bar2.getLow());
         assertEquals(new BigDecimal("10.8"), bar2.getClose());
         assertEquals(1200000L, bar2.getVolume());
+        assertEquals(new BigDecimal("12960000.00"), bar2.getAmount());
+        assertEquals(new BigDecimal("0.30"), bar2.getChange());
+        assertEquals(2.86, bar2.getPctChg());
     }
 
     @Test

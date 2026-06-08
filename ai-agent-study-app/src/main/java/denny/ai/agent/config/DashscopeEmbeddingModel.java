@@ -20,10 +20,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 public class DashscopeEmbeddingModel implements EmbeddingModel {
+
+    private static final String DEFAULT_OUTPUT_TYPE = "dense";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -55,18 +56,14 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
             req.setModel(model);
 
             DashscopeEmbeddingRequest.Input input = new DashscopeEmbeddingRequest.Input();
-            List<DashscopeEmbeddingRequest.ContentItem> contents = instructions.stream().map(text -> {
-                DashscopeEmbeddingRequest.ContentItem item = new DashscopeEmbeddingRequest.ContentItem();
-                item.setText(text);
-                return item;
-            }).collect(Collectors.toList());
-            input.setContents(contents);
+            input.setTexts(new ArrayList<>(instructions));
             req.setInput(input);
 
             DashscopeEmbeddingRequest.Parameters parameters = new DashscopeEmbeddingRequest.Parameters();
             if (dimension != null && dimension > 0) {
                 parameters.setDimension(dimension);
             }
+            parameters.setOutputType(DEFAULT_OUTPUT_TYPE);
             req.setParameters(parameters);
 
             String body = objectMapper.writeValueAsString(req);
@@ -96,19 +93,16 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
                 if (item == null || item.getEmbedding() == null || item.getEmbedding().isEmpty()) {
                     continue;
                 }
-                String type = item.getType();
-                if (type != null && !("text".equalsIgnoreCase(type) || "vl".equalsIgnoreCase(type))) {
-                    continue;
-                }
+
                 float[] vector = new float[item.getEmbedding().size()];
                 for (int i = 0; i < item.getEmbedding().size(); i++) {
                     vector[i] = item.getEmbedding().get(i).floatValue();
                 }
-                results.add(new Embedding(vector, item.getIndex()));
+                results.add(new Embedding(vector, item.getTextIndex()));
             }
 
             if (results.isEmpty()) {
-                throw new IllegalStateException("DashScope embedding 响应中无可用 text 向量");
+                throw new IllegalStateException("DashScope embedding 响应中无可用向量");
             }
 
             return new EmbeddingResponse(results);
@@ -134,18 +128,15 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
 
         @Data
         private static class Input {
-            @JsonProperty("contents")
-            private List<ContentItem> contents;
-        }
-
-        @Data
-        private static class ContentItem {
-            private String text;
+            private List<String> texts;
         }
 
         @Data
         private static class Parameters {
             private Integer dimension;
+
+            @JsonProperty("output_type")
+            private String outputType;
         }
     }
 
@@ -163,9 +154,10 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         private static class EmbeddingItem {
-            private Integer index;
+            @JsonProperty("text_index")
+            private Integer textIndex;
+
             private List<Double> embedding;
-            private String type;
         }
     }
 }

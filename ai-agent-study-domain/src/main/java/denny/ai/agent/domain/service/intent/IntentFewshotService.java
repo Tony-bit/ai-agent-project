@@ -61,6 +61,7 @@ public class IntentFewshotService {
             SearchRequest request = SearchRequest.builder()
                     .query(query)
                     .topK(k)
+                    .similarityThreshold(0.5)
                     .build();
             List<Document> docs = intentFewshotVectorStore.similaritySearch(request);
             return docs.stream()
@@ -150,7 +151,14 @@ public class IntentFewshotService {
     }
 
     private IntentFewshotSample documentToSample(Document doc) {
-        String idStr = doc.getId();
+        String idStr = null;
+        Object metadataId = doc.getMetadata().get("id");
+        if (metadataId != null) {
+            idStr = metadataId.toString();
+        }
+        if (!StringUtils.hasText(idStr)) {
+            idStr = doc.getId();
+        }
         Long id = null;
         if (StringUtils.hasText(idStr)) {
             try {

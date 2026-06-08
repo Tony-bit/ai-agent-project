@@ -46,6 +46,80 @@ public class IntentRoutingPrompt {
          "intentSpecificSlots": {...}}
         """;
 
+    public static final String UNIFIED_ROUTING_PROMPT_TEMPLATE = """
+        ## 角色
+        你是一个专业的统一路由助手，负责基于历史上下文与参考示例，对用户输入进行一次性路由判断。
+
+        ## 目标
+        你必须一次性完成以下判断：
+        1. 是否为多任务（multiTask）
+        2. 是否需要用户补充信息（needsClarification）
+        3. 若需要补充，给出 missingInfo 与 clarificationPrompt
+        4. 若无需补充，输出 taskList
+        5. 单任务时也必须使用 taskList，且 taskList 中仅保留 1 个任务
+
+        ## 意图类型与执行节点映射
+        | 意图类型 | 执行节点 (executorNode) | 说明 |
+        |----------|------------------------|------|
+        | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
+        | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
+        | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
+        | PE_RETRIEVAL | step1AnalyzerNode | 知识检索、信息汇总 |
+        | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
+        | GENERAL_CHAT | generalChatNode | 闲聊、问候、通用问答 |
+
+        ## 判断规则
+        1. 多任务场景：用户明确提出多个可独立执行的任务，或多个实体需要分别处理
+        2. 单任务场景：只输出 1 个 taskList 元素
+        3. 信息缺失场景：缺少执行任务的关键信息时，needsClarification=true
+        4. 示例仅供参考，必须以当前用户输入和历史上下文为准，不可机械套用示例
+
+        ## 置信度
+        - HIGH: 意图非常明确，有明显的关键词或上下文支撑
+        - MEDIUM: 较明确，但存在一定模糊性
+        - LOW: 信号较弱，仅凭当前输入难以明确判断
+
+        ## 槽位要求
+        - slots 中可包含：
+          - baseSlot: {topic, sentiment}
+          - intentSpecificSlots: 根据意图输出专属槽位
+        - STOCK_ANALYSIS 的 intentSpecificSlots 推荐包含：stockCode, stockQueryType, timeRange, exchange
+
+        ## 历史上下文（最近对话）
+        %s
+
+        ## 输出要求
+        请严格按以下 JSON 输出，不要包含任何额外内容：
+        {
+          "multiTask": true/false,
+          "needsClarification": true/false,
+          "missingInfo": ["槽位名1"],
+          "clarificationPrompt": "请补充 xxx",
+          "reasoning": "判断理由",
+          "taskList": [
+            {
+              "taskId": "sub-1",
+              "taskIndex": 1,
+              "totalTasks": 1,
+              "content": "任务描述",
+              "intent": "PE_RETRIEVAL",
+              "executorNode": "step1AnalyzerNode",
+              "confidence": "HIGH",
+              "taskType": 0,
+              "slots": {
+                "baseSlot": {
+                  "topic": "主题",
+                  "sentiment": "neutral"
+                },
+                "intentSpecificSlots": {
+                  "key": "value"
+                }
+              }
+            }
+          ]
+        }
+        """;
+
     /**
      * 构建意图识别 Prompt（无 Few-Shot）
      *
@@ -65,19 +139,32 @@ public class IntentRoutingPrompt {
      */
     public static String buildPrompt(String userMessage, List<String> historyMessages,
                                      List<IntentFewshotSample> fewshotSamples) {
+        return buildPromptWithTemplate(SYSTEM_PROMPT_TEMPLATE, userMessage, historyMessages, fewshotSamples);
+    }
+
+    public static String buildUnifiedRoutingPrompt(String userMessage, List<String> historyMessages,
+                                                   List<IntentFewshotSample> fewshotSamples) {
+        return buildPromptWithTemplate(UNIFIED_ROUTING_PROMPT_TEMPLATE, userMessage, historyMessages, fewshotSamples);
+    }
+
+    private static String buildPromptWithTemplate(String template, String userMessage, List<String> historyMessages,
+                                                  List<IntentFewshotSample> fewshotSamples) {
         String historySection = buildHistorySection(historyMessages);
-        String prompt = String.format(SYSTEM_PROMPT_TEMPLATE, historySection);
+        String prompt = String.format(template, historySection);
 
         if (fewshotSamples != null && !fewshotSamples.isEmpty()) {
             StringBuilder exampleSection = new StringBuilder("\n## 参考示例\n");
             for (IntentFewshotSample sample : fewshotSamples) {
-                exampleSection.append("用户: ").append(sample.getQueryText()).append("\n");
-                exampleSection.append("输出: ").append(sample.getExampleJson()).append("\n\n");
+                exampleSection.append("【输入】").append(sample.getQueryText()).append("\n");
+                exampleSection.append("【输出】").append(sample.getExampleJson()).append("\n\n");
             }
             prompt = prompt + exampleSection;
+            prompt = prompt + "---\n\n现在请对以下输入进行路由判断，直接输出 JSON：\n\n【输入】" + userMessage + "\n【输出】";
+        } else {
+            prompt = prompt + "\n\n请直接输出 JSON 路由结果：\n\n【输入】" + userMessage;
         }
 
-        return prompt + "用户: " + userMessage + "\n输出:";
+        return prompt;
     }
 
     private static String buildHistorySection(List<String> historyMessages) {

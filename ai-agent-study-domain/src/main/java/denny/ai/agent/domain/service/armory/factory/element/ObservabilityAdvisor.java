@@ -10,9 +10,11 @@ import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -181,6 +183,10 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         String outputText = tryExtractFromResult(chatResponse);
 
         if (StringUtils.isBlank(outputText)) {
+            outputText = tryExtractFromGenerations(chatResponse);
+        }
+
+        if (StringUtils.isBlank(outputText)) {
             outputText = tryExtractFromMetadata(chatResponse);
         }
 
@@ -189,8 +195,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         }
 
         if (StringUtils.isBlank(outputText)) {
-            log.warn("ObservabilityAdvisor: output text extraction all paths returned empty, "
-                    + "chatResponse={}", chatResponse);
+            logOutputExtractionFailure(chatResponse);
         }
 
         return outputText;
@@ -246,6 +251,43 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             log.debug("tryExtractFromMessageContent failed: {}", e.getMessage());
         }
         return "";
+    }
+
+    private String tryExtractFromGenerations(ChatResponse chatResponse) {
+        try {
+            List<Generation> generations = chatResponse.getResults();
+            if (generations == null || generations.isEmpty()) {
+                return "";
+            }
+            Generation firstGeneration = generations.get(0);
+            if (firstGeneration != null && firstGeneration.getOutput() != null) {
+                String text = firstGeneration.getOutput().getText();
+                if (StringUtils.isNotBlank(text)) {
+                    return text;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromGenerations failed: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    private void logOutputExtractionFailure(ChatResponse chatResponse) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("ObservabilityAdvisor: output text extraction all paths returned empty. ");
+        try {
+            sb.append("result=").append(chatResponse.getResult()).append(", ");
+            List<Generation> gens = chatResponse.getResults();
+            sb.append("generations.size=").append(gens != null ? gens.size() : "null").append(", ");
+            if (chatResponse.getMetadata() != null) {
+                sb.append("metadata.keys=").append(chatResponse.getMetadata().keySet());
+            } else {
+                sb.append("metadata=null");
+            }
+        } catch (Exception diagEx) {
+            sb.append("diagnostics-error=").append(diagEx.getMessage());
+        }
+        log.warn(sb.toString());
     }
 
     private String extractModelName(ChatClientResponse response) {

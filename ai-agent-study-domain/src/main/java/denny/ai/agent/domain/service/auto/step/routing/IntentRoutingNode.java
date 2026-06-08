@@ -1,11 +1,10 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.model.valobj.BaseSlot;
 import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.StockSlot;
@@ -19,11 +18,10 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -70,28 +68,29 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(ExecuteCommandEntity request,
-                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 意图路由节点执行开始 ===");
 
         long startAt = System.currentTimeMillis();
 
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.INTENT_ROUTING.getCode());
         if (aiAgentClientFlowConfigVO == null) {
-            throw new IllegalStateException("未找到任务分析客户端配置，aiAgentId=" + request.getAiAgentId()
-                    + "，请确认智能体流程配置中已添加 TASK_ANALYZER_CLIENT 类型的节点");
+            throw new IllegalStateException("未找到意图路由客户端配置，aiAgentId=" + request.getAiAgentId()
+                    + "，请确认智能体流程配置中已添加 INTENT_ROUTING 类型的节点");
         }
 
         List<String> historyMessages = getRecentHistoryMessages(request.getSessionId());
-
-        // Step 1: 多任务分解（LLM 调用）
-        MultiIntentRoutingResult routingResult = doMultiTaskRouting(request.getMessage(), historyMessages, aiAgentClientFlowConfigVO);
+        MultiIntentRoutingResult routingResult = intentRoutingService.routeUnified(
+                request.getMessage(),
+                historyMessages,
+                aiAgentClientFlowConfigVO
+        );
 
         long latencyMs = System.currentTimeMillis() - startAt;
         log.info("意图路由完成: multiTask={}, needsClarification={}, taskCount={}, 耗时={}ms",
                 routingResult.getMultiTask(), routingResult.getNeedsClarification(),
                 routingResult.getTaskList() != null ? routingResult.getTaskList().size() : 0, latencyMs);
 
-        // Step 2: 判断是否需要信息补全
         if (Boolean.TRUE.equals(routingResult.getNeedsClarification())) {
             log.info("任务信息不完整，需要补全: missingInfo={}", routingResult.getMissingInfo());
             dynamicContext.setValue("clarificationPrompt", routingResult.getClarificationPrompt());
@@ -99,7 +98,6 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             return routingResult.getClarificationPrompt();
         }
 
-        // Step 3: 判断是否为多任务
         if (Boolean.TRUE.equals(routingResult.getMultiTask())) {
             dynamicContext.setValue(MultiTaskExecutionNode.TASK_LIST_KEY, routingResult.getTaskList());
             dynamicContext.setValue(MultiTaskExecutionNode.ORIGINAL_MESSAGE_KEY, request.getMessage());
@@ -107,13 +105,12 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             return router(request, dynamicContext);
         }
 
-        // Step 4: 单任务：设置槽位后路由到对应 Handler（原有逻辑）
         return handleSingleTask(request, dynamicContext, routingResult);
     }
 
     private String handleSingleTask(ExecuteCommandEntity request,
-                                  DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                  MultiIntentRoutingResult routingResult) throws Exception {
+                                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                    MultiIntentRoutingResult routingResult) throws Exception {
         IntentRoutingResult result = convertToIntentRoutingResult(routingResult);
 
         dynamicContext.setValue(ROUTING_RESULT_KEY, result);
@@ -137,6 +134,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         return router(request, dynamicContext);
     }
 
+    @SuppressWarnings("unchecked")
     private IntentRoutingResult convertToIntentRoutingResult(MultiIntentRoutingResult routingResult) {
         SubTask firstTask = routingResult.getTaskList() != null && !routingResult.getTaskList().isEmpty()
                 ? routingResult.getTaskList().get(0) : null;
@@ -144,90 +142,32 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         ConfidenceEnum confidence = firstTask != null && firstTask.getConfidence() != null
                 ? firstTask.getConfidence() : ConfidenceEnum.MEDIUM;
 
+        BaseSlot baseSlot = null;
+        Map<String, Object> intentSpecificSlots = null;
+        if (firstTask != null && firstTask.getSlots() != null) {
+            Object baseSlotObj = firstTask.getSlots().get("baseSlot");
+            if (baseSlotObj instanceof BaseSlot castBaseSlot) {
+                baseSlot = castBaseSlot;
+            } else if (baseSlotObj instanceof Map<?, ?> baseSlotMap) {
+                baseSlot = BaseSlot.builder()
+                        .topic((String) baseSlotMap.get("topic"))
+                        .sentiment((String) baseSlotMap.get("sentiment"))
+                        .build();
+            }
+
+            Object intentSpecificSlotsObj = firstTask.getSlots().get("intentSpecificSlots");
+            if (intentSpecificSlotsObj instanceof Map<?, ?> rawIntentSpecificSlots) {
+                intentSpecificSlots = (Map<String, Object>) rawIntentSpecificSlots;
+            }
+        }
+
         return IntentRoutingResult.builder()
                 .intent(intent)
                 .confidence(confidence)
                 .reasoning(routingResult.getReasoning())
+                .baseSlot(baseSlot)
+                .intentSpecificSlots(intentSpecificSlots)
                 .build();
-    }
-
-    @SuppressWarnings("unchecked")
-    private MultiIntentRoutingResult doMultiTaskRouting(String userMessage, List<String> historyMessages,
-                                                       AiAgentClientFlowConfigVO configVO) {
-        String prompt = IntentRoutingPrompt.buildMultiTaskDecomposePrompt(userMessage, historyMessages);
-        try {
-            ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
-            String response = chatClient.prompt(prompt).call().content();
-            log.debug("多任务分解 LLM 原始响应: userMessage={}, response={}", userMessage, response);
-            return parseMultiTaskResponse(response);
-        } catch (Exception e) {
-            log.error("多任务分解调用失败，降级为单任务: userMessage={}, error={}", userMessage, e.getMessage());
-            return buildSingleTaskFallback(userMessage);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private MultiIntentRoutingResult parseMultiTaskResponse(String response) {
-        if (response == null || response.isBlank()) {
-            return buildSingleTaskFallback("LLM返回为空");
-        }
-        try {
-            String jsonStr = extractJson(response);
-            JSONObject json = JSON.parseObject(jsonStr);
-
-            Boolean multiTask = json.getBoolean("multiTask");
-            Boolean needsClarification = json.getBoolean("needsClarification");
-            String reasoning = json.getString("reasoning");
-            List<String> missingInfo = json.getJSONArray("missingInfo") != null
-                    ? json.getJSONArray("missingInfo").toJavaList(String.class) : null;
-            String clarificationPrompt = json.getString("clarificationPrompt");
-
-            List<SubTask> taskList = null;
-            if (json.containsKey("taskList") && json.getJSONArray("taskList") != null) {
-                taskList = json.getJSONArray("taskList").toJavaList(SubTask.class);
-            }
-
-            return MultiIntentRoutingResult.builder()
-                    .multiTask(multiTask != null ? multiTask : false)
-                    .needsClarification(needsClarification != null ? needsClarification : false)
-                    .reasoning(reasoning)
-                    .missingInfo(missingInfo)
-                    .clarificationPrompt(clarificationPrompt)
-                    .taskList(taskList)
-                    .build();
-        } catch (Exception e) {
-            log.warn("多任务分解 JSON 解析失败，降级为单任务: response={}, error={}", response, e.getMessage());
-            return buildSingleTaskFallback("JSON解析失败: " + e.getMessage());
-        }
-    }
-
-    private MultiIntentRoutingResult buildSingleTaskFallback(String reason) {
-        return MultiIntentRoutingResult.builder()
-                .multiTask(false)
-                .needsClarification(false)
-                .reasoning(reason)
-                .taskList(List.of(
-                        SubTask.builder()
-                                .taskId("fallback-1")
-                                .taskIndex(1)
-                                .totalTasks(1)
-                                .content("通用对话")
-                                .intent(IntentTypeEnum.GENERAL_CHAT)
-                                .executorNode("generalChatNode")
-                                .confidence(ConfidenceEnum.MEDIUM)
-                                .status(SubTask.SubTaskStatus.PENDING)
-                                .build()
-                ))
-                .build();
-    }
-
-    private String extractJson(String response) {
-        int start = response.indexOf("{");
-        int end = response.lastIndexOf("}");
-        if (start >= 0 && end > start) {
-            return response.substring(start, end + 1);
-        }
-        return response;
     }
 
     @Override
@@ -235,7 +175,6 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             ExecuteCommandEntity request,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
 
-        // 判断是否为多任务
         List<SubTask> taskList = dynamicContext.getValue(MultiTaskExecutionNode.TASK_LIST_KEY);
         if (taskList != null && !taskList.isEmpty()) {
             return multiTaskExecutionNode;
@@ -252,21 +191,6 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             case INSPECTION -> intelligentInspection;
             default -> generalChatNode;
         };
-    }
-
-    protected IntentRoutingResult doRoute(String userMessage, String prompt, AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO) {
-        try {
-
-            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
-
-            String response = chatClient.prompt(prompt).call().content();
-            log.debug("意图识别 LLM 原始响应: userMessage={}, response={}", userMessage, response);
-            return intentRoutingService.parseResponse(response);
-        } catch (Exception e) {
-            log.error("意图识别调用失败，降级为 UNKNOWN: userMessage={}, error={}",
-                    userMessage, e.getMessage());
-            return intentRoutingService.fallbackResult("LLM调用异常: " + e.getMessage());
-        }
     }
 
     @SuppressWarnings("unchecked")

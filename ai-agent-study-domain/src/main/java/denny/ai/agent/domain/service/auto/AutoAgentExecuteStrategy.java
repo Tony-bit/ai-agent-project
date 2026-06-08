@@ -38,6 +38,8 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         dynamicContext.setExecutionHistory(new StringBuilder());
         dynamicContext.setCurrentTask(executeCommandEntity.getMessage());
         dynamicContext.setValue("emitter", emitter);
+        dynamicContext.setValue("sessionId", executeCommandEntity.getSessionId());
+        dynamicContext.setValue("userId", executeCommandEntity.getUserId());
 
         log.info(">>> [AutoAgentExecuteStrategy.execute] dynamicContext创建, hashCode={}, dataObjects={}",
                 System.identityHashCode(dynamicContext), dynamicContext.getDataObjects().keySet());

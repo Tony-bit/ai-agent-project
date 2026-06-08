@@ -23,6 +23,7 @@ import denny.ai.agent.domain.service.observability.ObservabilityService;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.Resource;
@@ -65,6 +66,10 @@ public class OpenAiTest {
 
     @Autowired
     private PgVectorStore pgVectorStore;
+
+    @Autowired
+    @Qualifier("intentFewshotVectorStore")
+    private PgVectorStore intentFewshotVectorStore;
 
     @Autowired
     private ObservabilityService observabilityService;
@@ -353,4 +358,128 @@ public class OpenAiTest {
         log.info("测试结果:{}", JSON.toJSONString(chatResponse));
     }
 
+
+    // RAG注入信息专用！！
+    @Test
+    public void test_intent_fewshot_pgvector_recall() {
+        log.info("=== test_intent_fewshot_pgvector_recall start ===");
+
+        // FewShot 示例生成 lambda（每种意图一个）
+        final java.util.function.Function<String, String> generalChatExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"GENERAL_CHAT\",\"executorNode\":\"generalChatNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        final java.util.function.Function<String, String> peRetrievalExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"知识检索/信息查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"PE_RETRIEVAL\",\"executorNode\":\"step1AnalyzerNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        final java.util.function.Function<String, String> peReasoningExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"PE_REASONING\",\"executorNode\":\"step1AnalyzerNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        final java.util.function.Function<String, String> peCalculationExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"PE_CALCULATION\",\"executorNode\":\"step1AnalyzerNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        final java.util.function.Function<String, String> stockAnalysisExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"股票/市场分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"STOCK_ANALYSIS\",\"executorNode\":\"tradingStarter\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        final java.util.function.Function<String, String> inspectionExample = content ->
+                String.format(
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"INSPECTION\",\"executorNode\":\"intelligentInspection\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        content
+                );
+
+        List<Document> docs = new ArrayList<>();
+        int idCounter = 1;
+
+        // ========== GENERAL_CHAT 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "什么是向量数据库？", "GENERAL_CHAT", generalChatExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "RAG 是什么意思？", "GENERAL_CHAT", generalChatExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "给我讲讲大语言模型", "GENERAL_CHAT", generalChatExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "transformer 是什么", "GENERAL_CHAT", generalChatExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "解释一下注意力机制", "GENERAL_CHAT", generalChatExample));
+
+        // ========== PE_RETRIEVAL 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "检索增强生成技术的原理是什么", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "查询一下最新的 AI Agent 论文", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "查找向量数据库选型相关的文档", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "检索 RAG 架构优化的资料", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "我需要了解 langchain 的使用方式", "PE_RETRIEVAL", peRetrievalExample));
+
+        // ========== PE_REASONING 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "分析一下为什么 LLM 会产生幻觉", "PE_REASONING", peReasoningExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我推理一下这个算法的复杂度", "PE_REASONING", peReasoningExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "设计一个分布式缓存方案", "PE_REASONING", peReasoningExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "分析这个问题应该用什么设计模式", "PE_REASONING", peReasoningExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我理清这个业务逻辑", "PE_REASONING", peReasoningExample));
+
+        // ========== PE_CALCULATION 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "计算一下 12345 的阶乘", "PE_CALCULATION", peCalculationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我算一下复利的终值", "PE_CALCULATION", peCalculationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "统计一下这组数据的均值和方差", "PE_CALCULATION", peCalculationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "计算这两个矩阵的乘积", "PE_CALCULATION", peCalculationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我做一个回归分析", "PE_CALCULATION", peCalculationExample));
+
+        // ========== STOCK_ANALYSIS 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "分析一下贵州茅台的走势", "STOCK_ANALYSIS", stockAnalysisExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我看看比亚迪最近怎么样", "STOCK_ANALYSIS", stockAnalysisExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "查询宁德时代的K线", "STOCK_ANALYSIS", stockAnalysisExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "分析上证指数的技术指标", "STOCK_ANALYSIS", stockAnalysisExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "给我看看腾讯控股的行情", "STOCK_ANALYSIS", stockAnalysisExample));
+
+        // ========== INSPECTION 样本（5条） ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "检查一下系统健康状态", "INSPECTION", inspectionExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "做个系统巡检", "INSPECTION", inspectionExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "查看 CPU 和内存使用情况", "INSPECTION", inspectionExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "检查一下数据库连接池", "INSPECTION", inspectionExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我看看各个服务的状态", "INSPECTION", inspectionExample));
+
+        log.info("准备写入 intent_fewshot_vector_store，docs.size={}", docs.size());
+        // DashScope text-embedding-v3 单次批量上限为 10，分批写入
+        int batchSize = 10;
+        for (int i = 0; i < docs.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, docs.size());
+            List<Document> batch = docs.subList(i, end);
+            intentFewshotVectorStore.accept(batch);
+            log.info("pgvector 分批写入完成，批次 {}/{}, 本批数量={}", (i / batchSize) + 1, (docs.size() + batchSize - 1) / batchSize, batch.size());
+        }
+        log.info("pgvector 全部写入完成");
+
+        // 检索测试：查询"向量数据库是什么"应该召回 GENERAL_CHAT
+        SearchRequest request = SearchRequest.builder()
+                .query("向量数据库是什么")
+                .topK(5)
+                .similarityThreshold(0.0d)
+                .build();
+
+        List<Document> result = intentFewshotVectorStore.similaritySearch(request);
+        log.info("检索完成，result.size={}", result == null ? null : result.size());
+
+        if (result != null) {
+            result.forEach(doc -> log.info("recall result: text={}, metadata={}", doc.getText(), doc.getMetadata()));
+        }
+
+        log.info("=== test_intent_fewshot_pgvector_recall end ===");
+    }
+
+    private Document createDoc(String id, String text, String intentCode,
+                               java.util.function.Function<String, String> exampleGenerator) {
+        Document doc = new Document(text);
+        doc.getMetadata().put("id", "fewshot-test-" + id);
+        doc.getMetadata().put("intentCode", intentCode);
+        doc.getMetadata().put("exampleJson", exampleGenerator.apply(text));
+        return doc;
+    }
 }

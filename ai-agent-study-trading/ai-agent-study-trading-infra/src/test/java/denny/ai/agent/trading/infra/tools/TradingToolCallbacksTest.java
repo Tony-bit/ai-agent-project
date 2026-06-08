@@ -1,12 +1,13 @@
 package denny.ai.agent.trading.infra.tools;
 
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
+import denny.ai.agent.trading.api.vo.OHLCVBarVO;
 import denny.ai.agent.trading.api.vo.StockSearchResultVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
-import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -139,6 +140,39 @@ class TradingToolCallbacksTest {
         });
 
         System.out.println("=== ToolCallbacks can be passed to methods: PASSED ===");
+    }
+
+    @Test
+    void testHistoricalBarsExecution_includesAmountAndPctChg() {
+        List<OHLCVBarVO> bars = List.of(
+                OHLCVBarVO.builder()
+                        .date("2024-01-01")
+                        .open(new BigDecimal("10.0"))
+                        .high(new BigDecimal("10.8"))
+                        .low(new BigDecimal("9.8"))
+                        .close(new BigDecimal("10.5"))
+                        .volume(1000000L)
+                        .amount(new BigDecimal("10500000.50"))
+                        .change(new BigDecimal("0.50"))
+                        .pctChg(5.00)
+                        .adjustedClose(new BigDecimal("10.5"))
+                        .build()
+        );
+        when(mockProvider.getHistoricalBars("600000", "2024-01-01", "2024-01-05")).thenReturn(bars);
+
+        ToolCallback callback = tradingToolCallbacks.getHistoricalBarsCallback();
+        String input = "{\"ticker\":\"600000\",\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}";
+        String result = callback.call(input);
+
+        assertNotNull(result);
+        assertFalse(result.contains("工具执行失败"));
+        assertTrue(result.contains("成交额"));
+        assertTrue(result.contains("涨跌额"));
+        assertTrue(result.contains("涨跌幅"));
+        assertTrue(result.contains("10500000.50"));
+        assertTrue(result.contains("5.00%"));
+
+        verify(mockProvider).getHistoricalBars("600000", "2024-01-01", "2024-01-05");
     }
 
     /**

@@ -8,6 +8,14 @@ alwaysApply: true
 - 在开始任何代码修改前，必须先出具变更方案并等待用户确认，用户未确认前不得修改任何文件
 - 如果用户对方案有修改意见，等用户说完后再更新方案，再次等待确认
 - 只有用户明确说"可以"、"好"、"执行"等确认性词语后，才可以执行代码修改
+- 当用户是基于已确认的 story / plan 发出“执行”“开始执行”等指令时，表示执行许可已经授予；agent 不得再次完整复述任务内容或重新输出整套变更方案，除非发现阻塞性问题
 - mysql的mapper xml文件放在D:\Code\ai-agent-study\ai-agent-study-app\src\main\resources\mybatis\mapper
 - valobj对象存储路径为D:\Code\ai-agent-study\ai-agent-study-domain\src\main\java\denny\ai\agent\domain\model\valobj
 - entity实体存储路径为D:\Code\ai-agent-study\ai-agent-study-domain\src\main\java\denny\ai\agent\domain\model\entity
+
+# superpowers / story 文档目录规范
+
+- 使用 superpowers、opsx、story、计划执行类流程时，默认产生的设计文档、方案文档、实施计划文档统一存放在 `docs/superpowers/plans/`
+- 除非用户明确指定其他目录，否则不要将新的计划/设计/story 文档默认写入 `docs/trading-agent/` 或其他业务资料目录
+- `docs/trading-agent/` 主要用于业务资料、专题分析、架构说明、研究记录，不作为默认计划文档目录
+- 若文档属于 story 类设计/实施文档，文件名默认使用 `YYYY-MM-DD-主题-story.md` 结尾；除非用户明确指定其他命名

@@ -47,6 +47,21 @@ public class OHLCVBarVO {
     private Long volume;
 
     /**
+     * 成交额
+     */
+    private BigDecimal amount;
+
+    /**
+     * 涨跌额
+     */
+    private BigDecimal change;
+
+    /**
+     * 涨跌幅（百分比）
+     */
+    private Double pctChg;
+
+    /**
      * 调整后收盘价（用于计算指标）
      */
     private BigDecimal adjustedClose;

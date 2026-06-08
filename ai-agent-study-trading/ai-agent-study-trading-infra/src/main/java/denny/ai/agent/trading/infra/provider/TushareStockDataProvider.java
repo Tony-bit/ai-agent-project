@@ -139,7 +139,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
             List<TushareDailyDTO> data = apiClient.callGeneric(
                     TushareDailyDTO.class, "daily",
                     Map.of("ts_code", tsCode, "start_date", tushareStartDate, "end_date", tushareEndDate),
-                    "trade_date,open,high,low,close,vol");
+                    "trade_date,open,high,low,close,vol,amount,change,pct_chg");
 
             return data.stream()
                     .map(this::toOHLCVBar)
@@ -407,6 +407,9 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 .low(dto.getLow())
                 .close(dto.getClose())
                 .volume(dto.getVol())
+                .amount(dto.getAmount())
+                .change(dto.getChange())
+                .pctChg(dto.getPctChg())
                 .adjustedClose(dto.getClose())
                 .build();
     }

@@ -1,19 +1,26 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
+import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.BaseSlot;
 import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.StockSlot;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
+import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 
@@ -25,37 +32,46 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-public class IntentRoutingService {
+public class IntentRoutingService extends AbstractExecuteSupport {
 
     @Resource
-    private ChatClient chatClient;
-
-    @javax.annotation.Resource
     private IntentFewshotService intentFewshotService;
 
-    /**
-     * 调用 LLM 进行意图识别（含动态 Few-Shot + 切槽）
-     *
-     * @param userMessage     当前用户消息
-     * @param historyMessages 历史消息列表
-     * @return 意图识别结果（含 slots）
-     */
-    String route(String userMessage, List<String> historyMessages) {
+    public MultiIntentRoutingResult routeUnified(String userMessage,
+                                                 List<String> historyMessages,
+                                                 AiAgentClientFlowConfigVO configVO) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(userMessage);
-        String prompt = IntentRoutingPrompt.buildPrompt(userMessage, historyMessages, fewshotSamples);
-        return prompt;
+        String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(userMessage, historyMessages, fewshotSamples);
+        log.info("统一路由 LLM 原始请求: prompt:{}", prompt);
+        try {
+            ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
+            String response = chatClient.prompt(prompt).call().content();
+            log.info("统一路由 LLM 原始响应: userMessage={}, clientId={}, response=[{}], responseLen={}",
+                    userMessage, configVO.getClientId(), response, response == null ? -1 : response.length());
+            if (response == null || response.isBlank()) {
+                log.warn("响应为空，降级为 GENERAL_CHAT");
+                return fallbackMultiIntentResult("LLM返回为空");
+            }
+            return parseUnifiedResponse(response);
+        } catch (Exception e) {
+            log.error("统一路由调用失败，降级为 GENERAL_CHAT: userMessage={}, clientId={}, error={}",
+                    userMessage, configVO.getClientId(), e.getMessage(), e);
+            return fallbackMultiIntentResult("LLM调用异常: " + e.getMessage());
+        }
     }
 
-    IntentRoutingResult doRoute(String userMessage, String prompt) {
-        try {
-            String response = chatClient.prompt(prompt).call().content();
-            log.debug("意图识别 LLM 原始响应: userMessage={}, response={}", userMessage, response);
-            return parseResponse(response);
-        } catch (Exception e) {
-            log.error("意图识别调用失败，降级为 UNKNOWN: userMessage={}, error={}",
-                    userMessage, e.getMessage());
-            return fallbackResult("LLM调用异常: " + e.getMessage());
-        }
+    @Override
+    protected String doApply(ExecuteCommandEntity request,
+                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        throw new UnsupportedOperationException("IntentRoutingService 不支持策略节点执行");
+    }
+
+    @Override
+    public cn.bugstack.wrench.design.framework.tree.StrategyHandler<ExecuteCommandEntity,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
+            ExecuteCommandEntity request,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        throw new UnsupportedOperationException("IntentRoutingService 不支持路由分发");
     }
 
     private List<IntentFewshotSample> retrieveFewshotSamples(String userMessage) {
@@ -72,7 +88,6 @@ public class IntentRoutingService {
      * 解析 LLM 返回的 JSON 响应（支持切槽字段）
      * 解析失败时降级为 UNKNOWN + LOW
      */
-    @SuppressWarnings("unchecked")
     public IntentRoutingResult parseResponse(String response) {
         if (response == null || response.isBlank()) {
             log.warn("意图识别 LLM 返回为空，降级为 UNKNOWN + LOW");
@@ -126,7 +141,54 @@ public class IntentRoutingService {
         }
     }
 
-    @SuppressWarnings("unchecked")
+    public MultiIntentRoutingResult parseUnifiedResponse(String response) {
+        if (response == null || response.isBlank()) {
+            log.warn("统一路由 LLM 返回为空，降级为 GENERAL_CHAT");
+            return fallbackMultiIntentResult("LLM返回为空");
+        }
+
+        try {
+            String jsonStr = extractJson(response);
+            JSONObject json = JSON.parseObject(jsonStr);
+
+            Boolean multiTask = json.getBoolean("multiTask");
+            Boolean needsClarification = json.getBoolean("needsClarification");
+            String reasoning = defaultReasoning(json.getString("reasoning"));
+            List<String> missingInfo = extractMissingInfo(json.getJSONArray("missingInfo"));
+            String clarificationPrompt = defaultClarificationPrompt(json.getString("clarificationPrompt"), missingInfo);
+            List<SubTask> taskList = extractTaskList(json.getJSONArray("taskList"));
+
+            if (Boolean.TRUE.equals(needsClarification)) {
+                return MultiIntentRoutingResult.builder()
+                        .multiTask(Boolean.TRUE.equals(multiTask))
+                        .needsClarification(true)
+                        .missingInfo(missingInfo)
+                        .clarificationPrompt(clarificationPrompt)
+                        .reasoning(reasoning)
+                        .taskList(taskList)
+                        .build();
+            }
+
+            if (taskList.isEmpty()) {
+                log.warn("统一路由 taskList 为空，降级为 GENERAL_CHAT: response={}", response);
+                return fallbackMultiIntentResult("taskList为空");
+            }
+
+            return MultiIntentRoutingResult.builder()
+                    .multiTask(Boolean.TRUE.equals(multiTask) && taskList.size() > 1)
+                    .needsClarification(false)
+                    .missingInfo(missingInfo)
+                    .clarificationPrompt(clarificationPrompt)
+                    .reasoning(reasoning)
+                    .taskList(taskList)
+                    .build();
+        } catch (Exception e) {
+            log.warn("统一路由 JSON 解析失败，降级为 GENERAL_CHAT: response={}, error={}",
+                    response, e.getMessage());
+            return fallbackMultiIntentResult("JSON解析失败: " + e.getMessage());
+        }
+    }
+
     private Map<String, Object> buildStockSlot(Map<String, Object> rawSlots) {
         StockSlot stockSlot = StockSlot.builder()
                 .stockCode((String) rawSlots.get("stockCode"))
@@ -135,6 +197,86 @@ public class IntentRoutingService {
                 .exchange((String) rawSlots.get("exchange"))
                 .build();
         return Map.of("stockSlot", stockSlot);
+    }
+
+    private String defaultReasoning(String reasoning) {
+        return reasoning == null || reasoning.isBlank() ? "无推理过程" : reasoning;
+    }
+
+    private String defaultClarificationPrompt(String clarificationPrompt, List<String> missingInfo) {
+        if (clarificationPrompt != null && !clarificationPrompt.isBlank()) {
+            return clarificationPrompt;
+        }
+
+        if (missingInfo == null || missingInfo.isEmpty()) {
+            return "请补充必要信息";
+        }
+
+        return "请补充以下信息: " + String.join("、", missingInfo);
+    }
+
+    private List<String> extractMissingInfo(JSONArray missingInfoArray) {
+        if (missingInfoArray == null) {
+            return List.of();
+        }
+        return missingInfoArray.toJavaList(String.class);
+    }
+
+    private List<SubTask> extractTaskList(JSONArray taskArray) {
+        if (taskArray == null || taskArray.isEmpty()) {
+            return List.of();
+        }
+
+        List<SubTask> taskList = taskArray.toJavaList(SubTask.class);
+        for (SubTask subTask : taskList) {
+            normalizeTask(subTask);
+        }
+        return taskList;
+    }
+
+    private void normalizeTask(SubTask subTask) {
+        if (subTask == null) {
+            return;
+        }
+
+        if (subTask.getIntent() == null) {
+            subTask.setIntent(IntentTypeEnum.GENERAL_CHAT);
+        }
+
+        if (subTask.getConfidence() == null) {
+            subTask.setConfidence(ConfidenceEnum.LOW);
+        }
+
+        if (subTask.getTaskType() == null) {
+            subTask.setTaskType(0);
+        }
+
+        if (subTask.getStatus() == null) {
+            subTask.setStatus(SubTask.SubTaskStatus.PENDING);
+        }
+
+        if (subTask.getSlots() == null) {
+            subTask.setSlots(Map.of());
+            return;
+        }
+
+        if (subTask.getIntent() == IntentTypeEnum.STOCK_ANALYSIS) {
+            Object intentSpecificSlotsObj = subTask.getSlots().get("intentSpecificSlots");
+            if (intentSpecificSlotsObj instanceof Map<?, ?> rawIntentSpecificSlots) {
+                Map<String, Object> normalizedSlots = buildStockSlot(convertToStringObjectMap(rawIntentSpecificSlots));
+                subTask.getSlots().put("intentSpecificSlots", normalizedSlots);
+            }
+        }
+    }
+
+    private Map<String, Object> convertToStringObjectMap(Map<?, ?> source) {
+        java.util.HashMap<String, Object> result = new java.util.HashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            if (entry.getKey() instanceof String key) {
+                result.put(key, entry.getValue());
+            }
+        }
+        return result;
     }
 
     private String extractJson(String response) {
@@ -151,6 +293,30 @@ public class IntentRoutingService {
                 .intent(IntentTypeEnum.UNKNOWN)
                 .confidence(ConfidenceEnum.LOW)
                 .reasoning(reason)
+                .build();
+    }
+
+    public MultiIntentRoutingResult fallbackMultiIntentResult(String reason) {
+        return MultiIntentRoutingResult.builder()
+                .multiTask(false)
+                .needsClarification(false)
+                .reasoning(reason)
+                .missingInfo(List.of())
+                .clarificationPrompt("")
+                .taskList(List.of(
+                        SubTask.builder()
+                                .taskId("fallback-1")
+                                .taskIndex(1)
+                                .totalTasks(1)
+                                .content("通用对话")
+                                .intent(IntentTypeEnum.GENERAL_CHAT)
+                                .executorNode("generalChatNode")
+                                .confidence(ConfidenceEnum.MEDIUM)
+                                .slots(Map.of())
+                                .status(SubTask.SubTaskStatus.PENDING)
+                                .taskType(0)
+                                .build()
+                ))
                 .build();
     }
 }

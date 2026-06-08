@@ -14,6 +14,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -90,16 +91,12 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
 
         ChatClient chatClient = getChatClientByClientId("3001", 0);
 
-        var promptBuilder = chatClient.prompt()
-                .system(systemPrompt)
-                .user(request.getMessage())
+        var promptBuilder = chatClient.prompt();
+        promptBuilder =  StringUtils.hasText(systemPrompt) ? promptBuilder.system(systemPrompt) : promptBuilder;
+
+        promptBuilder.user(request.getMessage())
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
-
-//        if (searchEpisodicMemoryCallbacks != null && !searchEpisodicMemoryCallbacks.isEmpty()) {
-//            promptBuilder.toolCallbacks(searchEpisodicMemoryCallbacks.toArray(new ToolCallback[0]));
-//            log.info("通用对话已注入情景记忆 Tool, toolCount={}", searchEpisodicMemoryCallbacks.size());
-//        }
 
         String response = streamToEmitter(dynamicContext, promptBuilder, "general_chat_response", request.getSessionId());
 
@@ -139,7 +136,6 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
 
         // Step 4: 调用多模态对话（prompt 已通过 clientId 从数据库加载）
         var promptBuilder = chatClient.prompt()
-                .system("")
                 .user(multimodalMessage)
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0));
@@ -160,7 +156,7 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
         if (userId != null && !userId.isBlank()) {
             return String.format("[上下文] 当前用户ID: %s", userId);
         }
-        return "";
+        return null;
     }
 
     private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {

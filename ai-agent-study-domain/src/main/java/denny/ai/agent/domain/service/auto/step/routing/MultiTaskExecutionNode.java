@@ -154,8 +154,7 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
 
         for (SubTask task : taskList) {
             task.setStatus(SubTask.SubTaskStatus.IN_PROGRESS);
-            try {
-                executeSubTask(task, dynamicContext);
+            try {                executeSubTask(task, dynamicContext);
             } catch (Exception e) {
                 log.warn("子任务执行异常，继续执行下一个: taskId={}", task.getTaskId());
             }
