@@ -25,7 +25,11 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -67,7 +71,7 @@ public class IntentRoutingServiceTest {
         List<IntentFewshotSample> fewshotSamples = List.of(
                 IntentFewshotSample.builder()
                         .queryText("什么是向量数据库")
-                        .exampleJson("{\"intent\":\"PE_RETRIEVAL\"}")
+                        .exampleJson("{\"intent\":\"GENERAL_CHAT\"}")
                         .build()
         );
 
@@ -78,8 +82,8 @@ public class IntentRoutingServiceTest {
         );
 
         assertTrue(prompt.contains("## 参考示例"));
-        assertTrue(prompt.contains("用户: 什么是向量数据库"));
-        assertTrue(prompt.contains("输出: {\"intent\":\"PE_RETRIEVAL\"}"));
+        assertTrue(prompt.contains("【输入】什么是向量数据库"));
+        assertTrue(prompt.contains("【输出】{\"intent\":\"GENERAL_CHAT\"}"));
     }
 
     @Test
@@ -272,7 +276,7 @@ public class IntentRoutingServiceTest {
                 List.of(
                         IntentFewshotSample.builder()
                                 .queryText("RAG是什么")
-                                .exampleJson("{\"intent\":\"PE_RETRIEVAL\"}")
+                                .exampleJson("{\"intent\":\"GENERAL_CHAT\"}")
                                 .build()
                 )
         );
@@ -384,6 +388,38 @@ public class IntentRoutingServiceTest {
         assertFalse(result.getMultiTask());
         assertEquals(1, result.getTaskList().size());
         assertEquals(IntentTypeEnum.PE_RETRIEVAL, result.getTaskList().get(0).getIntent());
+    }
+
+    /**
+     * TC-207: executorNode 与 intent 冲突时，后端按 intent 强制归一化执行节点
+     */
+    @Test
+    public void should_normalize_executor_node_to_general_chat_when_llm_returns_conflicting_executor() {
+        String response = """
+                {
+                  "multiTask": false,
+                  "needsClarification": false,
+                  "reasoning": "概念解释类知识问答",
+                  "taskList": [
+                    {
+                      "taskId": "sub-1",
+                      "taskIndex": 1,
+                      "totalTasks": 1,
+                      "content": "什么是向量数据库",
+                      "intent": "GENERAL_CHAT",
+                      "executorNode": "step1AnalyzerNode",
+                      "confidence": "HIGH",
+                      "taskType": 0,
+                      "slots": {}
+                    }
+                  ]
+                }
+                """;
+
+        MultiIntentRoutingResult result = intentRoutingService.parseUnifiedResponse(response);
+
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
+        assertEquals("generalChatNode", result.getTaskList().get(0).getExecutorNode());
     }
 
     /**
@@ -525,6 +561,35 @@ public class IntentRoutingServiceTest {
         assertEquals(1, result.getTaskList().size());
         assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
         assertTrue(result.getReasoning().contains("LLM调用异常"));
+    }
+
+    @Test
+    public void should_skip_fewshot_retrieval_for_trivial_general_chat_input() {
+        mockLLMResponse("""
+                {
+                  "multiTask": false,
+                  "needsClarification": false,
+                  "reasoning": "闂€欒",
+                  "taskList": [
+                    {
+                      "taskId": "sub-1",
+                      "taskIndex": 1,
+                      "totalTasks": 1,
+                      "content": "\u4f60\u597d",
+                      "intent": "GENERAL_CHAT",
+                      "executorNode": "generalChatNode",
+                      "confidence": "HIGH",
+                      "taskType": 0,
+                      "slots": {}
+                    }
+                  ]
+                }
+                """);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeUnified("\u4f60\u597d", List.of(), configVO);
+
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
+        verify(intentFewshotService, never()).retrieveTopK(anyString(), anyInt());
     }
 
     private void mockLLMResponse(String responseContent) {

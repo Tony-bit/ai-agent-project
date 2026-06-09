@@ -20,9 +20,12 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 意图识别服务
@@ -33,6 +36,19 @@ import java.util.Map;
 @Slf4j
 @Service
 public class IntentRoutingService extends AbstractExecuteSupport {
+
+    private static final Set<String> TRIVIAL_GENERAL_CHAT_INPUTS = Set.of(
+            "\u4f60\u597d",
+            "\u60a8\u597d",
+            "\u54c8\u55bd",
+            "hello",
+            "hi",
+            "hey",
+            "thanks",
+            "thankyou",
+            "\u8c22\u8c22",
+            "\u5728\u5417"
+    );
 
     @Resource
     private IntentFewshotService intentFewshotService;
@@ -75,6 +91,10 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     }
 
     private List<IntentFewshotSample> retrieveFewshotSamples(String userMessage) {
+        if (shouldSkipFewshotRetrieval(userMessage)) {
+            log.debug("Few-Shot bypassed for trivial general chat input: userMessage={}", userMessage);
+            return List.of();
+        }
         try {
             return intentFewshotService.retrieveTopK(userMessage, 5);
         } catch (Exception e) {
@@ -88,6 +108,24 @@ public class IntentRoutingService extends AbstractExecuteSupport {
      * 解析 LLM 返回的 JSON 响应（支持切槽字段）
      * 解析失败时降级为 UNKNOWN + LOW
      */
+    private boolean shouldSkipFewshotRetrieval(String userMessage) {
+        String normalized = normalizeForFewshotBypass(userMessage);
+        if (!StringUtils.hasText(normalized)) {
+            return true;
+        }
+        return TRIVIAL_GENERAL_CHAT_INPUTS.contains(normalized);
+    }
+
+    private String normalizeForFewshotBypass(String userMessage) {
+        if (!StringUtils.hasText(userMessage)) {
+            return "";
+        }
+        return userMessage
+                .trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[\\p{Punct}\\p{IsPunctuation}\\s]+", "");
+    }
+
     public IntentRoutingResult parseResponse(String response) {
         if (response == null || response.isBlank()) {
             log.warn("意图识别 LLM 返回为空，降级为 UNKNOWN + LOW");
@@ -255,6 +293,8 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             subTask.setStatus(SubTask.SubTaskStatus.PENDING);
         }
 
+        subTask.setExecutorNode(resolveExecutorNode(subTask.getIntent()));
+
         if (subTask.getSlots() == null) {
             subTask.setSlots(Map.of());
             return;
@@ -277,6 +317,19 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             }
         }
         return result;
+    }
+
+    private String resolveExecutorNode(IntentTypeEnum intent) {
+        if (intent == null) {
+            return "generalChatNode";
+        }
+
+        return switch (intent) {
+            case STOCK_ANALYSIS -> "tradingStarter";
+            case PE_REASONING, PE_CALCULATION, PE_RETRIEVAL -> "step1AnalyzerNode";
+            case INSPECTION -> "intelligentInspection";
+            default -> "generalChatNode";
+        };
     }
 
     private String extractJson(String response) {

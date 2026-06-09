@@ -113,4 +113,15 @@ public class IntentRoutingPromptTest {
         assertTrue("Prompt 应包含 taskList 字段", prompt.contains("taskList"));
         assertTrue("Prompt 应包含 JSON 输出要求", prompt.contains("JSON格式"));
     }
+
+    /**
+     * TC-IRP-009: 统一路由 Prompt 应将概念解释类知识问答归入 GENERAL_CHAT
+     */
+    @Test
+    public void testBuildUnifiedRoutingPrompt_prefersGeneralChatForConceptExplanation() {
+        String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt("什么是向量数据库", Collections.emptyList(), Collections.emptyList());
+
+        assertTrue("GENERAL_CHAT 描述应包含概念解释和简单知识问答", prompt.contains("概念解释、简单知识问答、普通信息查询"));
+        assertTrue("PE_RETRIEVAL 描述应收缩到重型检索场景", prompt.contains("知识库检索、多文档汇总、外部资料整合"));
+    }
 }

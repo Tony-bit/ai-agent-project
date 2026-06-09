@@ -193,6 +193,15 @@ logging:
     denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService: DEBUG
     denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode: DEBUG
     denny.ai.agent.domain.service.intent.IntentFewshotService: DEBUG
+#    denny:
+#      ai:
+#        agent:
+#          domain:
+#            service:
+#              armory:
+#                factory:
+#                  element:
+#                    ObservabilityAdvisor: DEBUG
     # 可选：同时开启Spring核心日志，看扫描过程
 #    org.springframework.context: DEBUG
 #    root: info

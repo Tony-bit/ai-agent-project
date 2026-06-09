@@ -20,9 +20,9 @@ public class IntentRoutingPrompt {
         1. STOCK_ANALYSIS: 用户询问股票、基金、期货、市场行情等技术分析、基本面分析、交易建议
         2. PE_REASONING: 用户提出逻辑推理、问题分析、方案设计等需要深度思考的任务
         3. PE_CALCULATION: 用户提出数学计算、数据处理、统计建模等需要精确计算的任务
-        4. PE_RETRIEVAL: 用户查询知识库、文档检索、信息汇总等知识类任务
+        4. PE_RETRIEVAL: 用户明确要求知识库检索、多文档汇总、外部资料整合等重型检索任务
         5. INSPECTION: 用户请求系统巡检、健康检查、状态监控等运维任务
-        6. GENERAL_CHAT: 闲聊、问候、记忆查询（如询问个人偏好、之前聊过的内容）、询问个人身份信息（如询问自己的职业、身份、角色等）、无法归类的对话
+        6. GENERAL_CHAT: 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询（如询问个人偏好、之前聊过的内容）、询问个人身份信息（如询问自己的职业、身份、角色等）、无法归类的对话
         7. AMBIGUOUS: 意图模糊或复合语义，需要进一步澄清
         8. UNKNOWN: 无法明确判断
 
@@ -64,15 +64,17 @@ public class IntentRoutingPrompt {
         | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
         | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
         | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
-        | PE_RETRIEVAL | step1AnalyzerNode | 知识检索、信息汇总 |
+        | PE_RETRIEVAL | step1AnalyzerNode | 知识库检索、多文档汇总、外部资料整合 |
         | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
-        | GENERAL_CHAT | generalChatNode | 闲聊、问候、通用问答 |
+        | GENERAL_CHAT | generalChatNode | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
 
         ## 判断规则
         1. 多任务场景：用户明确提出多个可独立执行的任务，或多个实体需要分别处理
         2. 单任务场景：只输出 1 个 taskList 元素
         3. 信息缺失场景：缺少执行任务的关键信息时，needsClarification=true
         4. 示例仅供参考，必须以当前用户输入和历史上下文为准，不可机械套用示例
+        5. 概念解释、简单知识问答、普通信息查询优先归入 GENERAL_CHAT
+        6. 只有当用户明确需要知识库检索、RAG、多文档汇总或外部资料整合时，才归入 PE_RETRIEVAL
 
         ## 置信度
         - HIGH: 意图非常明确，有明显的关键词或上下文支撑
@@ -188,9 +190,9 @@ public class IntentRoutingPrompt {
         | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
         | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
         | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
-        | PE_RETRIEVAL | step1AnalyzerNode | 知识检索、信息汇总 |
+        | PE_RETRIEVAL | step1AnalyzerNode | 知识库检索、多文档汇总、外部资料整合 |
         | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
-        | GENERAL_CHAT | generalChatNode | 闲聊、问候、通用问答 |
+        | GENERAL_CHAT | generalChatNode | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
 
         ## 分解规则
         1. 每个子任务应该是独立的、可单独执行的

@@ -373,7 +373,7 @@ public class OpenAiTest {
 
         final java.util.function.Function<String, String> peRetrievalExample = content ->
                 String.format(
-                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"知识检索/信息查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"PE_RETRIEVAL\",\"executorNode\":\"step1AnalyzerNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
+                        "{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"%s\",\"intent\":\"PE_RETRIEVAL\",\"executorNode\":\"step1AnalyzerNode\",\"confidence\":\"HIGH\",\"taskType\":0,\"slots\":{}}]}",
                         content
                 );
 
@@ -412,11 +412,11 @@ public class OpenAiTest {
         docs.add(createDoc(String.valueOf(idCounter++), "解释一下注意力机制", "GENERAL_CHAT", generalChatExample));
 
         // ========== PE_RETRIEVAL 样本（5条） ==========
-        docs.add(createDoc(String.valueOf(idCounter++), "检索增强生成技术的原理是什么", "PE_RETRIEVAL", peRetrievalExample));
         docs.add(createDoc(String.valueOf(idCounter++), "查询一下最新的 AI Agent 论文", "PE_RETRIEVAL", peRetrievalExample));
         docs.add(createDoc(String.valueOf(idCounter++), "查找向量数据库选型相关的文档", "PE_RETRIEVAL", peRetrievalExample));
         docs.add(createDoc(String.valueOf(idCounter++), "检索 RAG 架构优化的资料", "PE_RETRIEVAL", peRetrievalExample));
-        docs.add(createDoc(String.valueOf(idCounter++), "我需要了解 langchain 的使用方式", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "汇总一下 LangChain 官方文档里关于 memory 的用法", "PE_RETRIEVAL", peRetrievalExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "基于知识库检索整理一份向量数据库对比", "PE_RETRIEVAL", peRetrievalExample));
 
         // ========== PE_REASONING 样本（5条） ==========
         docs.add(createDoc(String.valueOf(idCounter++), "分析一下为什么 LLM 会产生幻觉", "PE_REASONING", peReasoningExample));
