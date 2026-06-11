@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -56,12 +57,27 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     public MultiIntentRoutingResult routeUnified(String userMessage,
                                                  List<String> historyMessages,
                                                  AiAgentClientFlowConfigVO configVO) {
+        return routeUnified(userMessage, historyMessages, configVO, Map.of());
+    }
+
+    public MultiIntentRoutingResult routeUnified(String userMessage,
+                                                 List<String> historyMessages,
+                                                 AiAgentClientFlowConfigVO configVO,
+                                                 Map<String, Object> observationContext) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(userMessage);
         String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(userMessage, historyMessages, fewshotSamples);
         log.info("统一路由 LLM 原始请求: prompt:{}", prompt);
         try {
             ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
-            String response = chatClient.prompt(prompt).call().content();
+            Map<String, Object> advisorContext = new HashMap<>();
+            if (observationContext != null) {
+                advisorContext.putAll(observationContext);
+            }
+            advisorContext.putIfAbsent("client_id", configVO.getClientId());
+            String response = chatClient.prompt(prompt)
+                    .advisors(advisor -> advisorContext.forEach(advisor::param))
+                    .call()
+                    .content();
             log.info("统一路由 LLM 原始响应: userMessage={}, clientId={}, response=[{}], responseLen={}",
                     userMessage, configVO.getClientId(), response, response == null ? -1 : response.length());
             if (response == null || response.isBlank()) {

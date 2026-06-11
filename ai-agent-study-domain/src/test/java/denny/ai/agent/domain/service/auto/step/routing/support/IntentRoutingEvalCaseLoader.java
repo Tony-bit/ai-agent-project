@@ -3,6 +3,7 @@ package denny.ai.agent.domain.service.auto.step.routing.support;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.routing.model.IntentRoutingEvalCase;
@@ -14,7 +15,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,6 +33,12 @@ import java.util.stream.Collectors;
 public class IntentRoutingEvalCaseLoader {
 
     private static final String RESOURCE_PATH = "eval/intent-routing-cases.json";
+    private static final Set<String> SUPPORTED_CATEGORIES = Set.of(
+            "single-task", "multi-task", "clarification", "fallback"
+    );
+    private static final Set<String> SUPPORTED_STATUSES = Set.of(
+            "pending", "pass", "fail", "disabled"
+    );
 
     private final List<IntentRoutingEvalCase> cases;
 
@@ -42,29 +51,28 @@ public class IntentRoutingEvalCaseLoader {
      */
     public List<IntentRoutingEvalCase> load() {
         List<IntentRoutingEvalCase> result = new ArrayList<>();
-        InputStream is = null;
-        BufferedReader reader = null;
-        try {
-            is = getClass().getClassLoader().getResourceAsStream(RESOURCE_PATH);
-            if (is == null) {
-                log.error("评测数据集文件不存在: {}", RESOURCE_PATH);
-                return Collections.emptyList();
-            }
-            reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+        InputStream resource = getClass().getClassLoader().getResourceAsStream(RESOURCE_PATH);
+        if (resource == null) {
+            throw new IllegalStateException("评测数据集文件不存在: " + RESOURCE_PATH);
+        }
+
+        try (InputStream is = resource;
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
             String jsonStr = reader.lines().collect(Collectors.joining());
 
             JSONArray jsonArray = JSON.parseArray(jsonStr);
+            if (jsonArray == null || jsonArray.isEmpty()) {
+                throw new IllegalStateException("评测数据集不能为空: " + RESOURCE_PATH);
+            }
             for (int i = 0; i < jsonArray.size(); i++) {
                 JSONObject obj = jsonArray.getJSONObject(i);
                 IntentRoutingEvalCase aCase = parseCase(obj);
                 result.add(aCase);
             }
+            validateCases(result);
             log.info("成功加载 {} 条评测 case", result.size());
         } catch (Exception e) {
-            log.error("加载评测数据集失败: {}", RESOURCE_PATH, e);
-        } finally {
-            closeQuietly(reader);
-            closeQuietly(is);
+            throw new IllegalStateException("加载评测数据集失败: " + RESOURCE_PATH, e);
         }
         return result;
     }
@@ -109,7 +117,12 @@ public class IntentRoutingEvalCaseLoader {
         Integer taskCount = obj.getInteger("taskCount");
         List<String> taskIntents = parseStringList(obj.getJSONArray("taskIntents"));
         List<String> executorNodes = parseStringList(obj.getJSONArray("executorNodes"));
+        List<String> confidences = parseStringList(obj.getJSONArray("confidences"));
+        List<Integer> taskTypes = parseIntegerList(obj.getJSONArray("taskTypes"));
+        List<String> taskStatuses = parseStringList(obj.getJSONArray("taskStatuses"));
         List<String> missingInfo = parseStringList(obj.getJSONArray("missingInfo"));
+        String clarificationPrompt = obj.getString("clarificationPrompt");
+        String reasoningContains = obj.getString("reasoningContains");
 
         return IntentRoutingEvalCase.ExpectedResult.builder()
                 .multiTask(multiTask)
@@ -117,7 +130,12 @@ public class IntentRoutingEvalCaseLoader {
                 .taskCount(taskCount)
                 .taskIntents(taskIntents)
                 .executorNodes(executorNodes)
+                .confidences(confidences)
+                .taskTypes(taskTypes)
+                .taskStatuses(taskStatuses)
                 .missingInfo(missingInfo)
+                .clarificationPrompt(clarificationPrompt)
+                .reasoningContains(reasoningContains)
                 .build();
     }
 
@@ -132,21 +150,82 @@ public class IntentRoutingEvalCaseLoader {
         return result;
     }
 
-    private void closeQuietly(InputStream is) {
-        if (is != null) {
+    private List<Integer> parseIntegerList(JSONArray arr) {
+        if (arr == null || arr.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Integer> result = new ArrayList<>(arr.size());
+        for (int i = 0; i < arr.size(); i++) {
+            result.add(arr.getInteger(i));
+        }
+        return result;
+    }
+
+    private void validateCases(List<IntentRoutingEvalCase> loadedCases) {
+        Set<String> caseIds = new HashSet<>();
+        for (IntentRoutingEvalCase aCase : loadedCases) {
+            requireText(aCase.getCaseId(), "caseId");
+            if (!caseIds.add(aCase.getCaseId())) {
+                throw new IllegalArgumentException("caseId 重复: " + aCase.getCaseId());
+            }
+            requireText(aCase.getDescription(), "description, caseId=" + aCase.getCaseId());
+            if (!SUPPORTED_CATEGORIES.contains(aCase.getCategory())) {
+                throw new IllegalArgumentException("不支持的 category: " + aCase.getCategory()
+                        + ", caseId=" + aCase.getCaseId());
+            }
+            if (!SUPPORTED_STATUSES.contains(aCase.getStatus())) {
+                throw new IllegalArgumentException("不支持的 status: " + aCase.getStatus()
+                        + ", caseId=" + aCase.getCaseId());
+            }
+            if (aCase.getExpected() == null) {
+                throw new IllegalArgumentException("expected 不能为空, caseId=" + aCase.getCaseId());
+            }
+            validateExpected(aCase);
+        }
+    }
+
+    private void validateExpected(IntentRoutingEvalCase aCase) {
+        IntentRoutingEvalCase.ExpectedResult expected = aCase.getExpected();
+        Integer taskCount = expected.getTaskCount();
+        validateExpectedSize("taskIntents", expected.getTaskIntents(), taskCount, aCase.getCaseId());
+        validateExpectedSize("executorNodes", expected.getExecutorNodes(), taskCount, aCase.getCaseId());
+        validateExpectedSize("confidences", expected.getConfidences(), taskCount, aCase.getCaseId());
+        validateExpectedSize("taskTypes", expected.getTaskTypes(), taskCount, aCase.getCaseId());
+        validateExpectedSize("taskStatuses", expected.getTaskStatuses(), taskCount, aCase.getCaseId());
+
+        for (String intent : expected.getTaskIntents()) {
+            if (IntentTypeEnum.fromCode(intent) == IntentTypeEnum.UNKNOWN && !"UNKNOWN".equals(intent)) {
+                throw new IllegalArgumentException("未知 taskIntent: " + intent + ", caseId=" + aCase.getCaseId());
+            }
+        }
+        for (String confidence : expected.getConfidences()) {
+            boolean supported = false;
+            for (ConfidenceEnum value : ConfidenceEnum.values()) {
+                supported = supported || value.getCode().equals(confidence);
+            }
+            if (!supported) {
+                throw new IllegalArgumentException("未知 confidence: " + confidence + ", caseId=" + aCase.getCaseId());
+            }
+        }
+        for (String status : expected.getTaskStatuses()) {
             try {
-                is.close();
-            } catch (Exception ignored) {
+                SubTask.SubTaskStatus.valueOf(status);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("未知 taskStatus: " + status
+                        + ", caseId=" + aCase.getCaseId(), e);
             }
         }
     }
 
-    private void closeQuietly(BufferedReader reader) {
-        if (reader != null) {
-            try {
-                reader.close();
-            } catch (Exception ignored) {
-            }
+    private void validateExpectedSize(String fieldName, List<?> values, Integer taskCount, String caseId) {
+        if (values != null && !values.isEmpty() && taskCount != null && values.size() != taskCount) {
+            throw new IllegalArgumentException(fieldName + " 数量必须与 taskCount 一致, caseId=" + caseId);
+        }
+    }
+
+    private void requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " 不能为空");
         }
     }
 
@@ -174,6 +253,15 @@ public class IntentRoutingEvalCaseLoader {
      */
     public List<IntentRoutingEvalCase> getAll() {
         return Collections.unmodifiableList(cases);
+    }
+
+    /**
+     * 获取参与参数化回归的 case，disabled case 仍保留在数据集中但不执行。
+     */
+    public List<IntentRoutingEvalCase> getRunnableCases() {
+        return cases.stream()
+                .filter(c -> !"disabled".equals(c.getStatus()))
+                .collect(Collectors.toUnmodifiableList());
     }
 
     /**

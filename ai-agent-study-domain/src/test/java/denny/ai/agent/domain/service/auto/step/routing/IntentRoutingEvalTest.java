@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.auto.step.routing;
 
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.SubTask;
+import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.routing.model.IntentRoutingEvalCase;
 import denny.ai.agent.domain.service.auto.step.routing.support.IntentRoutingEvalCaseLoader;
@@ -52,7 +53,7 @@ public class IntentRoutingEvalTest {
     @Parameterized.Parameters(name = "{0}: {2}")
     public static Collection<Object[]> data() {
         IntentRoutingEvalCaseLoader loader = new IntentRoutingEvalCaseLoader();
-        List<IntentRoutingEvalCase> allCases = loader.getAll();
+        List<IntentRoutingEvalCase> allCases = loader.getRunnableCases();
         List<Object[]> parameters = new ArrayList<>(allCases.size());
         for (IntentRoutingEvalCase c : allCases) {
             parameters.add(new Object[]{c.getCaseId(), c, c.getDescription()});
@@ -135,6 +136,49 @@ public class IntentRoutingEvalTest {
             }
         }
 
+        if (expected.getConfidences() != null && !expected.getConfidences().isEmpty()) {
+            List<SubTask> taskList = result.getTaskList();
+            List<String> expectedConfidences = expected.getConfidences();
+            assertEquals(
+                    "confidences 长度不匹配, caseId=" + caseId,
+                    expectedConfidences.size(),
+                    taskList.size()
+            );
+            for (int i = 0; i < expectedConfidences.size(); i++) {
+                assertEquals(
+                        "confidences[" + i + "] 断言失败, caseId=" + caseId,
+                        ConfidenceEnum.fromCode(expectedConfidences.get(i)),
+                        taskList.get(i).getConfidence()
+                );
+            }
+        }
+
+        if (expected.getTaskTypes() != null && !expected.getTaskTypes().isEmpty()) {
+            List<SubTask> taskList = result.getTaskList();
+            assertEquals("taskTypes 长度不匹配, caseId=" + caseId,
+                    expected.getTaskTypes().size(), taskList.size());
+            for (int i = 0; i < expected.getTaskTypes().size(); i++) {
+                assertEquals(
+                        "taskTypes[" + i + "] 断言失败, caseId=" + caseId,
+                        expected.getTaskTypes().get(i),
+                        taskList.get(i).getTaskType()
+                );
+            }
+        }
+
+        if (expected.getTaskStatuses() != null && !expected.getTaskStatuses().isEmpty()) {
+            List<SubTask> taskList = result.getTaskList();
+            assertEquals("taskStatuses 长度不匹配, caseId=" + caseId,
+                    expected.getTaskStatuses().size(), taskList.size());
+            for (int i = 0; i < expected.getTaskStatuses().size(); i++) {
+                assertEquals(
+                        "taskStatuses[" + i + "] 断言失败, caseId=" + caseId,
+                        SubTask.SubTaskStatus.valueOf(expected.getTaskStatuses().get(i)),
+                        taskList.get(i).getStatus()
+                );
+            }
+        }
+
         if (expected.getMissingInfo() != null && !expected.getMissingInfo().isEmpty()) {
             List<String> actualMissingInfo = result.getMissingInfo();
             assertNotNull(
@@ -152,6 +196,22 @@ public class IntentRoutingEvalTest {
                         actualMissingInfo.contains(mi)
                 );
             }
+        }
+
+        if (expected.getClarificationPrompt() != null) {
+            assertEquals(
+                    "clarificationPrompt 断言失败, caseId=" + caseId,
+                    expected.getClarificationPrompt(),
+                    result.getClarificationPrompt()
+            );
+        }
+
+        if (expected.getReasoningContains() != null) {
+            assertNotNull("reasoning 不应为 null, caseId=" + caseId, result.getReasoning());
+            assertTrue(
+                    "reasoning 应包含 '" + expected.getReasoningContains() + "', caseId=" + caseId,
+                    result.getReasoning().contains(expected.getReasoningContains())
+            );
         }
     }
 }

@@ -54,6 +54,9 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
         payload.put("sessionId", sessionId);
         payload.put("input", input);
         payload.put("metadata", metadata);
+        if (metadata != null && metadata.get("traceName") != null) {
+            payload.put("name", String.valueOf(metadata.get("traceName")));
+        }
 
         sendEvent("trace-create", payload);
         return traceId;

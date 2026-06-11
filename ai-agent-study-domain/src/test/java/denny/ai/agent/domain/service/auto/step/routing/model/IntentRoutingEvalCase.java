@@ -95,8 +95,33 @@ public class IntentRoutingEvalCase {
         private List<String> executorNodes;
 
         /**
+         * Expected confidence values, in task order.
+         */
+        private List<String> confidences;
+
+        /**
+         * Expected task types, in task order.
+         */
+        private List<Integer> taskTypes;
+
+        /**
+         * Expected task statuses, in task order.
+         */
+        private List<String> taskStatuses;
+
+        /**
          * 期望缺失信息列表（clarification 专属）
          */
         private List<String> missingInfo;
+
+        /**
+         * Expected clarification prompt after defaulting.
+         */
+        private String clarificationPrompt;
+
+        /**
+         * Optional stable fragment expected in the reasoning text.
+         */
+        private String reasoningContains;
     }
 }

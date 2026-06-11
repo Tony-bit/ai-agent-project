@@ -438,7 +438,9 @@
       "multiTask": false,
       "needsClarification": true,
       "taskCount": 0,
-      "missingInfo": ["stockCode"]
+      "missingInfo": ["stockCode"],
+      "clarificationPrompt": "请提供股票代码或股票名称",
+      "reasoningContains": "缺少明确股票标的"
     },
     "tags": ["intent-routing", "clarification", "stock-analysis"]
   },
@@ -497,5 +499,157 @@
       "executorNodes": ["generalChatNode"]
     },
     "tags": ["intent-routing", "fallback", "empty-tasklist"]
+  },
+  {
+    "caseId": "intent-single-inspection-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "系统巡检任务映射到巡检节点",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户要求执行系统巡检",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "检查服务和基础设施状态",
+          "intent": "INSPECTION",
+          "executorNode": "incorrectNode",
+          "confidence": "HIGH",
+          "taskType": 2,
+          "slots": {}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["INSPECTION"],
+      "executorNodes": ["intelligentInspection"],
+      "confidences": ["HIGH"],
+      "taskTypes": [2],
+      "taskStatuses": ["PENDING"]
+    },
+    "tags": ["intent-routing", "inspection", "normalization"]
+  },
+  {
+    "caseId": "intent-normalization-defaults-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "任务缺少可默认字段时执行安全归一化",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "模型只返回了最小任务结构",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "回应用户",
+          "slots": null
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["LOW"],
+      "taskTypes": [0],
+      "taskStatuses": ["PENDING"]
+    },
+    "tags": ["intent-routing", "normalization", "defaults"]
+  },
+  {
+    "caseId": "intent-multitask-single-item-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "模型声明多任务但仅返回一个任务时自动纠正",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "reasoning": "模型错误标记为多任务",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "进行普通问答",
+          "intent": "GENERAL_CHAT",
+          "confidence": "MEDIUM",
+          "slots": {}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "normalization", "multi-task"]
+  },
+  {
+    "caseId": "intent-wrapped-json-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "响应包含说明文字和 Markdown JSON 代码块",
+    "response": "路由结果如下：\n```json\n{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"识别为普通对话\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"回应用户\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"slots\":{}}]}\n```\n请按结果执行。",
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["HIGH"]
+    },
+    "tags": ["intent-routing", "markdown", "json-extraction"]
+  },
+  {
+    "caseId": "intent-clarification-default-prompt-001",
+    "status": "pending",
+    "category": "clarification",
+    "description": "缺少澄清提示时根据 missingInfo 生成默认提示",
+    "response": {
+      "multiTask": false,
+      "needsClarification": true,
+      "missingInfo": ["topic"],
+      "reasoning": "缺少查询主题",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": true,
+      "taskCount": 0,
+      "missingInfo": ["topic"],
+      "clarificationPrompt": "请补充以下信息: topic"
+    },
+    "tags": ["intent-routing", "clarification", "default-prompt"]
+  },
+  {
+    "caseId": "intent-fallback-blank-response-001",
+    "status": "pending",
+    "category": "fallback",
+    "description": "LLM 返回空白文本时触发降级",
+    "response": "   ",
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["MEDIUM"],
+      "taskTypes": [0],
+      "taskStatuses": ["PENDING"],
+      "reasoningContains": "LLM返回为空"
+    },
+    "tags": ["intent-routing", "fallback", "blank-response"]
   }
 ]
