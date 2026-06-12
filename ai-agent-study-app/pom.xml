@@ -157,6 +157,7 @@
                 <configuration>
                     <skipTests>false</skipTests>
                     <testFailureIgnore>false</testFailureIgnore>
+                    <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>

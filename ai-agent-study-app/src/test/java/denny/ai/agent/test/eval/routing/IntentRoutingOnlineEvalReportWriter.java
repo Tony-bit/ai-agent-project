@@ -10,11 +10,13 @@ import denny.ai.agent.test.eval.routing.IntentRoutingOnlineEvaluator.GlobalMetri
 import denny.ai.agent.test.eval.routing.IntentRoutingOnlineEvaluator.RunResult;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -23,6 +25,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class IntentRoutingOnlineEvalReportWriter {
 
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HHmmss");
@@ -49,7 +52,10 @@ public class IntentRoutingOnlineEvalReportWriter {
             Files.createDirectories(historyDirectory);
 
             String reportJson = JSON.toJSONString(
-                    report, SerializerFeature.PrettyFormat, SerializerFeature.WriteMapNullValue);
+                    report,
+                    SerializerFeature.PrettyFormat,
+                    SerializerFeature.WriteMapNullValue,
+                    SerializerFeature.DisableCircularReferenceDetect);
             Files.writeString(jsonPath, reportJson, StandardCharsets.UTF_8);
             Files.writeString(historyPath, reportJson, StandardCharsets.UTF_8);
             Files.writeString(markdownPath, toMarkdown(report), StandardCharsets.UTF_8);
@@ -74,7 +80,17 @@ public class IntentRoutingOnlineEvalReportWriter {
         try {
             return JSON.parseObject(Files.readString(latestPath, StandardCharsets.UTF_8), EvalReport.class);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to read baseline report " + latestPath, e);
+            Path invalidPath = outputDirectory.resolve(
+                    "latest.invalid-" + System.currentTimeMillis() + ".json");
+            try {
+                Files.move(latestPath, invalidPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException moveError) {
+                e.addSuppressed(moveError);
+                throw new IllegalStateException("Failed to read or quarantine baseline report " + latestPath, e);
+            }
+            log.warn("Ignoring invalid online eval baseline; moved {} to {}: {}",
+                    latestPath, invalidPath, e.getMessage());
+            return null;
         }
     }
 

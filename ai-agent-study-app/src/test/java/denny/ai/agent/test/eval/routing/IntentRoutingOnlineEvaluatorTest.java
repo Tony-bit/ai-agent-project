@@ -1,5 +1,6 @@
 package denny.ai.agent.test.eval.routing;
 
+import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.SubTask;
@@ -20,9 +21,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class IntentRoutingOnlineEvaluatorTest {
@@ -133,6 +136,29 @@ public class IntentRoutingOnlineEvaluatorTest {
         assertTrue(Files.exists(written.getHistoryPath()));
         assertTrue(Files.exists(written.getLatestPath()));
         assertTrue(Files.readString(written.getMarkdownPath()).contains("Regressed cases: `baseline-case`"));
+    }
+
+    @Test
+    public void shouldQuarantineInvalidBaselineAndWriteParseableReport() throws Exception {
+        Files.writeString(tempDirectory.resolve("latest.json"), "{invalid-json");
+        IntentRoutingOnlineEvalCase evalCase = routingCase(
+                "parseable-report", "single-task", List.of("GENERAL_CHAT"), false, 2);
+        EvalReport report = new IntentRoutingOnlineEvaluator(
+                new StubRoutingService(List.of(
+                        route(false, IntentTypeEnum.GENERAL_CHAT),
+                        route(false, IntentTypeEnum.GENERAL_CHAT))), "3201")
+                .evaluate(List.of(evalCase), null, null);
+
+        WrittenReports written = new IntentRoutingOnlineEvalReportWriter(tempDirectory).write(report);
+
+        assertNull(report.getBaselineEvalRunId());
+        assertEquals(report.getEvalRunId(),
+                JSON.parseObject(Files.readString(written.getLatestPath()), EvalReport.class).getEvalRunId());
+        try (Stream<Path> files = Files.list(tempDirectory)) {
+            assertEquals(1, files
+                    .filter(path -> path.getFileName().toString().startsWith("latest.invalid-"))
+                    .count());
+        }
     }
 
     private IntentRoutingOnlineEvalCase routingCase(String id,
