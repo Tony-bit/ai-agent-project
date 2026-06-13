@@ -197,13 +197,7 @@ IntentRoutingMode：
       routing:
         mode: split
 
-Spring Boot 环境变量形式：
-
-    INTENT_ROUTING_MODE=split
-
-JVM 系统属性形式：
-
-    -Dintent.routing.mode=split
+本方案只约定通过 application.yml 中的 intent.routing.mode 配置链路。unified 和 split 是同一个配置项的两个可选值，不是两个独立变量。
 
 ### 5.3 使用规则
 
@@ -869,4 +863,3 @@ IntentRoutingServiceTest：
 13. split 固定 needsClarification=false，不处理不完整 query 的澄清。
 14. 本期单元测试覆盖主要正常、校验和降级路径。
 15. 本期不修改现有在线评测体系。
-

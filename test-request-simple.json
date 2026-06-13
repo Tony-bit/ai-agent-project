@@ -1,0 +1,9 @@
+{
+  "aiAgentId": "test-agent",
+  "userId": "story-test",
+  "sessionId": "story-smoke-002",
+  "message": "你好",
+  "maxStep": 10,
+  "inputType": 0,
+  "agentType": "default"
+}
