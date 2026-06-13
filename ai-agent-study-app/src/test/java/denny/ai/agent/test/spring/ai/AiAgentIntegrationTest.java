@@ -39,7 +39,7 @@ import java.util.concurrent.CountDownLatch;
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class AiAgentTest {
+public class AiAgentIntegrationTest {
 
     private ChatModel chatModel;
 

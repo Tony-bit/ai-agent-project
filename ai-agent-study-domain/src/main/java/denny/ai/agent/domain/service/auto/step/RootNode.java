@@ -130,6 +130,13 @@ public class RootNode extends AbstractExecuteSupport {
         if (output == null) {
             output = dynamicContext.getValue("generalChatResponse");
         }
+        // Clarification flows: persist the question so the next turn can use it as history.
+        if (output == null) {
+            output = dynamicContext.getValue("clarificationPrompt");
+        }
+        if (output == null) {
+            output = dynamicContext.getValue("clarification_question");
+        }
         String clientId = "RESPONSE_ASSISTANT";
 
         if (output == null) {

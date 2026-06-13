@@ -12,6 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -35,8 +36,8 @@ public class RetryChatModel implements ChatModel {
 
     public RetryChatModel(ChatModel delegate, RetryConfig retryConfig,
                         AiErrorCodeExtractor errorCodeExtractor) {
-        this.delegate = delegate;
-        this.retryConfig = retryConfig;
+        this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
+        this.retryConfig = Objects.requireNonNull(retryConfig, "retryConfig must not be null");
         this.errorCodeExtractor = errorCodeExtractor != null ? errorCodeExtractor : new AiErrorCodeExtractor();
     }
 
@@ -68,7 +69,8 @@ public class RetryChatModel implements ChatModel {
 
         int maxAttempts = Math.min(retryConfig.getMaxAttempts(), 10);
         int attempt = 0;
-        long interval = Math.max(0, retryConfig.getInitialIntervalMs());
+        long maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
+        long interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
         RuntimeException lastException = null;
 
         while (attempt < maxAttempts) {
@@ -97,8 +99,7 @@ public class RetryChatModel implements ChatModel {
                     log.warn("[RetryStream] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
                             attempt, maxAttempts, interval, errorCode, e.getMessage());
                     sleep(interval);
-                    long multiplier = retryConfig.getMultiplier() < 0 ? 1 : (long) retryConfig.getMultiplier();
-                    interval = Math.min(interval * multiplier, retryConfig.getMaxIntervalMs());
+                    interval = nextInterval(interval, maxInterval);
                 } else {
                     log.warn("[RetryStream] Non-retryable exception, rethrow directly, errorCode={}, attempt={}, ex={}",
                             errorCode, attempt, e.getMessage());
@@ -181,6 +182,12 @@ public class RetryChatModel implements ChatModel {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private long nextInterval(long interval, long maxInterval) {
+        double multiplier = retryConfig.getMultiplier() <= 0 ? 1.0 : retryConfig.getMultiplier();
+        double next = interval * multiplier;
+        return (long) Math.min(maxInterval, Math.max(0, next));
     }
 
     // ===== CallRetryStrategy =====

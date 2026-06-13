@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-fundamental-data`
 - **Tool Name**: `get_fundamental_data`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回股票的估值和财务指标，用于判断公司盈利质量、成长性和估值是否合理。

@@ -8,6 +8,7 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
+import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -50,6 +51,9 @@ public class RootNodeTest {
     @Mock
     private IAgentRepository repository;
 
+    @Mock
+    private ChatMemoryPersistenceService chatMemoryPersistenceService;
+
     private RootNode rootNode;
 
     private DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext;
@@ -62,6 +66,7 @@ public class RootNodeTest {
         setField(rootNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(rootNode, "intelligentInspection", intelligentInspection);
         setField(rootNode, "repository", repository);
+        setField(rootNode, "chatMemoryPersistenceService", chatMemoryPersistenceService);
 
         dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
     }
@@ -193,6 +198,44 @@ public class RootNodeTest {
      * 3. 调用 router() 开始路由
      * </p>
      */
+    @Test
+    public void shouldPersistClarificationPromptAsConversationOutput() throws Exception {
+        String input = "Analyze this stock";
+        String clarificationPrompt = "Please provide the stock code";
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId(null)
+                .userId("test-user")
+                .sessionId("test-session")
+                .message(input)
+                .maxStep(3)
+                .build();
+
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext ctx =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+
+        when(repository.queryAllFlowConfigForIntentRouting()).thenReturn(new HashMap<>());
+        doAnswer(invocation -> {
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext routingContext = invocation.getArgument(1);
+            routingContext.setValue("clarificationPrompt", clarificationPrompt);
+            return clarificationPrompt;
+        }).when(intentRoutingNode).apply(any(ExecuteCommandEntity.class), any(DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class));
+
+        String result = rootNode.doApply(request, ctx);
+
+        assertEquals(clarificationPrompt, result);
+        verify(chatMemoryPersistenceService).persistConversation(
+                eq("test-session"),
+                eq("test-user"),
+                isNull(),
+                eq("RESPONSE_ASSISTANT"),
+                eq(input),
+                eq(clarificationPrompt),
+                isNull(),
+                anyLong(),
+                isNull()
+        );
+    }
+
     @Test
     public void testDoApply_injectsPersonaBeforeRouter() throws Exception {
         ExecuteCommandEntity request = ExecuteCommandEntity.builder()

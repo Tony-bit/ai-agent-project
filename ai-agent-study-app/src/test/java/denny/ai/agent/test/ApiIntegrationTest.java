@@ -16,7 +16,7 @@ import java.util.List;
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class ApiTest {
+public class ApiIntegrationTest {
 
     @Resource
     private TokenTextSplitter tokenTextSplitter;

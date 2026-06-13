@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Slf4j
 @ExtendWith(IntentRoutingOnlineEvalEnabledCondition.class)
 @SpringBootTest(classes = Application.class)
-public class IntentRoutingOnlineEvalTest {
+public class IntentRoutingOnlineIntegrationTest {
 
     @Resource
     private IntentRoutingService routingService;

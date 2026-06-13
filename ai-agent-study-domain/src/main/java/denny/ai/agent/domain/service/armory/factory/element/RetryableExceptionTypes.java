@@ -56,6 +56,9 @@ public final class RetryableExceptionTypes {
             if (simpleName.equals(prefix)) {
                 return true;
             }
+            if (!"TimeoutException".equals(prefix) && simpleName.endsWith(prefix)) {
+                return true;
+            }
         }
         return false;
     }

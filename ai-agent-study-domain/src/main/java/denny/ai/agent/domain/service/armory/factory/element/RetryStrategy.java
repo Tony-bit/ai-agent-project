@@ -56,7 +56,8 @@ public abstract class RetryStrategy<T> {
         }
 
         int attempt = 0;
-        long interval = Math.max(0, retryConfig.getInitialIntervalMs());
+        long maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
+        long interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
         RuntimeException lastRuntimeException = null;
 
         while (attempt < maxAttempts) {
@@ -74,8 +75,7 @@ public abstract class RetryStrategy<T> {
                 }
                 if (result.shouldContinue()) {
                     lastRuntimeException = toRuntimeException(result.getException());
-                    long multiplier = retryConfig.getMultiplier() < 0 ? 1 : (long) retryConfig.getMultiplier();
-                    interval = Math.min(interval * multiplier, retryConfig.getMaxIntervalMs());
+                    interval = nextInterval(interval, maxInterval);
                 }
             }
         }
@@ -144,6 +144,9 @@ public abstract class RetryStrategy<T> {
         }
         boolean isRetryable = retryableErrorCodes.contains(errorCode) || RetryableExceptionTypes.isRetryable(e);
         if (isRetryable) {
+            if (attempt >= maxAttempts) {
+                return HandleResult.rethrow(e);
+            }
             log.warn("[Retry] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
                     attempt, maxAttempts, interval, errorCode, e.getMessage());
             sleep(interval);
@@ -202,5 +205,11 @@ public abstract class RetryStrategy<T> {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private long nextInterval(long interval, long maxInterval) {
+        double multiplier = retryConfig.getMultiplier() <= 0 ? 1.0 : retryConfig.getMultiplier();
+        double next = interval * multiplier;
+        return (long) Math.min(maxInterval, Math.max(0, next));
     }
 }

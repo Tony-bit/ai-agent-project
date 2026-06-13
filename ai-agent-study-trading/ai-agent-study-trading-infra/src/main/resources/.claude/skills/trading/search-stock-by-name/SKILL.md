@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `search-stock-by-name`
 - **Tool Name**: `search_stock_by_name`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 当用户没有提供股票代码，只提供公司名、简称或自然语言提及时，先通过该工具解析候选股票代码。

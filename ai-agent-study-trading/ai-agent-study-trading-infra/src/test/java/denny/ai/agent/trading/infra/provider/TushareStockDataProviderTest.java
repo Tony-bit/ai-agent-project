@@ -256,7 +256,7 @@ class TushareStockDataProviderTest {
                     row.put("netprofit_margin", "15.0");
                     row.put("debt_to_assets", "0.65");
                     row.put("current_ratio", "1.5");
-                    row.put("pe_ratio", "8.5");
+                    row.put("pe", "8.5");
                     row.put("pb_ratio", "0.9");
                     row.put("ps_ratio", "1.2");
                     row.put("peg", "0.8");
@@ -272,9 +272,9 @@ class TushareStockDataProviderTest {
                     return List.of(row);
                 }
             }
-            if ("cash_flow".equals(apiName)) {
+            if ("cashflow".equals(apiName)) {
                 Map<String, String> row = new HashMap<>();
-                row.put("im_net_incr_cash_equv", "5000");
+                row.put("oper_net_cash_flow", "5000");
                 row.put("pay_for_fixed_assets", "-1000");
                 return List.of(row);
             }
@@ -348,7 +348,7 @@ class TushareStockDataProviderTest {
                         "netprofit_margin", "15.0",
                         "debt_to_assets", "0.65",
                         "current_ratio", "1.5",
-                        "pe_ratio", "10.0"
+                        "pe", "10.0"
                 ));
             }
             if ("stock_basic".equals(apiName)) {
@@ -559,9 +559,9 @@ class TushareStockDataProviderTest {
                 row.put("net_profit", "8000");
                 return List.of(row);
             }
-            if ("cash_flow".equals(apiName)) {
+            if ("cashflow".equals(apiName)) {
                 Map<String, String> row = new HashMap<>();
-                row.put("im_net_incr_cash_equv", "5000");
+                row.put("oper_net_cash_flow", "5000");
                 row.put("pay_for_fixed_assets", "1000"); // capex 为正数 1000 万元
                 return List.of(row);
             }
@@ -664,7 +664,7 @@ class TushareStockDataProviderTest {
                         "netprofit_margin", "-10.0",
                         "debt_to_assets", "0.7",
                         "current_ratio", "0.8",
-                        "pe_ratio", "-10.5"
+                        "pe", "-10.5"
                 ));
             }
             return Collections.emptyList();

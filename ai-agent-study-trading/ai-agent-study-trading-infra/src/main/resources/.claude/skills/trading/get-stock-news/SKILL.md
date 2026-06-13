@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-stock-news`
 - **Tool Name**: `get_stock_news`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定股票的近期新闻，帮助模型识别催化剂、负面舆情和短期事件风险。

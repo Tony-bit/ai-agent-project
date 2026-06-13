@@ -37,7 +37,7 @@ import static org.junit.Assert.*;
 @EnableAutoConfiguration(exclude = {
         org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration.class
 })
-public class Mem0MemoryControllerTest {
+public class Mem0MemoryControllerIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;

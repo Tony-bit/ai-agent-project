@@ -25,7 +25,7 @@ import java.util.Arrays;
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class AgentTest {
+public class AgentIntegrationTest {
 
     @Resource
     private DefaultArmoryStrategyFactory defaultArmoryStrategyFactory;

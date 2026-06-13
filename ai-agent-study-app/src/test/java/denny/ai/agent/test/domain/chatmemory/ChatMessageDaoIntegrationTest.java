@@ -25,7 +25,7 @@ import static org.junit.Assert.*;
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class ChatMessageDaoTest {
+public class ChatMessageDaoIntegrationTest {
 
     @Resource
     private IChatMessageDao chatMessageDao;

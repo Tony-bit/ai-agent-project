@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
 @RunWith(SpringRunner.class)
 @SpringBootTest
 @FixMethodOrder(MethodSorters.JVM)
-public class ChatMemoryPersistenceServiceTest {
+public class ChatMemoryPersistenceServiceIntegrationTest {
 
     @Resource
     private ChatMemoryPersistenceService chatMemoryPersistenceService;

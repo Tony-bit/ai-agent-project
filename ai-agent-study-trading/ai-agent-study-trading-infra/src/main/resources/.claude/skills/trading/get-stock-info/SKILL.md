@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-stock-info`
 - **Tool Name**: `get_stock_info`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定 A 股股票的实时基础信息，通常用于分析开场阶段，帮助模型快速建立对标的的价格和估值认知。

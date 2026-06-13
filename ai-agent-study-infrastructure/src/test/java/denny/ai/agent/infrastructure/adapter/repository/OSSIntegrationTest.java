@@ -17,18 +17,13 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
+import org.junit.Assume;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.junit4.SpringRunner;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,29 +37,18 @@ import java.util.Collections;
 import java.util.List;
 
 @Slf4j
-@RunWith(SpringRunner.class)
-@SpringBootTest
-public class OSSTest {
+public class OSSIntegrationTest {
 
     private AmazonS3 s3;
 
-    @Resource
-    private TokenTextSplitter tokenTextSplitter;
-
-    @Resource
-    private PgVectorStore pgVectorStore;
-
-    @Value("classpath:data/dog.png")
-    private org.springframework.core.io.Resource imageResource;
-
-    private final String accessKey = "JDC_DBA*****7D239EEAE8576";
-    private final String secretKey = "EE9A6C0EADC7A96325349BF03C6E5A8A";
+    private final String accessKey = System.getenv("JD_CLOUD_OSS_ACCESS_KEY");
+    private final String secretKey = System.getenv("JD_CLOUD_OSS_SECRET_KEY");
     private final String endpoint = "https://s3.cn-north-1.jdcloud-oss.com";
     private final String region = "cn-north-1";
     private final String bucketName = "denny-test";
 
-    @Before
-    public void init() {
+    private void init() {
+        Assume.assumeTrue("JD Cloud OSS credentials are required", isConfigured(accessKey) && isConfigured(secretKey));
         ClientConfiguration config = new ClientConfiguration();
         AwsClientBuilder.EndpointConfiguration endpointConfig =
                 new AwsClientBuilder.EndpointConfiguration(endpoint, region);
@@ -81,6 +65,7 @@ public class OSSTest {
 
     @Test
     public void testUpload() throws IOException {
+        init();
         String key = "dog.png";
         // 使用 ClassLoader 读取资源，不需要 @Value
         try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("data/dog.png")) {
@@ -112,7 +97,7 @@ public class OSSTest {
         MultiModalConversationParam param = MultiModalConversationParam.builder()
                 // 若没有配置环境变量，请用百炼API Key将下行替换为：.apiKey("sk-xxx")
                 // 各地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
-                .apiKey("sk-b1050a5b1a7*****c968acdf637a6")
+                .apiKey(requireEnv("DASHSCOPE_API_KEY"))
                 .model("qwen3.5-plus")  // 此处以qwen3.5-plus为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
                 .messages(Arrays.asList(userMessage))
                 .build();
@@ -127,7 +112,7 @@ public class OSSTest {
     @Test
     public void testDashscopeTextRerank() throws Exception {
         String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
-        String apiKey = "sk-b1050a5b1a7e4******968acdf637a6";
+        String apiKey = requireEnv("DASHSCOPE_API_KEY");
 
         RerankReq requestBody = RerankReq.builder()
                 .model("qwen3-rerank")
@@ -165,7 +150,7 @@ public class OSSTest {
     @Test
     public void testDashscopeTextEmbeddings() throws Exception {
         String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding";
-        String apiKey = "sk-b1050a5b1a7e41bcaddc968acdf637a6";
+        String apiKey = requireEnv("DASHSCOPE_API_KEY");
 
         TextEmbeddingReq requestBody = TextEmbeddingReq.builder()
                 .model("text-embedding-v3")
@@ -209,4 +194,13 @@ public class OSSTest {
 //
 //        log.info("上传完成");
 //    }
+    private static String requireEnv(String name) {
+        String value = System.getenv(name);
+        Assume.assumeTrue(name + " is required", isConfigured(value));
+        return value;
+    }
+
+    private static boolean isConfigured(String value) {
+        return value != null && !value.isBlank();
+    }
 }

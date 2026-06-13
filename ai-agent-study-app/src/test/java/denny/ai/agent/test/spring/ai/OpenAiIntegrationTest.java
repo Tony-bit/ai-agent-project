@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class OpenAiTest {
+public class OpenAiIntegrationTest {
 
     @Value("classpath:data/dog.png")
     private Resource imageResource;
@@ -120,7 +120,7 @@ public class OpenAiTest {
 
             OpenAiApi openAiApi = OpenAiApi.builder()
                     .baseUrl("https://api.deepseek.com/")
-                    .apiKey("sk-a0df0f93a5ac475e8c73c6e3495cfc05")
+                    .apiKey(System.getenv("DEEPSEEK_API_KEY"))
                     .completionsPath("v1/chat/completions")
                     .build();
 

@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-historical-bars`
 - **Tool Name**: `get_historical_bars`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定时间区间内的日线 OHLCV 数据，用于趋势分析、区间涨跌判断和技术指标前置判断。

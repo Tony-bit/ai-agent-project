@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-technical-indicators`
 - **Tool Name**: `get_technical_indicators`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回指定股票在时间区间内的多类技术指标，适合判断趋势方向、超买超卖状态以及波动风险。

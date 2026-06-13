@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 @RunWith(SpringRunner.class)
 @SpringBootTest
 @FixMethodOrder(MethodSorters.JVM)
-public class ChatSessionDaoTest {
+public class ChatSessionDaoIntegrationTest {
 
     @Resource
     private IChatSessionDao chatSessionDao;

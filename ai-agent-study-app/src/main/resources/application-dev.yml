@@ -15,10 +15,10 @@ thread:
 # 数据库配置；启动时配置数据库资源信息
 spring:
   datasource:
-    username: postgres
-    password: 123
-    url: jdbc:postgresql://localhost:15432/ai-rag-knowledge
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DEV_DATASOURCE_USER:postgres}
+    password: ${DEV_DATASOURCE_PASSWORD:}
+    url: ${DEV_DATASOURCE_URL:jdbc:postgresql://localhost:15432/ai-rag-knowledge}
+    driver-class-name: ${DEV_DATASOURCE_DRIVER:org.postgresql.Driver}
   hikari:
     pool-name: Retail_HikariCP
     minimum-idle: 15 #最小空闲连接数量

@@ -11,6 +11,7 @@ description: |
 ## 工具信息
 - **Skill Name**: `get-sentiment`
 - **Tool Name**: `get_sentiment`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
 
 ## 功能说明
 返回股票的情绪评分、看涨看跌比例和不同周期情绪趋势，用于识别市场态度和短期风险偏好。

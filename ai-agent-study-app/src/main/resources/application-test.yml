@@ -15,9 +15,9 @@ thread:
 # 数据库配置
 #spring:
 #  datasource:
-#    username: root
-#    password: 123456
-#    url: jdbc:mysql://127.0.0.1:3306/xfg_frame_archetype?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=UTC&useSSL=true
+#    username: ${MYSQL_USER:}
+#    password: ${MYSQL_PASSWORD:}
+#    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false}
 #    driver-class-name: com.mysql.cj.jdbc.Driver
 #  hikari:
 #    pool-name: Retail_HikariCP
