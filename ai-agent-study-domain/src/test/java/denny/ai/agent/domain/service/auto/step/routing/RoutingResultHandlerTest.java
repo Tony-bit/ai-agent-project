@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.auto.step.routing;
 
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
@@ -23,6 +24,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RoutingResultHandlerTest {
@@ -77,6 +79,36 @@ public class RoutingResultHandlerTest {
 
         assertEquals("provide stock code", handler.handle(request, context, result));
         assertEquals(List.of("stockCode"), context.getValue("missingInfo"));
+    }
+
+    @Test
+    public void writesMetricsToContextBeforeDispatching() throws Exception {
+        RoutingExecutionMetrics metrics = RoutingExecutionMetrics.builder()
+                .mode(IntentRoutingMode.SPLIT)
+                .totalTokens(3)
+                .build();
+        MultiIntentRoutingResult result = result(false,
+                List.of(task("sub-1", 1, 1, IntentTypeEnum.GENERAL_CHAT)));
+        result.setMetrics(metrics);
+
+        handler.handle(request, context, result);
+
+        assertEquals(metrics, context.getValue(RoutingResultHandler.METRICS_KEY));
+        verify(generalChatNode).apply(any(), any());
+    }
+
+    @Test
+    public void routesStockAnalysisToGeneralChatWhenTradingBeanIsMissing() throws Exception {
+        when(applicationContext.getBean("tradingIntentRoutingNode"))
+                .thenThrow(new RuntimeException("missing bean"));
+        MultiIntentRoutingResult result = result(false,
+                List.of(task("sub-1", 1, 1, IntentTypeEnum.STOCK_ANALYSIS)));
+
+        handler.handle(request, context, result);
+
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS,
+                context.getValue(RoutingResultHandler.RECOGNIZED_INTENT_KEY));
+        verify(generalChatNode).apply(any(), any());
     }
 
     private MultiIntentRoutingResult result(boolean multiTask, List<SubTask> tasks) {

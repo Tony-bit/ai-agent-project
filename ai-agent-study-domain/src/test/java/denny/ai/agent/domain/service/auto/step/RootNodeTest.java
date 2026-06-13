@@ -195,6 +195,56 @@ public class RootNodeTest {
         assertEquals(queryDecompositionNode, handler);
     }
 
+    @Test
+    public void testUnifiedModeRoutesToIntentRouting() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.UNIFIED);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session")
+                .message("analyze one stock")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(intentRoutingNode, handler);
+    }
+
+    @Test
+    public void shouldIgnoreRoutingModeWhenAiAgentIdIsExplicit() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("123")
+                .sessionId("test-session")
+                .message("PE任务")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(step1AnalyzerNode, handler);
+    }
+
+    @Test
+    public void shouldIgnoreRoutingModeForInspectionAgent() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("5")
+                .sessionId("test-session")
+                .message("执行巡检")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(intelligentInspection, handler);
+    }
+
     /**
      * TC-Root-006: 验证 aiAgentId="5" 精确匹配，不是 "50" 或 "51"
      */

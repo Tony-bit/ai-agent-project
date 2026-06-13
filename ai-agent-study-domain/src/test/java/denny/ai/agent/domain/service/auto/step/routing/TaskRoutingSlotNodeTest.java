@@ -17,6 +17,7 @@ import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -96,6 +99,74 @@ public class TaskRoutingSlotNodeTest {
         assertEquals(Integer.valueOf(0), task1.getTaskType());
         assertEquals(3, ((RoutingExecutionMetrics) context.getValue(RoutingResultHandler.METRICS_KEY)).getStageMetrics().size());
         verify(routingResultHandler).handle(any(), any(), eq(finalResult));
+    }
+
+    @Test
+    public void fallsBackToGeneralChatWhenFinalSubTaskGraphIsInvalid() throws Exception {
+        DecomposedTask first = decomposed("sub-1", 1, 2);
+        DecomposedTask second = decomposed("sub-2", 2, 2);
+        QueryDecompositionResult decomposition = QueryDecompositionResult.builder()
+                .multiTask(true)
+                .reasoning("two")
+                .taskList(List.of(first, second))
+                .build();
+        context.setValue(QueryDecompositionNode.DECOMPOSITION_RESULT_KEY, decomposition);
+        IntentRoutingResult routing = IntentRoutingResult.builder()
+                .intent(IntentTypeEnum.PE_REASONING)
+                .confidence(ConfidenceEnum.HIGH)
+                .intentSpecificSlots(Map.of())
+                .build();
+        when(chatMemoryPersistenceService.getConversationHistory(any())).thenReturn(List.of());
+        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
+                .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
+                        RoutingStageMetric.builder()
+                                .stageName("task-routing-slot")
+                                .taskId(invocation.getArgument(1))
+                                .callIndex(invocation.getArgument(2))
+                                .promptTokens(1)
+                                .completionTokens(1)
+                                .totalTokens(2)
+                                .estimatedTokens(false)
+                                .success(true)
+                                .build()));
+
+        SubTask valid = subTask(first);
+        SubTask invalid = subTask(second);
+        invalid.setDependsOn(List.of("missing"));
+        when(intentRoutingService.toSubTask(first, routing)).thenReturn(valid);
+        when(intentRoutingService.toSubTask(second, routing)).thenReturn(invalid);
+        when(intentRoutingService.buildSplitResult(any(), any())).thenReturn(MultiIntentRoutingResult.builder()
+                .multiTask(true)
+                .needsClarification(false)
+                .taskList(List.of(valid, invalid))
+                .build());
+        MultiIntentRoutingResult fallback = MultiIntentRoutingResult.builder()
+                .multiTask(false)
+                .needsClarification(false)
+                .taskList(List.of(SubTask.builder()
+                        .taskId("fallback-1")
+                        .taskIndex(1)
+                        .totalTasks(1)
+                        .content("通用对话")
+                        .intent(IntentTypeEnum.GENERAL_CHAT)
+                        .confidence(ConfidenceEnum.MEDIUM)
+                        .executorNode("generalChatNode")
+                        .slots(Map.of())
+                        .dependsOn(List.of())
+                        .taskType(0)
+                        .status(SubTask.SubTaskStatus.PENDING)
+                        .build()))
+                .build();
+        when(intentRoutingService.fallbackMultiIntentResult(any())).thenReturn(fallback);
+
+        node.doApply(ExecuteCommandEntity.builder().message("combined").sessionId("s").build(), context);
+
+        ArgumentCaptor<MultiIntentRoutingResult> resultCaptor =
+                ArgumentCaptor.forClass(MultiIntentRoutingResult.class);
+        verify(routingResultHandler).handle(any(), any(), resultCaptor.capture());
+        assertSame(fallback, resultCaptor.getValue());
+        assertFalse(resultCaptor.getValue().getMultiTask());
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, resultCaptor.getValue().getTaskList().get(0).getIntent());
     }
 
     private DecomposedTask decomposed(String id, int index, int total) {

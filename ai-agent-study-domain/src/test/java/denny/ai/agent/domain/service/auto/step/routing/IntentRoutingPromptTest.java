@@ -124,4 +124,15 @@ public class IntentRoutingPromptTest {
         assertTrue("GENERAL_CHAT 描述应包含概念解释和简单知识问答", prompt.contains("概念解释、简单知识问答、普通信息查询"));
         assertTrue("PE_RETRIEVAL 描述应收缩到重型检索场景", prompt.contains("知识库检索、多文档汇总、外部资料整合"));
     }
+
+    @Test
+    public void should_build_both_stage_prompts_when_history_is_empty() {
+        String decompositionPrompt = IntentRoutingPrompt.buildQueryDecompositionPrompt("分析贵州茅台", List.of());
+        String slotPrompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt("分析贵州茅台", List.of());
+
+        assertTrue(decompositionPrompt.contains("（无历史对话）"));
+        assertTrue(slotPrompt.contains("（无历史对话）"));
+        assertTrue(decompositionPrompt.contains("Do not output intent"));
+        assertTrue(slotPrompt.contains("Do not output multiTask"));
+    }
 }

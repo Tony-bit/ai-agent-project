@@ -4,6 +4,8 @@ import denny.ai.agent.domain.model.entity.IntentFewshotSample;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.QueryDecompositionResult;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
+import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
@@ -17,12 +19,15 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -640,8 +645,187 @@ public class IntentRoutingServiceTest {
                 .call(any(org.springframework.ai.chat.prompt.Prompt.class));
     }
 
+    @Test
+    public void should_fallback_to_original_query_when_decomposition_fails_in_split() {
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenThrow(new RuntimeException("decomposition down"))
+                .thenReturn(response("""
+                        {"intent":"GENERAL_CHAT","confidence":"LOW","reasoning":"fallback task",
+                         "baseSlot":{"topic":"original query","sentiment":"neutral"},"intentSpecificSlots":{}}
+                        """));
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("original query", List.of(), configVO);
+
+        assertFalse(result.getMultiTask());
+        assertFalse(result.getNeedsClarification());
+        assertEquals(1, result.getTaskList().size());
+        assertEquals("fallback-1", result.getTaskList().get(0).getTaskId());
+        assertEquals("original query", result.getTaskList().get(0).getContent());
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
+
+        RoutingExecutionMetrics metrics = result.getMetrics();
+        assertEquals(IntentRoutingMode.SPLIT, metrics.getMode());
+        assertEquals(2, metrics.getStageMetrics().size());
+        assertEquals("query-decomposition", metrics.getStageMetrics().get(0).getStageName());
+        assertFalse(metrics.getStageMetrics().get(0).getSuccess());
+        assertEquals("task-routing-slot", metrics.getStageMetrics().get(1).getStageName());
+        assertEquals("fallback-1", metrics.getStageMetrics().get(1).getTaskId());
+    }
+
+    @Test
+    public void should_continue_other_tasks_when_one_task_routing_fails() {
+        ChatResponse decomposition = response("""
+                {"multiTask":true,"reasoning":"three tasks","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":3,"content":"analyze stock","dependsOn":[]},
+                  {"taskId":"sub-2","taskIndex":2,"totalTasks":3,"content":"summarize news","dependsOn":[]},
+                  {"taskId":"sub-3","taskIndex":3,"totalTasks":3,"content":"explain valuation","dependsOn":[]}
+                ]}
+                """);
+        ChatResponse stock = response("""
+                {"intent":"STOCK_ANALYSIS","confidence":"HIGH","reasoning":"stock task",
+                 "baseSlot":{"topic":"stock","sentiment":"neutral"},
+                 "intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","exchange":"SH"}}
+                """);
+        ChatResponse reasoning = response("""
+                {"intent":"PE_REASONING","confidence":"MEDIUM","reasoning":"reasoning task",
+                 "baseSlot":{"topic":"valuation","sentiment":"neutral"},"intentSpecificSlots":{}}
+                """);
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition)
+                .thenReturn(stock)
+                .thenThrow(new RuntimeException("slot down"))
+                .thenReturn(reasoning);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("combined", List.of(), configVO);
+
+        assertTrue(result.getMultiTask());
+        assertEquals(3, result.getTaskList().size());
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, result.getTaskList().get(0).getIntent());
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(1).getIntent());
+        assertEquals(ConfidenceEnum.LOW, result.getTaskList().get(1).getConfidence());
+        assertEquals(IntentTypeEnum.PE_REASONING, result.getTaskList().get(2).getIntent());
+        assertEquals(4, result.getMetrics().getStageMetrics().size());
+        RoutingStageMetric failedStage = result.getMetrics().getStageMetrics().get(2);
+        assertEquals("sub-2", failedStage.getTaskId());
+        assertFalse(failedStage.getSuccess());
+    }
+
+    @Test
+    public void should_aggregate_real_usage_metrics_in_serial_call_order() {
+        ChatResponse decomposition = response("""
+                {"multiTask":true,"reasoning":"two tasks","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":2,"content":"analyze stock","dependsOn":[]},
+                  {"taskId":"sub-2","taskIndex":2,"totalTasks":2,"content":"explain valuation","dependsOn":[]}
+                ]}
+                """, 10, 3);
+        ChatResponse stock = response("""
+                {"intent":"STOCK_ANALYSIS","confidence":"HIGH","reasoning":"stock task",
+                 "intentSpecificSlots":{"stockCode":"600519"}}
+                """, 5, 2);
+        ChatResponse reasoning = response("""
+                {"intent":"PE_REASONING","confidence":"MEDIUM","reasoning":"reasoning task",
+                 "intentSpecificSlots":{}}
+                """, 6, 4);
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition, stock, reasoning);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("combined", List.of(), configVO);
+
+        RoutingExecutionMetrics metrics = result.getMetrics();
+        assertEquals(IntentRoutingMode.SPLIT, metrics.getMode());
+        assertFalse(metrics.getEstimated());
+        assertEquals(Integer.valueOf(21), metrics.getTotalPromptTokens());
+        assertEquals(Integer.valueOf(9), metrics.getTotalCompletionTokens());
+        assertEquals(Integer.valueOf(30), metrics.getTotalTokens());
+        assertEquals(Integer.valueOf(0), metrics.getStageMetrics().get(0).getCallIndex());
+        assertNull(metrics.getStageMetrics().get(0).getTaskId());
+        assertEquals(Integer.valueOf(1), metrics.getStageMetrics().get(1).getCallIndex());
+        assertEquals("sub-1", metrics.getStageMetrics().get(1).getTaskId());
+        assertEquals(Integer.valueOf(2), metrics.getStageMetrics().get(2).getCallIndex());
+        assertEquals("sub-2", metrics.getStageMetrics().get(2).getTaskId());
+    }
+
+    @Test
+    public void should_keep_all_stages_when_metrics_mix_zero_and_estimated_tokens() {
+        ChatResponse decomposition = response("""
+                {"multiTask":false,"reasoning":"single","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"say hello","dependsOn":[]}
+                ]}
+                """, 0, 0);
+        ChatResponse taskRouting = responseWithoutMetadata("""
+                {"intent":"GENERAL_CHAT","confidence":"MEDIUM","reasoning":"chat",
+                 "intentSpecificSlots":{}}
+                """);
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition, taskRouting);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("hello", List.of(), configVO);
+
+        RoutingExecutionMetrics metrics = result.getMetrics();
+        assertEquals(2, metrics.getStageMetrics().size());
+        assertFalse(metrics.getStageMetrics().get(0).getEstimatedTokens());
+        assertTrue(metrics.getStageMetrics().get(1).getEstimatedTokens());
+        assertTrue(metrics.getEstimated());
+        assertTrue(metrics.getTotalTokens() >= 0);
+        int stageTokenSum = metrics.getStageMetrics().stream()
+                .mapToInt(stage -> stage.getTotalTokens() == null ? 0 : stage.getTotalTokens())
+                .sum();
+        assertEquals(Integer.valueOf(stageTokenSum), metrics.getTotalTokens());
+    }
+
+    @Test
+    public void should_normalize_null_dependencies_and_keep_partial_slots_without_clarification() {
+        ChatResponse decomposition = response("""
+                {"multiTask":false,"reasoning":"single","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析贵州茅台","dependsOn":null}
+                ]}
+                """);
+        ChatResponse stock = response("""
+                {"intent":"STOCK_ANALYSIS","confidence":"HIGH","reasoning":"partial stock",
+                 "baseSlot":{"topic":"贵州茅台","sentiment":"neutral"},
+                 "intentSpecificSlots":{"stockCode":"600519"}}
+                """);
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition, stock);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("分析贵州茅台", List.of(), configVO);
+
+        assertFalse(result.getNeedsClarification());
+        assertEquals(List.of(), result.getMissingInfo());
+        assertEquals("", result.getClarificationPrompt());
+        SubTask task = result.getTaskList().get(0);
+        assertEquals(List.of(), task.getDependsOn());
+        Map<String, Object> intentSpecificSlots = (Map<String, Object>) task.getSlots().get("intentSpecificSlots");
+        StockSlot stockSlot = (StockSlot) intentSpecificSlots.get("stockSlot");
+        assertEquals("600519", stockSlot.getStockCode());
+        assertNull(stockSlot.getExchange());
+    }
+
+    @Test
+    public void should_normalize_multi_task_flag_from_decomposition_task_list_size() {
+        QueryDecompositionResult result = intentRoutingService.parseQueryDecompositionResponse("""
+                {"multiTask":false,"reasoning":"two tasks","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":2,"content":"first","dependsOn":[]},
+                  {"taskId":"sub-2","taskIndex":2,"totalTasks":2,"content":"second","dependsOn":[]}
+                ]}
+                """, "original");
+
+        assertTrue(result.getMultiTask());
+    }
+
     private ChatResponse response(String content) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(content))));
+    }
+
+    private ChatResponse response(String content, int promptTokens, int completionTokens) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(content))),
+                ChatResponseMetadata.builder()
+                        .usage(new DefaultUsage(promptTokens, completionTokens, promptTokens + completionTokens))
+                        .build());
+    }
+
+    private ChatResponse responseWithoutMetadata(String content) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(content))), null);
     }
 
     private void mockLLMResponse(String responseContent) {
