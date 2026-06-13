@@ -48,4 +48,7 @@ public class MultiIntentRoutingResult {
      * 分解判断理由
      */
     private String reasoning;
+
+    /** Routing latency and token usage. */
+    private RoutingExecutionMetrics metrics;
 }

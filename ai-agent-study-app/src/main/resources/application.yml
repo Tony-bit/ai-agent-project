@@ -1,6 +1,10 @@
 server:
   port: 8090
 
+intent:
+  routing:
+    mode: unified
+
 spring:
 
   main:

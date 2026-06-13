@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.auto.step.routing;
 
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.model.valobj.QueryDecompositionResult;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.SubTask;
@@ -592,9 +593,59 @@ public class IntentRoutingServiceTest {
         verify(intentFewshotService, never()).retrieveTopK(anyString(), anyInt());
     }
 
+    @Test
+    public void shouldParseQueryDecompositionWithoutRoutingFields() {
+        QueryDecompositionResult result = intentRoutingService.parseQueryDecompositionResponse("""
+                {"multiTask":true,"reasoning":"two tasks","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":2,"content":"first","dependsOn":[]},
+                  {"taskId":"sub-2","taskIndex":2,"totalTasks":2,"content":"second","dependsOn":["sub-1"]}
+                ]}
+                """, "original");
+
+        assertTrue(result.getMultiTask());
+        assertEquals(2, result.getTaskList().size());
+        assertEquals(List.of("sub-1"), result.getTaskList().get(1).getDependsOn());
+    }
+
+    @Test
+    public void shouldRouteSplitSeriallyAndAggregateMetrics() {
+        ChatResponse decomposition = response("""
+                {"multiTask":true,"reasoning":"two tasks","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":2,"content":"analyze stock","dependsOn":[]},
+                  {"taskId":"sub-2","taskIndex":2,"totalTasks":2,"content":"explain valuation","dependsOn":[]}
+                ]}
+                """);
+        ChatResponse stock = response("""
+                {"intent":"STOCK_ANALYSIS","confidence":"HIGH","reasoning":"stock task",
+                 "baseSlot":{"topic":"stock","sentiment":"neutral"},
+                 "intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","exchange":"SH"}}
+                """);
+        ChatResponse reasoning = response("""
+                {"intent":"PE_REASONING","confidence":"MEDIUM","reasoning":"reasoning task",
+                 "baseSlot":{"topic":"valuation","sentiment":"neutral"},"intentSpecificSlots":{}}
+                """);
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition, stock, reasoning);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("combined", List.of(), configVO);
+
+        assertTrue(result.getMultiTask());
+        assertEquals(2, result.getTaskList().size());
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, result.getTaskList().get(0).getIntent());
+        assertEquals(IntentTypeEnum.PE_REASONING, result.getTaskList().get(1).getIntent());
+        assertEquals(IntentRoutingMode.SPLIT, result.getMetrics().getMode());
+        assertEquals(3, result.getMetrics().getStageMetrics().size());
+        assertEquals(Integer.valueOf(2), result.getMetrics().getStageMetrics().get(2).getCallIndex());
+        org.mockito.Mockito.verify(chatModel, org.mockito.Mockito.times(3))
+                .call(any(org.springframework.ai.chat.prompt.Prompt.class));
+    }
+
+    private ChatResponse response(String content) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(content))));
+    }
+
     private void mockLLMResponse(String responseContent) {
-        ChatResponse chatResponse = new ChatResponse(
-                List.of(new Generation(new AssistantMessage(responseContent))));
+        ChatResponse chatResponse = response(responseContent);
         when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
                 .thenReturn(chatResponse);
     }

@@ -6,6 +6,9 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
+import denny.ai.agent.domain.service.auto.step.routing.QueryDecompositionNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +29,12 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Resource
     private IntentRoutingNode intentRoutingNode;
+
+    @Resource
+    private QueryDecompositionNode queryDecompositionNode;
+
+    @Resource
+    private IntentRoutingProperties intentRoutingProperties = new IntentRoutingProperties();
 
     @Resource
     private Step1AnalyzerNode step1AnalyzerNode;
@@ -84,7 +93,8 @@ public class RootNode extends AbstractExecuteSupport {
             Map<String, AiAgentClientFlowConfigVO> intentRoutingConfigMap =
                     repository.queryAllFlowConfigForIntentRouting();
             dynamicContext.setAiAgentClientFlowConfigVOMap(intentRoutingConfigMap);
-            return intentRoutingNode;
+            return intentRoutingProperties.getMode() == IntentRoutingMode.SPLIT
+                    ? queryDecompositionNode : intentRoutingNode;
         }
 
         // 巡检 Agent（aiAgentId = "5"）走独立流程

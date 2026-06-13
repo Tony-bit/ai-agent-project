@@ -7,8 +7,12 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.BaseSlot;
+import denny.ai.agent.domain.model.valobj.DecomposedTask;
 import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.QueryDecompositionResult;
+import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
+import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
@@ -16,17 +20,23 @@ import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
+import denny.ai.agent.domain.util.TokenCountUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * 意图识别服务
@@ -54,6 +64,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     @Resource
     private IntentFewshotService intentFewshotService;
 
+    @Resource
+    private TaskGraphValidator taskGraphValidator = new TaskGraphValidator();
+
     public MultiIntentRoutingResult routeUnified(String userMessage,
                                                  List<String> historyMessages,
                                                  AiAgentClientFlowConfigVO configVO) {
@@ -66,30 +79,133 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                  Map<String, Object> observationContext) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(userMessage);
         String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(userMessage, historyMessages, fewshotSamples);
-        log.info("统一路由 LLM 原始请求: prompt:{}", prompt);
-        try {
-            ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
-            Map<String, Object> advisorContext = new HashMap<>();
-            if (observationContext != null) {
-                advisorContext.putAll(observationContext);
-            }
-            advisorContext.putIfAbsent("client_id", configVO.getClientId());
-            String response = chatClient.prompt(prompt)
-                    .advisors(advisor -> advisorContext.forEach(advisor::param))
-                    .call()
-                    .content();
-            log.info("统一路由 LLM 原始响应: userMessage={}, clientId={}, response=[{}], responseLen={}",
-                    userMessage, configVO.getClientId(), response, response == null ? -1 : response.length());
-            if (response == null || response.isBlank()) {
-                log.warn("响应为空，降级为 GENERAL_CHAT");
-                return fallbackMultiIntentResult("LLM返回为空");
-            }
-            return parseUnifiedResponse(response);
-        } catch (Exception e) {
-            log.error("统一路由调用失败，降级为 GENERAL_CHAT: userMessage={}, clientId={}, error={}",
-                    userMessage, configVO.getClientId(), e.getMessage(), e);
-            return fallbackMultiIntentResult("LLM调用异常: " + e.getMessage());
+        long startedAt = System.currentTimeMillis();
+        RoutingCallResult<MultiIntentRoutingResult> call = callRoutingModel(
+                "unified-routing", null, 0, prompt, configVO, observationContext,
+                this::parseUnifiedResponse,
+                error -> fallbackMultiIntentResult(error));
+        MultiIntentRoutingResult result = call.result();
+        RoutingExecutionMetrics metrics = emptyMetrics(IntentRoutingMode.UNIFIED);
+        metrics.addStage(call.metric());
+        metrics.setTotalLatencyMs(System.currentTimeMillis() - startedAt);
+        result.setMetrics(metrics);
+        logMetrics(metrics);
+        return result;
+    }
+
+    public QueryDecompositionResult decomposeQuery(String userMessage,
+                                                   List<String> historyMessages,
+                                                   AiAgentClientFlowConfigVO configVO) {
+        return decomposeQueryWithMetric(userMessage, historyMessages, configVO).result();
+    }
+
+    RoutingCallResult<QueryDecompositionResult> decomposeQueryWithMetric(String userMessage,
+                                                                         List<String> historyMessages,
+                                                                         AiAgentClientFlowConfigVO configVO) {
+        String prompt = IntentRoutingPrompt.buildQueryDecompositionPrompt(userMessage, historyMessages);
+        return callRoutingModel("query-decomposition", null, 0, prompt, configVO, Map.of(),
+                response -> parseQueryDecompositionResponse(response, userMessage),
+                error -> fallbackDecomposition(userMessage, error));
+    }
+
+    public IntentRoutingResult routeTaskIntentSlots(String taskContent,
+                                                    List<String> historyMessages,
+                                                    AiAgentClientFlowConfigVO configVO) {
+        return routeTaskIntentSlotsWithMetric(taskContent, null, 1, historyMessages, configVO).result();
+    }
+
+    RoutingCallResult<IntentRoutingResult> routeTaskIntentSlotsWithMetric(String taskContent,
+                                                                          String taskId,
+                                                                          int callIndex,
+                                                                          List<String> historyMessages,
+                                                                          AiAgentClientFlowConfigVO configVO) {
+        String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages);
+        return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO, Map.of(),
+                response -> {
+                    IntentRoutingResult parsed = parseResponse(response);
+                    return parsed.getIntent() == null || parsed.getIntent() == IntentTypeEnum.UNKNOWN
+                            ? fallbackTaskRoutingResult(parsed.getReasoning()) : parsed;
+                }, this::fallbackTaskRoutingResult);
+    }
+
+    public MultiIntentRoutingResult routeSplit(String userMessage,
+                                               List<String> historyMessages,
+                                               AiAgentClientFlowConfigVO configVO) {
+        long startedAt = System.currentTimeMillis();
+        RoutingExecutionMetrics metrics = emptyMetrics(IntentRoutingMode.SPLIT);
+        RoutingCallResult<QueryDecompositionResult> decompositionCall =
+                decomposeQueryWithMetric(userMessage, historyMessages, configVO);
+        metrics.addStage(decompositionCall.metric());
+        QueryDecompositionResult decomposition = validateOrFallbackDecomposition(
+                decompositionCall.result(), userMessage, decompositionCall.metric());
+
+        List<SubTask> tasks = new ArrayList<>();
+        List<DecomposedTask> orderedTasks = decomposition.getTaskList().stream()
+                .sorted(Comparator.comparing(DecomposedTask::getTaskIndex))
+                .toList();
+        for (int i = 0; i < orderedTasks.size(); i++) {
+            DecomposedTask task = orderedTasks.get(i);
+            RoutingCallResult<IntentRoutingResult> routingCall = routeTaskIntentSlotsWithMetric(
+                    task.getContent(), task.getTaskId(), i + 1, historyMessages, configVO);
+            metrics.addStage(routingCall.metric());
+            tasks.add(toSubTask(task, routingCall.result()));
         }
+
+        MultiIntentRoutingResult result = buildSplitResult(decomposition, tasks);
+        try {
+            taskGraphValidator.validateSubTasks(tasks);
+        } catch (TaskGraphValidationException e) {
+            result = fallbackMultiIntentResult("Task graph validation failed: " + e.getMessage());
+        }
+        metrics.setTotalLatencyMs(System.currentTimeMillis() - startedAt);
+        result.setMetrics(metrics);
+        logMetrics(metrics);
+        return result;
+    }
+
+    public QueryDecompositionResult parseQueryDecompositionResponse(String response, String userMessage) {
+        if (!StringUtils.hasText(response)) {
+            return fallbackDecomposition(userMessage, "LLM returned an empty response");
+        }
+        try {
+            JSONObject json = JSON.parseObject(extractJson(response));
+            List<DecomposedTask> tasks = json.getJSONArray("taskList") == null
+                    ? List.of() : json.getJSONArray("taskList").toJavaList(DecomposedTask.class);
+            if (tasks.isEmpty()) {
+                return fallbackDecomposition(userMessage, "taskList is empty");
+            }
+            tasks.forEach(task -> task.setDependsOn(task.getDependsOn() == null ? List.of() : task.getDependsOn()));
+            return QueryDecompositionResult.builder()
+                    .multiTask(tasks.size() > 1)
+                    .reasoning(defaultReasoning(json.getString("reasoning")))
+                    .taskList(tasks)
+                    .build();
+        } catch (Exception e) {
+            return fallbackDecomposition(userMessage, "JSON parsing failed: " + e.getMessage());
+        }
+    }
+
+    public QueryDecompositionResult fallbackDecomposition(String userMessage, String reason) {
+        return QueryDecompositionResult.builder()
+                .multiTask(false)
+                .reasoning(reason)
+                .taskList(List.of(DecomposedTask.builder()
+                        .taskId("fallback-1")
+                        .taskIndex(1)
+                        .totalTasks(1)
+                        .content(userMessage)
+                        .dependsOn(List.of())
+                        .build()))
+                .build();
+    }
+
+    public IntentRoutingResult fallbackTaskRoutingResult(String reason) {
+        return IntentRoutingResult.builder()
+                .intent(IntentTypeEnum.GENERAL_CHAT)
+                .confidence(ConfidenceEnum.LOW)
+                .reasoning(reason)
+                .intentSpecificSlots(Map.of())
+                .build();
     }
 
     @Override
@@ -228,6 +344,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                 return fallbackMultiIntentResult("taskList为空");
             }
 
+            taskGraphValidator.validateSubTasks(taskList);
+            taskList.forEach(this::normalizeTask);
+
             return MultiIntentRoutingResult.builder()
                     .multiTask(Boolean.TRUE.equals(multiTask) && taskList.size() > 1)
                     .needsClarification(false)
@@ -281,11 +400,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             return List.of();
         }
 
-        List<SubTask> taskList = taskArray.toJavaList(SubTask.class);
-        for (SubTask subTask : taskList) {
-            normalizeTask(subTask);
-        }
-        return taskList;
+        return taskArray.toJavaList(SubTask.class);
     }
 
     private void normalizeTask(SubTask subTask) {
@@ -333,6 +448,159 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             }
         }
         return result;
+    }
+
+    private QueryDecompositionResult validateOrFallbackDecomposition(QueryDecompositionResult result,
+                                                                     String userMessage,
+                                                                     RoutingStageMetric metric) {
+        try {
+            taskGraphValidator.validateDecomposedTasks(result.getTaskList());
+            result.setMultiTask(result.getTaskList().size() > 1);
+            return result;
+        } catch (TaskGraphValidationException e) {
+            metric.setSuccess(false);
+            metric.setErrorMessage(e.getMessage());
+            return fallbackDecomposition(userMessage, "Task graph validation failed: " + e.getMessage());
+        }
+    }
+
+    SubTask toSubTask(DecomposedTask task, IntentRoutingResult routing) {
+        Map<String, Object> slots = new HashMap<>();
+        if (routing.getBaseSlot() != null) {
+            slots.put("baseSlot", routing.getBaseSlot());
+        }
+        slots.put("intentSpecificSlots", routing.getIntentSpecificSlots() == null
+                ? Map.of() : routing.getIntentSpecificSlots());
+        IntentTypeEnum intent = routing.getIntent() == null ? IntentTypeEnum.GENERAL_CHAT : routing.getIntent();
+        return SubTask.builder()
+                .taskId(task.getTaskId())
+                .taskIndex(task.getTaskIndex())
+                .totalTasks(task.getTotalTasks())
+                .content(task.getContent())
+                .dependsOn(task.getDependsOn() == null ? List.of() : task.getDependsOn())
+                .intent(intent)
+                .executorNode(resolveExecutorNode(intent))
+                .confidence(routing.getConfidence() == null ? ConfidenceEnum.LOW : routing.getConfidence())
+                .slots(slots)
+                .status(SubTask.SubTaskStatus.PENDING)
+                .taskType(0)
+                .build();
+    }
+
+    MultiIntentRoutingResult buildSplitResult(QueryDecompositionResult decomposition, List<SubTask> tasks) {
+        return MultiIntentRoutingResult.builder()
+                .multiTask(tasks.size() > 1)
+                .needsClarification(false)
+                .missingInfo(List.of())
+                .clarificationPrompt("")
+                .reasoning(decomposition.getReasoning())
+                .taskList(tasks)
+                .build();
+    }
+
+    private RoutingExecutionMetrics emptyMetrics(IntentRoutingMode mode) {
+        return RoutingExecutionMetrics.builder()
+                .mode(mode)
+                .totalLatencyMs(0L)
+                .totalPromptTokens(0)
+                .totalCompletionTokens(0)
+                .totalTokens(0)
+                .estimated(false)
+                .stageMetrics(new ArrayList<>())
+                .build();
+    }
+
+    private <T> RoutingCallResult<T> callRoutingModel(String stageName,
+                                                      String taskId,
+                                                      int callIndex,
+                                                      String prompt,
+                                                      AiAgentClientFlowConfigVO configVO,
+                                                      Map<String, Object> observationContext,
+                                                      Function<String, T> parser,
+                                                      Function<String, T> fallback) {
+        long startedAt = System.currentTimeMillis();
+        try {
+            ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
+            Map<String, Object> advisorContext = new HashMap<>();
+            if (observationContext != null) {
+                advisorContext.putAll(observationContext);
+            }
+            advisorContext.putIfAbsent("client_id", configVO.getClientId());
+            ChatResponse response = chatClient.prompt(prompt)
+                    .advisors(advisor -> advisorContext.forEach(advisor::param))
+                    .call()
+                    .chatResponse();
+            String content = response == null || response.getResult() == null
+                    || response.getResult().getOutput() == null
+                    ? null : response.getResult().getOutput().getText();
+            RoutingStageMetric metric = buildMetric(stageName, taskId, callIndex, configVO.getClientId(),
+                    startedAt, prompt, content, response, true, null);
+            if (!StringUtils.hasText(content)) {
+                metric.setSuccess(false);
+                metric.setErrorMessage("LLM returned an empty response");
+                return new RoutingCallResult<>(fallback.apply(metric.getErrorMessage()), metric);
+            }
+            return new RoutingCallResult<>(parser.apply(content), metric);
+        } catch (Exception e) {
+            RoutingStageMetric metric = buildMetric(stageName, taskId, callIndex, configVO.getClientId(),
+                    startedAt, prompt, "", null, false, e.getMessage());
+            log.error("Routing model call failed: stage={}, taskId={}, error={}", stageName, taskId, e.getMessage(), e);
+            return new RoutingCallResult<>(fallback.apply("LLM调用异常: " + e.getMessage()), metric);
+        }
+    }
+
+    private RoutingStageMetric buildMetric(String stageName,
+                                           String taskId,
+                                           int callIndex,
+                                           String clientId,
+                                           long startedAt,
+                                           String prompt,
+                                           String content,
+                                           ChatResponse response,
+                                           boolean success,
+                                           String errorMessage) {
+        Integer promptTokens = null;
+        Integer completionTokens = null;
+        Integer totalTokens = null;
+        if (response != null && response.getMetadata() != null) {
+            Usage usage = response.getMetadata().getUsage();
+            if (usage != null) {
+                promptTokens = usage.getPromptTokens();
+                completionTokens = usage.getCompletionTokens();
+                totalTokens = usage.getTotalTokens();
+            }
+        }
+        boolean estimated = promptTokens == null || completionTokens == null;
+        if (promptTokens == null) {
+            promptTokens = TokenCountUtils.estimate(prompt);
+        }
+        if (completionTokens == null) {
+            completionTokens = TokenCountUtils.estimate(content);
+        }
+        if (totalTokens == null) {
+            totalTokens = promptTokens + completionTokens;
+        }
+        return RoutingStageMetric.builder()
+                .stageName(stageName)
+                .clientId(clientId)
+                .taskId(taskId)
+                .callIndex(callIndex)
+                .latencyMs(System.currentTimeMillis() - startedAt)
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .estimatedTokens(estimated)
+                .success(success)
+                .errorMessage(errorMessage)
+                .build();
+    }
+
+    private void logMetrics(RoutingExecutionMetrics metrics) {
+        log.info("Intent routing metrics: mode={}, totalLatencyMs={}, totalTokens={}, stages={}",
+                metrics.getMode(), metrics.getTotalLatencyMs(), metrics.getTotalTokens(), metrics.getStageMetrics());
+    }
+
+    record RoutingCallResult<T>(T result, RoutingStageMetric metric) {
     }
 
     private String resolveExecutorNode(IntentTypeEnum intent) {

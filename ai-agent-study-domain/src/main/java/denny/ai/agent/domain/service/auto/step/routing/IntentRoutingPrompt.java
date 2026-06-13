@@ -12,6 +12,24 @@ import java.util.List;
  */
 public class IntentRoutingPrompt {
 
+    public static final String QUERY_DECOMPOSITION_PROMPT_TEMPLATE = """
+        You split a user query into executable task boundaries and dependencies.
+        Return JSON only. Do not output intent, confidence, executorNode, slots, taskType,
+        needsClarification, missingInfo, or clarificationPrompt.
+        A single-task query must still return exactly one task. Task content should be self-contained.
+        dependsOn may reference only tasks that appear earlier in taskList.
+        Output schema:
+        {"multiTask":false,"reasoning":"...","taskList":[{"taskId":"sub-1","taskIndex":1,
+        "totalTasks":1,"content":"...","dependsOn":[]}]}
+        """;
+
+    public static final String TASK_ROUTING_SLOT_PROMPT_TEMPLATE = """
+        The input is already one task. Do not split it again.
+        Identify only intent, confidence, reasoning, baseSlot, and intentSpecificSlots.
+        Return JSON only. Do not output multiTask, taskList, executorNode, or clarification fields.
+        For STOCK_ANALYSIS, extract stockCode, stockQueryType, timeRange, and exchange when possible.
+        """;
+
     public static final String SYSTEM_PROMPT_TEMPLATE = """
         ## 角色
         你是一个专业的意图识别助手，负责分析用户输入并将其分类到以下8种意图之一。
@@ -256,5 +274,17 @@ public class IntentRoutingPrompt {
         prompt.append("用户: ").append(userMessage).append("\n");
         prompt.append("输出:");
         return prompt.toString();
+    }
+
+    public static String buildQueryDecompositionPrompt(String userMessage, List<String> historyMessages) {
+        return QUERY_DECOMPOSITION_PROMPT_TEMPLATE
+                + "\n\nHistory:\n" + buildHistorySection(historyMessages)
+                + "\n\nUser query:\n" + userMessage + "\nJSON:";
+    }
+
+    public static String buildTaskRoutingSlotPrompt(String taskContent, List<String> historyMessages) {
+        return TASK_ROUTING_SLOT_PROMPT_TEMPLATE
+                + "\n\nHistory:\n" + buildHistorySection(historyMessages)
+                + "\n\nTask:\n" + taskContent + "\nJSON:";
     }
 }

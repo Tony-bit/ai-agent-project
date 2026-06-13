@@ -6,6 +6,9 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
+import denny.ai.agent.domain.service.auto.step.routing.QueryDecompositionNode;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
@@ -43,6 +46,9 @@ public class RootNodeTest {
     private IntentRoutingNode intentRoutingNode;
 
     @Mock
+    private QueryDecompositionNode queryDecompositionNode;
+
+    @Mock
     private Step1AnalyzerNode step1AnalyzerNode;
 
     @Mock
@@ -63,6 +69,8 @@ public class RootNodeTest {
         rootNode = new RootNode();
 
         setField(rootNode, "intentRoutingNode", intentRoutingNode);
+        setField(rootNode, "queryDecompositionNode", queryDecompositionNode);
+        setField(rootNode, "intentRoutingProperties", new IntentRoutingProperties());
         setField(rootNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(rootNode, "intelligentInspection", intelligentInspection);
         setField(rootNode, "repository", repository);
@@ -169,6 +177,22 @@ public class RootNodeTest {
                 rootNode.get(request, dynamicContext);
 
         assertEquals(intentRoutingNode, handler);
+    }
+
+    @Test
+    public void testSplitModeRoutesToQueryDecomposition() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session")
+                .message("analyze two stocks")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(queryDecompositionNode, handler);
     }
 
     /**
