@@ -646,6 +646,32 @@ public class IntentRoutingServiceTest {
     }
 
     @Test
+    public void should_use_fewshot_for_split_task_routing_stage() {
+        ChatResponse decomposition = response("""
+                {"multiTask":false,"reasoning":"single","taskList":[
+                  {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"summarize RAG docs","dependsOn":[]}
+                ]}
+                """);
+        ChatResponse retrieval = response("""
+                {"intent":"PE_RETRIEVAL","confidence":"HIGH","reasoning":"retrieval task",
+                 "baseSlot":{"topic":"RAG docs","sentiment":"neutral"},"intentSpecificSlots":{}}
+                """);
+        when(intentFewshotService.retrieveTopK("summarize RAG docs", 5))
+                .thenReturn(List.of(IntentFewshotSample.builder()
+                        .queryText("检索 RAG 架构资料")
+                        .exampleJson("{\"intent\":\"PE_RETRIEVAL\"}")
+                        .build()));
+        when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
+                .thenReturn(decomposition, retrieval);
+
+        MultiIntentRoutingResult result = intentRoutingService.routeSplit("combined", List.of(), configVO);
+
+        assertEquals(IntentTypeEnum.PE_RETRIEVAL, result.getTaskList().get(0).getIntent());
+        verify(intentFewshotService).retrieveTopK("summarize RAG docs", 5);
+        verify(intentFewshotService, never()).retrieveTopK("combined", 5);
+    }
+
+    @Test
     public void should_fallback_to_original_query_when_decomposition_fails_in_split() {
         when(chatModel.call(any(org.springframework.ai.chat.prompt.Prompt.class)))
                 .thenThrow(new RuntimeException("decomposition down"))

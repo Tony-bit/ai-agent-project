@@ -2,6 +2,8 @@ package denny.ai.agent.test.eval.routing;
 
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
+import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService;
@@ -34,17 +36,39 @@ public class IntentRoutingOnlineEvaluator {
     private final IntentRoutingService routingService;
     private final ObservabilityService observabilityService;
     private final String clientId;
+    private final EvalRoutingMode routingMode;
+    private final Integer runsOverride;
 
     public IntentRoutingOnlineEvaluator(IntentRoutingService routingService, String clientId) {
-        this(routingService, null, clientId);
+        this(routingService, null, clientId, EvalRoutingMode.UNIFIED);
     }
 
     public IntentRoutingOnlineEvaluator(IntentRoutingService routingService,
                                         ObservabilityService observabilityService,
                                         String clientId) {
+        this(routingService, observabilityService, clientId, EvalRoutingMode.UNIFIED);
+    }
+
+    public IntentRoutingOnlineEvaluator(IntentRoutingService routingService,
+                                        ObservabilityService observabilityService,
+                                        String clientId,
+                                        EvalRoutingMode routingMode) {
+        this(routingService, observabilityService, clientId, routingMode, null);
+    }
+
+    public IntentRoutingOnlineEvaluator(IntentRoutingService routingService,
+                                        ObservabilityService observabilityService,
+                                        String clientId,
+                                        EvalRoutingMode routingMode,
+                                        Integer runsOverride) {
         this.routingService = Objects.requireNonNull(routingService, "routingService");
         this.observabilityService = observabilityService;
         this.clientId = Objects.requireNonNull(clientId, "clientId");
+        this.routingMode = Objects.requireNonNull(routingMode, "routingMode");
+        if (runsOverride != null && runsOverride < 1) {
+            throw new IllegalArgumentException("runsOverride must be >= 1");
+        }
+        this.runsOverride = runsOverride;
     }
 
     public EvalReport evaluate(List<IntentRoutingOnlineEvalCase> cases, String suite, String tag) {
@@ -52,6 +76,7 @@ public class IntentRoutingOnlineEvaluator {
         report.setEvalRunId(newEvalRunId());
         report.setStartedAt(Instant.now().toString());
         report.setClientId(clientId);
+        report.setRoutingMode(routingMode.name());
         report.setSuite(suite);
         report.setTag(tag);
         report.setBatchTraceId(startBatchTrace(report, cases.size()));
@@ -82,20 +107,11 @@ public class IntentRoutingOnlineEvaluator {
                 .clientType(AiClientTypeEnumVO.INTENT_ROUTING.getCode())
                 .build();
 
-        for (int i = 1; i <= c.getEvaluation().getRuns(); i++) {
+        int runs = runsOverride == null ? c.getEvaluation().getRuns() : runsOverride;
+        for (int i = 1; i <= runs; i++) {
             String traceId = startRunTrace(evalRunId, c, i);
             long startNanos = System.nanoTime();
-            MultiIntentRoutingResult result;
-            if (observabilityService == null) {
-                result = routingService.routeUnified(
-                        c.getInput().getQuery(), safeList(c.getInput().getHistoryMessages()), config);
-            } else {
-                result = routingService.routeUnified(
-                        c.getInput().getQuery(),
-                        safeList(c.getInput().getHistoryMessages()),
-                        config,
-                        observationContext(evalRunId, c, i, traceId));
-            }
+            MultiIntentRoutingResult result = route(c, evalRunId, i, traceId, config);
             long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
             RunResult run = toRunResult(i, latencyMs, c, result);
             run.setTraceId(traceId);
@@ -106,6 +122,25 @@ public class IntentRoutingOnlineEvaluator {
         summarizeCase(caseResult);
         publishCaseScores(evalRunId, caseResult);
         return caseResult;
+    }
+
+    private MultiIntentRoutingResult route(IntentRoutingOnlineEvalCase c,
+                                           String evalRunId,
+                                           int runIndex,
+                                           String traceId,
+                                           AiAgentClientFlowConfigVO config) {
+        List<String> historyMessages = safeList(c.getInput().getHistoryMessages());
+        if (routingMode == EvalRoutingMode.SPLIT) {
+            return routingService.routeSplit(c.getInput().getQuery(), historyMessages, config);
+        }
+        if (observabilityService == null) {
+            return routingService.routeUnified(c.getInput().getQuery(), historyMessages, config);
+        }
+        return routingService.routeUnified(
+                c.getInput().getQuery(),
+                historyMessages,
+                config,
+                observationContext(evalRunId, c, runIndex, traceId));
     }
 
     private String newEvalRunId() {
@@ -122,6 +157,7 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("scene", "intent_routing_online_eval_batch");
         metadata.put("evalRunId", report.getEvalRunId());
         metadata.put("clientId", clientId);
+        metadata.put("routingMode", routingMode.name());
         metadata.put("caseCount", caseCount);
         putIfText(metadata, "suite", report.getSuite());
         putIfText(metadata, "tag", report.getTag());
@@ -143,6 +179,7 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("category", c.getCategory());
         metadata.put("expectedIntents", safeList(c.getExpected().getTaskIntents()));
         metadata.put("clientId", clientId);
+        metadata.put("routingMode", routingMode.name());
         return observabilityService.startTrace(evalRunId, c.getInput().getQuery(), metadata);
     }
 
@@ -152,12 +189,16 @@ public class IntentRoutingOnlineEvaluator {
                                                    String traceId) {
         Map<String, Object> context = new HashMap<>();
         context.put("trace_id", traceId);
-        context.put("chat_memory_conversation_id", evalRunId);
+        context.put("chat_memory_conversation_id", memoryConversationId(evalRunId, c.getCaseId(), runIndex));
         context.put("client_id", clientId);
         context.put("eval_run_id", evalRunId);
         context.put("eval_case_id", c.getCaseId());
         context.put("eval_run_index", runIndex);
         return context;
+    }
+
+    private String memoryConversationId(String evalRunId, String caseId, int runIndex) {
+        return evalRunId + "/" + caseId + "/" + runIndex;
     }
 
     private void completeRunTrace(String evalRunId,
@@ -204,6 +245,7 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("scene", "intent_routing_online_eval_batch");
         metadata.put("evalRunId", report.getEvalRunId());
         metadata.put("failedCaseIds", report.failedCaseIds());
+        metadata.put("routingMode", routingMode.name());
         observabilityService.logScore(report.getBatchTraceId(), "case_pass_rate", metrics.getCasePassRate(),
                 "Global case pass rate", metadata);
         observabilityService.logScore(report.getBatchTraceId(), "run_accuracy", metrics.getRunAccuracy(),
@@ -227,6 +269,9 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("signature", run.getSignature());
         metadata.put("actualIntents", run.getActualIntents());
         metadata.put("latencyMs", run.getLatencyMs());
+        metadata.put("routingMode", run.getRoutingMode());
+        metadata.put("totalTokens", run.getTotalTokens());
+        metadata.put("stageCount", run.getStageCount());
         return metadata;
     }
 
@@ -243,14 +288,16 @@ public class IntentRoutingOnlineEvaluator {
         RunResult run = new RunResult();
         run.setRunIndex(runIndex);
         run.setLatencyMs(latencyMs);
+        run.setRoutingMode(routingMode.name());
 
         if (result == null) {
             run.setOutcomeType(OutcomeType.FORMAT_ERROR.name());
             run.setSignature("FORMAT_ERROR|NULL_RESULT");
-            run.setReasoning("routeUnified returned null");
+            run.setReasoning(routingMode.name() + " routing returned null");
             return run;
         }
 
+        attachRoutingMetrics(run, result.getMetrics());
         run.setReasoning(result.getReasoning());
         run.setActualMultiTask(Boolean.TRUE.equals(result.getMultiTask()));
         run.setActualNeedsClarification(Boolean.TRUE.equals(result.getNeedsClarification()));
@@ -262,6 +309,19 @@ public class IntentRoutingOnlineEvaluator {
         run.setSignature(buildSignature(outcomeType, run));
         run.setPassed(outcomeType == OutcomeType.ROUTE && matchesExpected(c, run));
         return run;
+    }
+
+    private void attachRoutingMetrics(RunResult run, RoutingExecutionMetrics metrics) {
+        if (metrics == null) {
+            return;
+        }
+        run.setRoutingLatencyMs(metrics.getTotalLatencyMs());
+        run.setTotalPromptTokens(metrics.getTotalPromptTokens());
+        run.setTotalCompletionTokens(metrics.getTotalCompletionTokens());
+        run.setTotalTokens(metrics.getTotalTokens());
+        run.setEstimated(metrics.getEstimated());
+        run.setStageMetrics(safeList(metrics.getStageMetrics()));
+        run.setStageCount(run.getStageMetrics().size());
     }
 
     private OutcomeType classifyOutcome(String reasoning) {
@@ -408,7 +468,41 @@ public class IntentRoutingOnlineEvaluator {
         populateCategoryMetrics(cases, metrics);
         populatePerIntentAccuracy(cases, metrics);
         populateConfusionMatrix(cases, metrics);
+        populateRuntimeMetrics(allRuns, metrics);
         return metrics;
+    }
+
+    private void populateRuntimeMetrics(List<RunResult> runs, GlobalMetrics metrics) {
+        metrics.setAvgLatencyMs(averageLong(runs.stream().map(RunResult::getLatencyMs).toList()));
+        metrics.setP95LatencyMs(percentile95(runs.stream().map(RunResult::getLatencyMs).toList()));
+        metrics.setAvgRoutingLatencyMs(averageLong(runs.stream()
+                .map(RunResult::getRoutingLatencyMs)
+                .filter(Objects::nonNull)
+                .toList()));
+        metrics.setP95RoutingLatencyMs(percentile95(runs.stream()
+                .map(RunResult::getRoutingLatencyMs)
+                .filter(Objects::nonNull)
+                .toList()));
+        metrics.setAvgTokens(averageInteger(runs.stream().map(RunResult::getTotalTokens).toList()));
+        metrics.setAvgPromptTokens(averageInteger(runs.stream().map(RunResult::getTotalPromptTokens).toList()));
+        metrics.setAvgCompletionTokens(averageInteger(runs.stream().map(RunResult::getTotalCompletionTokens).toList()));
+        metrics.setAvgStageCount(averageInteger(runs.stream().map(RunResult::getStageCount).toList()));
+
+        List<RunResult> runsWithMetrics = runs.stream()
+                .filter(run -> run.getStageCount() != null)
+                .toList();
+        long estimatedRuns = runsWithMetrics.stream()
+                .filter(run -> Boolean.TRUE.equals(run.getEstimated()))
+                .count();
+        metrics.setEstimatedTokenRate(rate(estimatedRuns, runsWithMetrics.size()));
+
+        List<RoutingStageMetric> stages = runs.stream()
+                .flatMap(run -> safeList(run.getStageMetrics()).stream())
+                .toList();
+        long successfulStages = stages.stream()
+                .filter(stage -> Boolean.TRUE.equals(stage.getSuccess()))
+                .count();
+        metrics.setStageSuccessRate(rate(successfulStages, stages.size()));
     }
 
     private void populateCategoryMetrics(List<CaseResult> cases, GlobalMetrics metrics) {
@@ -475,6 +569,28 @@ public class IntentRoutingOnlineEvaluator {
         return denominator == 0 ? 0 : (double) numerator / denominator;
     }
 
+    private double averageInteger(List<Integer> values) {
+        List<Integer> safeValues = values.stream().filter(Objects::nonNull).toList();
+        return safeValues.isEmpty() ? 0 : safeValues.stream().mapToInt(Integer::intValue).average().orElse(0);
+    }
+
+    private double averageLong(List<Long> values) {
+        List<Long> safeValues = values.stream().filter(Objects::nonNull).toList();
+        return safeValues.isEmpty() ? 0 : safeValues.stream().mapToLong(Long::longValue).average().orElse(0);
+    }
+
+    private long percentile95(List<Long> values) {
+        List<Long> safeValues = values.stream()
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
+        if (safeValues.isEmpty()) {
+            return 0;
+        }
+        int index = (int) Math.ceil(safeValues.size() * 0.95) - 1;
+        return safeValues.get(Math.max(0, Math.min(index, safeValues.size() - 1)));
+    }
+
     private <T> List<T> safeList(List<T> values) {
         return values == null ? List.of() : values;
     }
@@ -493,6 +609,7 @@ public class IntentRoutingOnlineEvaluator {
         private String startedAt;
         private String finishedAt;
         private String clientId;
+        private String routingMode;
         private String suite;
         private String tag;
         private GlobalMetrics metrics;
@@ -546,6 +663,14 @@ public class IntentRoutingOnlineEvaluator {
         private boolean actualNeedsClarification;
         private List<String> actualIntents = new ArrayList<>();
         private List<String> missingInfo = new ArrayList<>();
+        private String routingMode;
+        private Long routingLatencyMs;
+        private Integer totalPromptTokens;
+        private Integer totalCompletionTokens;
+        private Integer totalTokens;
+        private Integer stageCount;
+        private Boolean estimated;
+        private List<RoutingStageMetric> stageMetrics = new ArrayList<>();
     }
 
     @Data
@@ -563,6 +688,16 @@ public class IntentRoutingOnlineEvaluator {
         private double infrastructureErrorRate;
         private double clarificationAccuracy;
         private double multiTaskExactMatch;
+        private double avgLatencyMs;
+        private long p95LatencyMs;
+        private double avgRoutingLatencyMs;
+        private long p95RoutingLatencyMs;
+        private double avgTokens;
+        private double avgPromptTokens;
+        private double avgCompletionTokens;
+        private double avgStageCount;
+        private double estimatedTokenRate;
+        private double stageSuccessRate;
         private Map<String, AccuracyMetric> perIntentAccuracy = new LinkedHashMap<>();
         private Map<String, Map<String, Integer>> confusionMatrix = new LinkedHashMap<>();
     }

@@ -28,6 +28,29 @@ public class IntentRoutingPrompt {
         Identify only intent, confidence, reasoning, baseSlot, and intentSpecificSlots.
         Return JSON only. Do not output multiTask, taskList, executorNode, or clarification fields.
         For STOCK_ANALYSIS, extract stockCode, stockQueryType, timeRange, and exchange when possible.
+
+        合法 intent 取值严格限定为以下 6 个：
+        - STOCK_ANALYSIS：股票、基金、期货、市场行情、技术面分析、基本面分析、交易建议
+        - PE_REASONING：逻辑推理、问题分析、架构/方案设计、根因分析、取舍权衡
+        - PE_CALCULATION：数学计算、数据处理、统计分析、精确数值计算
+        - PE_RETRIEVAL：明确要求知识库检索、RAG、多文档汇总、外部资料/参考材料整合
+        - INSPECTION：系统巡检、健康检查、状态监控、运维诊断
+        - GENERAL_CHAT：问候、闲聊、概念解释、简单知识问答、普通信息查询
+
+        intent 字段必须严格等于上述 6 个合法值之一。
+        禁止输出语义标签或自造标签，例如 TECHNICAL_CONSULTING、INFORMATION_PROVISION、GREETING、
+        ANALYSIS、CONSULTING、RETRIEVAL、REASONING，或任何不在合法列表中的值。
+
+        判断规则：
+        1. 如果任务明确要求检索知识库、使用 RAG、汇总多篇文档、整合外部资料或参考材料，选择 PE_RETRIEVAL。
+        2. 如果任务要求方案设计、问题分析、根因分析、取舍权衡、逻辑推理，且没有明确要求检索资料，选择 PE_REASONING。
+        3. 如果任务只是概念解释、简单知识问答或普通信息查询，且没有明确要求检索资料，选择 GENERAL_CHAT。
+        4. 如果任务要求精确数值计算、统计计算或数据处理，选择 PE_CALCULATION。
+        5. 如果任务要求检查服务/系统健康状态、监控指标或运维状态，选择 INSPECTION。
+
+        输出格式：
+        {"intent":"PE_RETRIEVAL","confidence":"HIGH","reasoning":"...",
+         "baseSlot":{"topic":"...","sentiment":"neutral"},"intentSpecificSlots":{}}
         """;
 
     public static final String SYSTEM_PROMPT_TEMPLATE = """
@@ -283,8 +306,26 @@ public class IntentRoutingPrompt {
     }
 
     public static String buildTaskRoutingSlotPrompt(String taskContent, List<String> historyMessages) {
-        return TASK_ROUTING_SLOT_PROMPT_TEMPLATE
-                + "\n\nHistory:\n" + buildHistorySection(historyMessages)
-                + "\n\nTask:\n" + taskContent + "\nJSON:";
+        return buildTaskRoutingSlotPrompt(taskContent, historyMessages, List.of());
     }
+
+    public static String buildTaskRoutingSlotPrompt(String taskContent,
+                                                    List<String> historyMessages,
+                                                    List<IntentFewshotSample> fewshotSamples) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append(TASK_ROUTING_SLOT_PROMPT_TEMPLATE)
+                .append("\n\nHistory:\n")
+                .append(buildHistorySection(historyMessages));
+        if (fewshotSamples != null && !fewshotSamples.isEmpty()) {
+            prompt.append("\n\n## 参考示例\n");
+            prompt.append("示例仅用于学习 intent 边界和合法枚举；如果示例是统一路由格式，只参考其中 taskList[].intent。\n");
+            for (IntentFewshotSample sample : fewshotSamples) {
+                prompt.append("【输入】").append(sample.getQueryText()).append("\n");
+                prompt.append("【输出】").append(sample.getExampleJson()).append("\n\n");
+            }
+        }
+        prompt.append("\n\nTask:\n").append(taskContent).append("\nJSON:");
+        return prompt.toString();
+    }
+
 }

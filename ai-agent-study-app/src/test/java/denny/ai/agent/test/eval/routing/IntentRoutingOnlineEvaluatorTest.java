@@ -3,8 +3,11 @@ package denny.ai.agent.test.eval.routing;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
+import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import denny.ai.agent.test.eval.routing.IntentRoutingOnlineEvalReportWriter.WrittenReports;
@@ -109,10 +112,54 @@ public class IntentRoutingOnlineEvaluatorTest {
         assertEquals(report.getCases().get(0).getRuns().get(0).getTraceId(),
                 service.observationContexts.get(0).get("trace_id"));
         assertEquals(report.getEvalRunId(), service.observationContexts.get(0).get("eval_run_id"));
+        assertEquals(report.getEvalRunId() + "/trace-case/1",
+                service.observationContexts.get(0).get("chat_memory_conversation_id"));
         assertTrue(observability.scores.stream().anyMatch(score ->
                 "routing_correct".equals(score.name) && score.value == 1.0));
         assertTrue(observability.scores.stream().anyMatch(score ->
                 "run_accuracy".equals(score.name) && score.value == 1.0));
+    }
+
+    @Test
+    public void shouldEvaluateSplitModeAndIncludeRoutingMetricsInReports() throws Exception {
+        StubRoutingService service = new StubRoutingService(List.of(
+                routeWithMetrics(EvalRoutingMode.SPLIT, 120L, 15, 5, 20, 2)
+        ));
+        IntentRoutingOnlineEvalCase evalCase = routingCase(
+                "split-metrics", "multi-task", List.of("STOCK_ANALYSIS", "STOCK_ANALYSIS"), true, 1);
+
+        EvalReport report = new IntentRoutingOnlineEvaluator(
+                service, null, "3201", EvalRoutingMode.SPLIT)
+                .evaluate(List.of(evalCase), "multitask", null);
+
+        assertEquals(EvalRoutingMode.SPLIT.name(), report.getRoutingMode());
+        assertEquals(1, service.splitCalls);
+        assertEquals(0, service.unifiedCalls);
+        assertEquals(20.0, report.getMetrics().getAvgTokens());
+        assertEquals(2.0, report.getMetrics().getAvgStageCount());
+        assertEquals(1.0, report.getMetrics().getStageSuccessRate());
+        assertEquals(Long.valueOf(120L), report.getCases().get(0).getRuns().get(0).getRoutingLatencyMs());
+
+        WrittenReports written = new IntentRoutingOnlineEvalReportWriter(tempDirectory).write(report);
+        String markdown = Files.readString(written.getMarkdownPath());
+        assertTrue(markdown.contains("Routing mode: `SPLIT`"));
+        assertTrue(markdown.contains("Avg tokens"));
+        assertTrue(markdown.contains("Routing latency ms"));
+    }
+
+    @Test
+    public void shouldOverrideCaseRunsForLowCostSampling() {
+        StubRoutingService service = new StubRoutingService(List.of(route(false, IntentTypeEnum.GENERAL_CHAT)));
+        IntentRoutingOnlineEvalCase evalCase = routingCase(
+                "runs-override", "single-task", List.of("GENERAL_CHAT"), false, 5);
+
+        EvalReport report = new IntentRoutingOnlineEvaluator(
+                service, null, "3201", EvalRoutingMode.UNIFIED, 1)
+                .evaluate(List.of(evalCase), "smoke", null);
+
+        assertEquals(1, service.unifiedCalls);
+        assertEquals(1, report.getMetrics().getRunCount());
+        assertEquals(1, report.getCases().get(0).getRuns().size());
     }
 
     @Test
@@ -217,6 +264,44 @@ public class IntentRoutingOnlineEvaluatorTest {
                 .build();
     }
 
+    private static MultiIntentRoutingResult routeWithMetrics(EvalRoutingMode mode,
+                                                             long latencyMs,
+                                                             int promptTokens,
+                                                             int completionTokens,
+                                                             int totalTokens,
+                                                             int stageCount) {
+        List<SubTask> tasks = new ArrayList<>();
+        for (int i = 0; i < stageCount; i++) {
+            tasks.add(task(IntentTypeEnum.STOCK_ANALYSIS));
+        }
+        RoutingExecutionMetrics metrics = RoutingExecutionMetrics.builder()
+                .mode(mode == EvalRoutingMode.SPLIT ? IntentRoutingMode.SPLIT : IntentRoutingMode.UNIFIED)
+                .totalLatencyMs(latencyMs)
+                .totalPromptTokens(promptTokens)
+                .totalCompletionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .estimated(false)
+                .stageMetrics(new ArrayList<>())
+                .build();
+        for (int i = 0; i < stageCount; i++) {
+            metrics.getStageMetrics().add(RoutingStageMetric.builder()
+                    .stageName(i == 0 ? "query-decomposition" : "task-routing-slot")
+                    .callIndex(i)
+                    .taskId(i == 0 ? null : "sub-" + i)
+                    .totalTokens(totalTokens / stageCount)
+                    .success(true)
+                    .build());
+        }
+        return MultiIntentRoutingResult.builder()
+                .multiTask(stageCount > 1)
+                .needsClarification(false)
+                .missingInfo(List.of())
+                .taskList(tasks)
+                .reasoning("normal route")
+                .metrics(metrics)
+                .build();
+    }
+
     private static SubTask task(IntentTypeEnum intent) {
         return SubTask.builder().intent(intent).build();
     }
@@ -234,6 +319,8 @@ public class IntentRoutingOnlineEvaluatorTest {
     private static class StubRoutingService extends IntentRoutingService {
         private final Queue<MultiIntentRoutingResult> results;
         private final List<Map<String, Object>> observationContexts = new ArrayList<>();
+        private int unifiedCalls;
+        private int splitCalls;
 
         private StubRoutingService(List<MultiIntentRoutingResult> results) {
             this.results = new ArrayDeque<>(results);
@@ -243,6 +330,7 @@ public class IntentRoutingOnlineEvaluatorTest {
         public MultiIntentRoutingResult routeUnified(String userMessage,
                                                      List<String> historyMessages,
                                                      AiAgentClientFlowConfigVO configVO) {
+            unifiedCalls++;
             return results.remove();
         }
 
@@ -251,7 +339,16 @@ public class IntentRoutingOnlineEvaluatorTest {
                                                      List<String> historyMessages,
                                                      AiAgentClientFlowConfigVO configVO,
                                                      Map<String, Object> observationContext) {
+            unifiedCalls++;
             observationContexts.add(new HashMap<>(observationContext));
+            return results.remove();
+        }
+
+        @Override
+        public MultiIntentRoutingResult routeSplit(String userMessage,
+                                                   List<String> historyMessages,
+                                                   AiAgentClientFlowConfigVO configVO) {
+            splitCalls++;
             return results.remove();
         }
     }

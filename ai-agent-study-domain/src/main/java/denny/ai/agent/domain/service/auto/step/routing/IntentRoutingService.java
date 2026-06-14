@@ -119,7 +119,8 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                                           int callIndex,
                                                                           List<String> historyMessages,
                                                                           AiAgentClientFlowConfigVO configVO) {
-        String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages);
+        List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(taskContent);
+        String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages, fewshotSamples);
         return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO, Map.of(),
                 response -> {
                     IntentRoutingResult parsed = parseResponse(response);

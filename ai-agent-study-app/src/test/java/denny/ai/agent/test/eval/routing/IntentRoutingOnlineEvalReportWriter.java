@@ -109,6 +109,10 @@ public class IntentRoutingOnlineEvalReportWriter {
         comparison.getMetricDeltas().put("formatErrorRate", now.getFormatErrorRate() - before.getFormatErrorRate());
         comparison.getMetricDeltas().put("infrastructureErrorRate",
                 now.getInfrastructureErrorRate() - before.getInfrastructureErrorRate());
+        comparison.getMetricDeltas().put("avgLatencyMs", now.getAvgLatencyMs() - before.getAvgLatencyMs());
+        comparison.getMetricDeltas().put("p95LatencyMs", (double) now.getP95LatencyMs() - before.getP95LatencyMs());
+        comparison.getMetricDeltas().put("avgTokens", now.getAvgTokens() - before.getAvgTokens());
+        comparison.getMetricDeltas().put("avgStageCount", now.getAvgStageCount() - before.getAvgStageCount());
 
         Map<String, CaseResult> previousCases = baseline.getCases().stream()
                 .collect(Collectors.toMap(CaseResult::getCaseId, Function.identity(), (left, right) -> left, LinkedHashMap::new));
@@ -151,6 +155,7 @@ public class IntentRoutingOnlineEvalReportWriter {
         markdown.append("- Started: ").append(report.getStartedAt()).append("\n");
         markdown.append("- Finished: ").append(report.getFinishedAt()).append("\n");
         markdown.append("- Client ID: `").append(report.getClientId()).append("`\n");
+        markdown.append("- Routing mode: ").append(display(report.getRoutingMode())).append("\n");
         markdown.append("- Eval run ID: `").append(report.getEvalRunId()).append("`\n");
         markdown.append("- Baseline run ID: ").append(display(report.getBaselineEvalRunId())).append("\n");
         markdown.append("- Suite: ").append(display(report.getSuite())).append("\n");
@@ -164,6 +169,16 @@ public class IntentRoutingOnlineEvalReportWriter {
         metric(markdown, "Multi-task exact match", metrics.getMultiTaskExactMatch());
         metric(markdown, "Format error rate", metrics.getFormatErrorRate());
         metric(markdown, "Infrastructure error rate", metrics.getInfrastructureErrorRate());
+        decimalMetric(markdown, "Avg latency ms", metrics.getAvgLatencyMs());
+        markdown.append("| P95 latency ms | ").append(metrics.getP95LatencyMs()).append(" |\n");
+        decimalMetric(markdown, "Avg routing latency ms", metrics.getAvgRoutingLatencyMs());
+        markdown.append("| P95 routing latency ms | ").append(metrics.getP95RoutingLatencyMs()).append(" |\n");
+        decimalMetric(markdown, "Avg tokens", metrics.getAvgTokens());
+        decimalMetric(markdown, "Avg prompt tokens", metrics.getAvgPromptTokens());
+        decimalMetric(markdown, "Avg completion tokens", metrics.getAvgCompletionTokens());
+        decimalMetric(markdown, "Avg stage count", metrics.getAvgStageCount());
+        metric(markdown, "Estimated token rate", metrics.getEstimatedTokenRate());
+        metric(markdown, "Stage success rate", metrics.getStageSuccessRate());
         markdown.append("| Cases | ").append(metrics.getPassedCaseCount()).append(" / ").append(metrics.getCaseCount()).append(" |\n");
         markdown.append("| Runs | ").append(metrics.getPassedRunCount()).append(" / ").append(metrics.getEffectiveRunCount()).append(" effective |\n\n");
 
@@ -216,14 +231,17 @@ public class IntentRoutingOnlineEvalReportWriter {
             markdown.append("- Expected: `").append(String.join(",", c.getExpectedIntents())).append("`\n");
             markdown.append("- Pass rate: ").append(percent(c.getPassRate())).append("\n");
             markdown.append("- Consistency: ").append(percent(c.getConsistencyRate())).append("\n\n");
-            markdown.append("| Run | Outcome | Signature | Passed | Latency ms | Reasoning |\n");
-            markdown.append("|---:|---|---|---|---:|---|\n");
+            markdown.append("| Run | Outcome | Signature | Passed | Latency ms | Routing latency ms | Tokens | Stages | Reasoning |\n");
+            markdown.append("|---:|---|---|---|---:|---:|---:|---:|---|\n");
             for (RunResult run : c.getRuns()) {
                 markdown.append("| ").append(run.getRunIndex()).append(" | ")
                         .append(run.getOutcomeType()).append(" | ")
                         .append(escape(run.getSignature())).append(" | ")
                         .append(run.isPassed()).append(" | ")
                         .append(run.getLatencyMs()).append(" | ")
+                        .append(displayNumber(run.getRoutingLatencyMs())).append(" | ")
+                        .append(displayNumber(run.getTotalTokens())).append(" | ")
+                        .append(displayNumber(run.getStageCount())).append(" | ")
                         .append(escape(run.getReasoning())).append(" |\n");
             }
             markdown.append("\n");
@@ -252,6 +270,10 @@ public class IntentRoutingOnlineEvalReportWriter {
         markdown.append("| ").append(name).append(" | ").append(percent(value)).append(" |\n");
     }
 
+    private void decimalMetric(StringBuilder markdown, String name, double value) {
+        markdown.append("| ").append(name).append(" | ").append(String.format("%.2f", value)).append(" |\n");
+    }
+
     private String percent(double value) {
         return String.format("%.2f%%", value * 100);
     }
@@ -266,6 +288,10 @@ public class IntentRoutingOnlineEvalReportWriter {
 
     private String display(String value) {
         return value == null || value.isBlank() ? "all" : "`" + value + "`";
+    }
+
+    private String displayNumber(Number value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private String escape(String value) {

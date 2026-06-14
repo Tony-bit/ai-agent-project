@@ -329,4 +329,93 @@
     "evaluation": {"runs": 3, "minPassRate": 1.0, "minConsistencyRate": 1.0},
     "tags": ["history", "inspection", "current-input-wins"]
   }
+,
+  {
+    "caseId": "online-challenge-general-negated-retrieval-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "否定检索要求下的概念解释应进入普通对话",
+    "input": {"query": "不要查知识库，也不要调用 RAG，只用通俗语言解释一下什么是向量数据库。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["GENERAL_CHAT"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "negation", "general-vs-retrieval"]
+  },
+  {
+    "caseId": "online-challenge-retrieval-explicit-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "明确知识库检索与资料汇总应进入检索意图",
+    "input": {"query": "请从公司知识库检索支付服务限流方案、历史故障复盘和接口超时治理文档，并汇总共性风险。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["PE_RETRIEVAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "retrieval", "multi-document"]
+  },
+  {
+    "caseId": "online-challenge-reasoning-with-retrieval-words-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "出现资料相关词但明确不检索时应进入推理",
+    "input": {"query": "不用查资料，假设缓存命中率从 90% 掉到 40%，推演它为什么可能导致数据库雪崩，并给出验证思路。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["PE_REASONING"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "reasoning-vs-retrieval", "negation"]
+  },
+  {
+    "caseId": "online-challenge-calculation-vs-reasoning-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "带业务语境的精确数值计算应进入计算意图",
+    "input": {"query": "A 方案转化率 3.2%，样本量 50000；B 方案转化率 3.8%，样本量 48000，请计算两组转化人数和提升比例。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["PE_CALCULATION"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "calculation-vs-reasoning", "ab-test"]
+  },
+  {
+    "caseId": "online-challenge-multi-retrieval-reasoning-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "multi-task",
+    "description": "先检索再基于场景设计方案应拆为检索和推理",
+    "input": {"query": "先从知识库检索微服务限流和熔断方案，再结合我们日均百万请求、峰值突增 5 倍的场景，给出选型建议。", "historyMessages": []},
+    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["PE_RETRIEVAL", "PE_REASONING"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "multitask", "retrieval", "reasoning"]
+  },
+  {
+    "caseId": "online-challenge-multi-stock-calculation-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "multi-task",
+    "description": "股票分析和收益率计算应拆为两个不同意图",
+    "input": {"query": "先分析贵州茅台 600519 最近一个月的技术走势，再计算如果 1500 元买入、现在 1605 元卖出收益率是多少。", "historyMessages": []},
+    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS", "PE_CALCULATION"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "multitask", "stock", "calculation"]
+  },
+  {
+    "caseId": "online-challenge-clarification-stock-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "clarification",
+    "description": "股票分析缺少具体标的时应要求澄清",
+    "input": {"query": "帮我分析这只股票最近是不是可以抄底，顺便看看风险大不大。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": true, "taskIntents": [], "acceptableTaskIntents": [], "orderSensitive": true, "missingInfoContains": ["stockCode"], "missingInfoNotEmpty": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "clarification", "stock", "missing-slot"]
+  },
+  {
+    "caseId": "online-challenge-history-current-input-wins-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "历史股票上下文不应覆盖当前明确巡检意图",
+    "input": {"query": "现在不要继续股票了，帮我检查支付服务当前是否健康。", "historyMessages": ["user: 分析一下贵州茅台最近一个月的走势", "assistant: 已完成贵州茅台的技术走势分析"]},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["INSPECTION"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["challenge", "history", "current-input-wins", "inspection"]
+  }
 ]

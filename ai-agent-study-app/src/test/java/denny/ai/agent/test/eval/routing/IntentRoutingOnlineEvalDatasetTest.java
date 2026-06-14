@@ -24,6 +24,7 @@ public class IntentRoutingOnlineEvalDatasetTest {
         assertTrue(countCategory(cases, "multi-task") >= 3, "At least 3 multi-task cases are required");
         assertTrue(countCategory(cases, "clarification") >= 3, "At least 3 clarification cases are required");
         assertTrue(countSuite(cases, "history") >= 4, "At least 4 history cases are required");
+        assertTrue(countSuite(cases, "challenge") >= 8, "At least 8 challenge cases are required");
 
         Set<String> coveredIntents = cases.stream()
                 .flatMap(c -> c.getExpected().getTaskIntents().stream())
@@ -33,8 +34,8 @@ public class IntentRoutingOnlineEvalDatasetTest {
                 "PE_CALCULATION", "STOCK_ANALYSIS", "INSPECTION")));
 
         int expectedRuns = cases.stream().mapToInt(c -> c.getEvaluation().getRuns()).sum();
-        assertEquals(30, cases.size(), "The first baseline should contain 30 cases");
-        assertEquals(94, expectedRuns, "The first baseline should make 94 model calls");
+        assertEquals(38, cases.size(), "Dataset should contain baseline plus challenge cases");
+        assertEquals(110, expectedRuns, "Dataset should include challenge runs");
     }
 
     private long countSuite(List<IntentRoutingOnlineEvalCase> cases, String suite) {

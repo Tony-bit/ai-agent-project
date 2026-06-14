@@ -3,7 +3,7 @@ server:
 
 intent:
   routing:
-    mode: unified
+    mode: SPLIT
 
 spring:
 
@@ -18,7 +18,7 @@ spring:
           - "6001"
       data-source:
         provider: tushare
-        tushare-token: ${TUSHARE_TOKEN:}
+        tushare-token: ${TUSHARE_TOKEN:e054d234d3479bb5c6e7e1146c361d511a7cd9c8bb6de49d37b385c0}
         sina-news-enabled: true            # 新增：是否启用新浪财经新闻搜索，默认 true
         sina-news-page-size: 50            # 新增：新闻搜索最大返回条数，默认 50
         cache:
@@ -58,14 +58,14 @@ spring:
           llm:
             provider: deepseek
             config:
-              api-key: ${DEEPSEEK_API_KEY:}
+              api-key: ${DEEPSEEK_API_KEY:sk-a0df0f93a5ac475e8c73c6e3495cfc05}
               temperature: 0.2
 #              ai-base-url: https://api.deepseek.com/chat/completions
               model: deepseek-chat
           embedder:
             provider: openai
             config:
-              api-key: ${AI_DASHSCOPE_API_KEY:}
+              api-key: ${AI_DASHSCOPE_API_KEY:sk-b1050a5b1a7e41bcaddc968acdf637a6}
               model: text-embedding-v4
               openai-base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     ollama:
@@ -76,16 +76,16 @@ spring:
         model: nomic-embed-text
     openai:
       base-url: https://open.bigmodel.cn/api/paas/v4
-      api-key: ${ZHIPU_API_KEY:dummy-key}
+      api-key: f159764707384a1ca0b0a83fbd3ed065.YooCMBFpJSN0vUoN
       embedding-model: embedding-3
       chat:
         model: glm-4.7
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
-      username: ${PGVECTOR_USER:postgres}
-      password: ${PGVECTOR_PASSWORD:postgres}
-      url: ${PGVECTOR_URL:jdbc:postgresql://localhost:15432/ai-rag-knowledge}
+      username: postgres
+      password: postgres
+      url: jdbc:postgresql://localhost:15432/ai-rag-knowledge
       type: com.zaxxer.hikari.HikariDataSource
       # hikari连接池配置
       hikari:
@@ -106,9 +106,9 @@ spring:
         # 连接测试query
         connection-test-query: SELECT 1
     mysql:
-      username: ${MYSQL_USER:root}
-      password: ${MYSQL_PASSWORD:}
-      url: ${MYSQL_URL:jdbc:mysql://localhost:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=false}
+      username: navicat_user
+      password: Panzer1234@
+      url: jdbc:mysql://111.228.9.124:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=true
       driver-class-name: com.mysql.cj.jdbc.Driver
       type: com.zaxxer.hikari.HikariDataSource
       hikari:
@@ -123,8 +123,8 @@ spring:
     oss:
       bucket-name: https://s3.cn-north-1.jdcloud-oss.com
       region: cn-north-1
-      access-key: ${JD_CLOUD_OSS_ACCESS_KEY:}
-      secret-key: ${JD_CLOUD_OSS_SECRET_KEY:}
+      access-key: JDC_DBA83F9D0DE38A07D239EEAE8576
+      secret-key: EE9A6C0EADC7A96325349BF03C6E5A8A
       endpoint: denny-test
   data:
     elasticsearch:
@@ -138,7 +138,7 @@ rag:
     provider: rank
     config:
       base-url: https://dashscope.aliyuncs.com
-      api-key: ${DASHSCOPE_API_KEY:}
+      api-key: sk-b1050a5b1a7e41bcaddc968acdf637a6
       model: qwen3-rerank
       timeout-ms: 8000
   retrieval:
@@ -153,7 +153,7 @@ rag:
   embedding:
     config:
       base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
-      api-key: ${DASHSCOPE_API_KEY:}
+      api-key: sk-b1050a5b1a7e41bcaddc968acdf637a6
       model: text-embedding-v3
       timeout-ms: 8000
       dimension: 768
@@ -179,10 +179,10 @@ redis:
       keep-alive: true
 
 langfuse:
-  enabled: ${LANGFUSE_ENABLED:false}
-  host: ${LANGFUSE_HOST:http://localhost:3000}
-  public-key: ${LANGFUSE_PUBLIC_KEY:}
-  secret-key: ${LANGFUSE_SECRET_KEY:}
+  enabled: true
+  host: http://1.12.53.53:3000
+  public-key: pk-lf-8d9708a3-dbda-4f1c-a3ba-0ce8ed1ff511
+  secret-key: sk-lf-aaae2872-e0f7-44c5-b611-4e2aea56334f
   timeout-ms: 10000
 
 # 会话记忆持久化配置

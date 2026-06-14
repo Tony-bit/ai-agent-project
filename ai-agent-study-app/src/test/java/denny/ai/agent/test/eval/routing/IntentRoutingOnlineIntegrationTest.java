@@ -42,29 +42,38 @@ public class IntentRoutingOnlineIntegrationTest {
     @Test
     public void runIntentRoutingOnlineEvaluation() {
         String clientId = setting("intent.routing.eval.client-id", "INTENT_ROUTING_EVAL_CLIENT_ID", "3201");
+        EvalRoutingMode routingMode = EvalRoutingMode.from(setting(
+                "intent.routing.eval.mode", "INTENT_ROUTING_EVAL_MODE", EvalRoutingMode.UNIFIED.name()));
         String suite = setting("intent.routing.eval.suite", "INTENT_ROUTING_EVAL_SUITE", null);
         String tag = setting("intent.routing.eval.tag", "INTENT_ROUTING_EVAL_TAG", null);
+        Integer runsOverride = integerSetting("intent.routing.eval.runs", "INTENT_ROUTING_EVAL_RUNS");
+        Integer maxCases = integerSetting("intent.routing.eval.max-cases", "INTENT_ROUTING_EVAL_MAX_CASES");
 
         IntentRoutingOnlineEvalCaseLoader loader = new IntentRoutingOnlineEvalCaseLoader();
         List<IntentRoutingOnlineEvalCase> allCases = loader.loadAll();
         List<String> validationErrors = loader.validate(allCases);
         List<IntentRoutingOnlineEvalCase> selectedCases = loader.loadRunnable(suite, tag);
+        if (maxCases != null) {
+            selectedCases = selectedCases.stream().limit(maxCases).toList();
+        }
         preflight(clientId, selectedCases, validationErrors);
 
         IntentRoutingOnlineEvaluator evaluator = new IntentRoutingOnlineEvaluator(
-                routingService, observabilityService, clientId);
+                routingService, observabilityService, clientId, routingMode, runsOverride);
         EvalReport report = evaluator.evaluate(selectedCases, suite, tag);
         Path reportDirectory = resolveReportDirectory(setting(
                 "intent.routing.eval.report-dir",
                 "INTENT_ROUTING_EVAL_REPORT_DIR",
-                null));
+                null), routingMode);
         WrittenReports written = new IntentRoutingOnlineEvalReportWriter(reportDirectory).write(report);
 
         GlobalMetrics metrics = report.getMetrics();
-        log.info("Intent routing online eval completed: evalRunId={}, baselineRunId={}, cases={}/{}, "
+        log.info("Intent routing online eval completed: mode={}, evalRunId={}, baselineRunId={}, "
+                        + "suite={}, tag={}, runsOverride={}, maxCases={}, cases={}/{}, "
                         + "runs={}/{}, formatErrorRate={}, infraErrorRate={}, failedCases={}, regressedCases={}, "
                         + "jsonReport={}, markdownReport={}",
-                report.getEvalRunId(), report.getBaselineEvalRunId(),
+                report.getRoutingMode(), report.getEvalRunId(), report.getBaselineEvalRunId(),
+                suite, tag, runsOverride, maxCases,
                 metrics.getPassedCaseCount(), metrics.getCaseCount(),
                 metrics.getPassedRunCount(), metrics.getEffectiveRunCount(),
                 metrics.getFormatErrorRate(), metrics.getInfrastructureErrorRate(),
@@ -137,15 +146,29 @@ public class IntentRoutingOnlineIntegrationTest {
         return value == null || value.isBlank() ? defaultValue : Double.parseDouble(value);
     }
 
-    private Path resolveReportDirectory(String configuredDirectory) {
+    private Integer integerSetting(String property, String environment) {
+        String value = setting(property, environment, null);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        int parsed = Integer.parseInt(value);
+        if (parsed < 1) {
+            throw new IllegalArgumentException(property + " must be >= 1");
+        }
+        return parsed;
+    }
+
+    private Path resolveReportDirectory(String configuredDirectory, EvalRoutingMode routingMode) {
         if (configuredDirectory != null && !configuredDirectory.isBlank()) {
-            return Path.of(configuredDirectory);
+            return Path.of(configuredDirectory).resolve(routingMode.name().toLowerCase());
         }
         try {
             Path testClasses = Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
-            return testClasses.getParent().resolve("eval-reports/intent-routing");
+            return testClasses.getParent().resolve("eval-reports/intent-routing")
+                    .resolve(routingMode.name().toLowerCase());
         } catch (Exception e) {
-            return Path.of("ai-agent-study-app/target/eval-reports/intent-routing");
+            return Path.of("ai-agent-study-app/target/eval-reports/intent-routing")
+                    .resolve(routingMode.name().toLowerCase());
         }
     }
 

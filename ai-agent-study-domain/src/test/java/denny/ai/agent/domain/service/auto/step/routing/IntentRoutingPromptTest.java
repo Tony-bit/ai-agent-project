@@ -1,5 +1,6 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
+import denny.ai.agent.domain.model.entity.IntentFewshotSample;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -22,6 +23,38 @@ import static org.junit.Assert.*;
  * 2026/05/31
  */
 public class IntentRoutingPromptTest {
+
+    @Test
+    public void should_constrain_split_task_routing_to_standard_intent_codes() {
+        String slotPrompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt("search RAG documents", List.of());
+
+        assertTrue(slotPrompt.contains("合法 intent 取值严格限定"));
+        assertTrue(slotPrompt.contains("PE_RETRIEVAL"));
+        assertTrue(slotPrompt.contains("PE_REASONING"));
+        assertTrue(slotPrompt.contains("GENERAL_CHAT"));
+        assertTrue(slotPrompt.contains("intent 字段必须严格等于上述 6 个合法值之一"));
+        assertTrue(slotPrompt.contains("禁止输出语义标签或自造标签"));
+        assertTrue(slotPrompt.contains("TECHNICAL_CONSULTING"));
+        assertTrue(slotPrompt.contains("INFORMATION_PROVISION"));
+    }
+
+    @Test
+    public void should_append_fewshot_examples_to_split_task_routing_prompt() {
+        String slotPrompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(
+                "search RAG documents",
+                List.of(),
+                List.of(IntentFewshotSample.builder()
+                        .queryText("检索 RAG 架构资料")
+                        .exampleJson("{\"intent\":\"PE_RETRIEVAL\"}")
+                        .build())
+        );
+
+        assertTrue(slotPrompt.contains("## 参考示例"));
+        assertTrue(slotPrompt.contains("示例仅用于学习 intent 边界和合法枚举"));
+        assertTrue(slotPrompt.contains("检索 RAG 架构资料"));
+        assertTrue(slotPrompt.contains("{\"intent\":\"PE_RETRIEVAL\"}"));
+        assertTrue(slotPrompt.contains("Task:\nsearch RAG documents"));
+    }
 
     /**
      * TC-IRP-001: 用户消息被嵌入 Prompt
