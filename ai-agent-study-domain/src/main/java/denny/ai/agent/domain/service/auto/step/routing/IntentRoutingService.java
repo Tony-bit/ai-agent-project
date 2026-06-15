@@ -298,7 +298,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     public MultiIntentRoutingResult parseUnifiedResponse(String response) {
         try {
             UnifiedRoutingOutput output = structuredOutputValidator.parseUnified(response);
-            List<String> missingInfo = output.getMissingInfo() == null ? List.of() : output.getMissingInfo();
+            List<String> missingInfo = normalizeMissingInfo(output.getMissingInfo());
             String reasoning = defaultReasoning(output.getReasoning());
             List<SubTask> taskList = toSubTasks(output);
 
@@ -355,6 +355,26 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         }
 
         return "请补充以下信息: " + String.join("、", missingInfo);
+    }
+
+    private List<String> normalizeMissingInfo(List<String> missingInfo) {
+        if (missingInfo == null || missingInfo.isEmpty()) {
+            return List.of();
+        }
+        return missingInfo.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .map(this::normalizeMissingInfoName)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeMissingInfoName(String name) {
+        return switch (name) {
+            case "queryTopic", "query_topic", "retrievalTopic", "retrieval_topic" -> "topic";
+            case "stock_code", "ticker", "stockTicker" -> "stockCode";
+            default -> name;
+        };
     }
 
     private List<SubTask> toSubTasks(UnifiedRoutingOutput output) {

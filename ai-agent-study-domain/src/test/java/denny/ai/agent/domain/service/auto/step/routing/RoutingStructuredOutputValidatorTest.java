@@ -34,6 +34,17 @@ public class RoutingStructuredOutputValidatorTest {
     }
 
     @Test
+    public void shouldAcceptUnifiedOutputWithoutMissingInfoWhenClarificationIsFalse() {
+        validator.unified().validate(response("""
+                {"multiTask":false,"needsClarification":false,
+                 "reasoning":"single","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"hello",
+                    "intent":"GENERAL_CHAT","confidence":"HIGH","dependsOn":[],"slots":{}}
+                 ]}
+                """));
+    }
+
+    @Test
     public void shouldThrowEmptyResponseFailureWhenChatResponseIsNull() {
         ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
                 validator.unified().validate(null));
@@ -133,6 +144,17 @@ public class RoutingStructuredOutputValidatorTest {
                         """)));
 
         assertEquals(ResponseValidationFailureType.BUSINESS_VALIDATION_ERROR, thrown.getFailureType());
+    }
+
+    @Test
+    public void shouldRejectClarificationWhenMissingInfoFieldIsAbsent() {
+        ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
+                validator.unified().validate(response("""
+                        {"multiTask":false,"needsClarification":true,
+                         "clarificationPrompt":"请补充信息","reasoning":"missing info","taskList":[]}
+                        """)));
+
+        assertEquals(ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR, thrown.getFailureType());
     }
 
     @Test

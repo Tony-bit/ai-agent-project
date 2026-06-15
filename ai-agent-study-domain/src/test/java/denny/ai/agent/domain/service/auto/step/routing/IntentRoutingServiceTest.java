@@ -211,6 +211,25 @@ public class IntentRoutingServiceTest {
     }
 
     @Test
+    public void shouldNormalizeMissingInfoNamesWhenParsingClarification() {
+        String response = """
+                {
+                  "multiTask": false,
+                  "needsClarification": true,
+                  "missingInfo": ["queryTopic", "stock_code", "queryTopic"],
+                  "clarificationPrompt": "请补充检索主题",
+                  "reasoning": "缺少主题",
+                  "taskList": []
+                }
+                """;
+
+        MultiIntentRoutingResult result = intentRoutingService.parseUnifiedResponse(response);
+
+        assertTrue(result.getNeedsClarification());
+        assertEquals(List.of("topic", "stockCode"), result.getMissingInfo());
+    }
+
+    @Test
     public void testParseUnifiedInvalidJsonFallback() {
         MultiIntentRoutingResult result = intentRoutingService.parseUnifiedResponse("invalid json");
 

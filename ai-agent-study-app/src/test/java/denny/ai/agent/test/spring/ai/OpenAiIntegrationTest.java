@@ -401,6 +401,21 @@ public class OpenAiIntegrationTest {
                         content
                 );
 
+        String stockClarificationExample = """
+                {"multiTask":false,"needsClarification":true,"missingInfo":["stockCode"],
+                 "clarificationPrompt":"请提供要分析的股票代码或股票名称。",
+                 "reasoning":"用户只使用“这只股票”进行模糊指代，当前上下文没有明确股票标的，无法执行股票分析。",
+                 "taskList":[]}
+                """;
+
+        String retrievalFollowupExample = """
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"用户使用“这些文档”指代历史中已检索的知识库文档，当前任务是继续对检索文档做汇总，属于PE_RETRIEVAL。",
+                 "taskList":[{"taskId":"sub-1","taskIndex":1,"totalTasks":1,
+                 "content":"汇总历史检索文档中的风险点","intent":"PE_RETRIEVAL",
+                 "confidence":"HIGH","dependsOn":[],"slots":{"baseSlot":{"topic":"历史检索文档风险点","sentiment":"neutral"},"intentSpecificSlots":{}}}]}
+                """;
+
         List<Document> docs = new ArrayList<>();
         int idCounter = 1;
 
@@ -439,6 +454,11 @@ public class OpenAiIntegrationTest {
         docs.add(createDoc(String.valueOf(idCounter++), "分析上证指数的技术指标", "STOCK_ANALYSIS", stockAnalysisExample));
         docs.add(createDoc(String.valueOf(idCounter++), "给我看看腾讯控股的行情", "STOCK_ANALYSIS", stockAnalysisExample));
 
+        // ========== 边界澄清 / 历史指代样本 ==========
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我分析一下这只股票最近的走势。", "STOCK_ANALYSIS", stockClarificationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "帮我分析这只股票最近是不是可以抄底，顺便看看风险大不大。", "STOCK_ANALYSIS", stockClarificationExample));
+        docs.add(createDoc(String.valueOf(idCounter++), "再把这些文档里的风险点汇总一下。", "PE_RETRIEVAL", retrievalFollowupExample));
+
         // ========== INSPECTION 样本（5条） ==========
         docs.add(createDoc(String.valueOf(idCounter++), "检查一下系统健康状态", "INSPECTION", inspectionExample));
         docs.add(createDoc(String.valueOf(idCounter++), "做个系统巡检", "INSPECTION", inspectionExample));
@@ -476,10 +496,14 @@ public class OpenAiIntegrationTest {
 
     private Document createDoc(String id, String text, String intentCode,
                                java.util.function.Function<String, String> exampleGenerator) {
+        return createDoc(id, text, intentCode, exampleGenerator.apply(text));
+    }
+
+    private Document createDoc(String id, String text, String intentCode, String exampleJson) {
         Document doc = new Document(text);
         doc.getMetadata().put("id", "fewshot-test-" + id);
         doc.getMetadata().put("intentCode", intentCode);
-        doc.getMetadata().put("exampleJson", exampleGenerator.apply(text));
+        doc.getMetadata().put("exampleJson", exampleJson);
         return doc;
     }
 }

@@ -81,9 +81,8 @@ public class RoutingStructuredOutputValidator {
         requireBoolean(json, "multiTask");
         requireBoolean(json, "needsClarification");
         requireString(json, "reasoning");
-        requireArray(json, "missingInfo");
+        normalizeClarificationFields(json);
         requireArray(json, "taskList");
-        ensureOptionalString(json, "clarificationPrompt");
 
         JSONArray taskArray = json.getJSONArray("taskList");
         for (Object item : taskArray) {
@@ -101,6 +100,27 @@ public class RoutingStructuredOutputValidator {
 
         UnifiedRoutingOutput output = toDto(json, UnifiedRoutingOutput.class);
         validateUnifiedBusinessRules(output);
+    }
+
+    private void normalizeClarificationFields(JSONObject json) {
+        boolean needsClarification = Boolean.TRUE.equals(json.getBoolean("needsClarification"));
+        if (needsClarification) {
+            requireArray(json, "missingInfo");
+            ensureOptionalString(json, "clarificationPrompt");
+            return;
+        }
+
+        if (!json.containsKey("missingInfo") || json.get("missingInfo") == null) {
+            json.put("missingInfo", new JSONArray());
+        } else if (!(json.get("missingInfo") instanceof JSONArray)) {
+            throw schema("missingInfo must be array");
+        }
+
+        if (!json.containsKey("clarificationPrompt") || json.get("clarificationPrompt") == null) {
+            json.put("clarificationPrompt", "");
+        } else if (!(json.get("clarificationPrompt") instanceof String)) {
+            throw schema("clarificationPrompt must be string or null");
+        }
     }
 
     private void validateQueryDecompositionOutput(JSONObject json) {

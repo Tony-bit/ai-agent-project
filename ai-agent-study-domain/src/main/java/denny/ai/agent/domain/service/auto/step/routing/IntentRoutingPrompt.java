@@ -116,6 +116,10 @@ public class IntentRoutingPrompt {
         4. 示例仅供参考，必须以当前用户输入和历史上下文为准，不可机械套用示例
         5. 概念解释、简单知识问答、普通信息查询优先归入 GENERAL_CHAT
         6. 只有当用户明确需要知识库检索、RAG、多文档汇总或外部资料整合时，才归入 PE_RETRIEVAL
+        7. 技术概念问答即使包含“为什么/原因”，只要没有要求方案设计、根因排查、取舍分析或复杂推理，也归入 GENERAL_CHAT，例如“Java 里的 HashMap 为什么线程不安全？”
+        8. 用户明确说“上传的文档/三份文档/这些材料”时，视为文档上下文已由执行层获取，不要因为缺少文档正文而 needsClarification=true。
+        9. 股票分析中，如果用户只提供股票中文名或简称但没有股票代码，不要在路由层因 stockCode 缺失而澄清；应路由到 STOCK_ANALYSIS，后续由 trading agent 通过股票名称解析工具补齐。
+        10. 用户使用“先...再...”表达先检索资料、再结合业务场景做建议/选型/方案设计时，必须拆为两个任务：PE_RETRIEVAL 任务在前，PE_REASONING 任务在后，第二个任务 dependsOn 第一个任务。
 
         ## 置信度
         - HIGH: 意图非常明确，有明显的关键词或上下文支撑
@@ -127,6 +131,8 @@ public class IntentRoutingPrompt {
           - baseSlot: {topic, sentiment}
           - intentSpecificSlots: 根据意图输出专属槽位
         - STOCK_ANALYSIS 的 intentSpecificSlots 推荐包含：stockCode, stockQueryType, timeRange, exchange
+        - needsClarification=false 时，missingInfo 必须输出 []，clarificationPrompt 输出 ""。
+        - needsClarification=true 时，missingInfo 必须非空；知识库缺少检索主题统一使用 "topic"，股票缺少可解析标的统一使用 "stockCode"。
 
         ## 历史上下文（最近对话）
         %s
