@@ -17,6 +17,10 @@ import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.service.armory.factory.element.ChatResponseValidator;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationContext;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationException;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationFailureType;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
@@ -26,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -67,6 +73,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     @Resource
     private TaskGraphValidator taskGraphValidator = new TaskGraphValidator();
 
+    @Resource
+    private RoutingStructuredOutputValidator structuredOutputValidator = new RoutingStructuredOutputValidator(taskGraphValidator);
+
     public MultiIntentRoutingResult routeUnified(String userMessage,
                                                  List<String> historyMessages,
                                                  AiAgentClientFlowConfigVO configVO) {
@@ -82,6 +91,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         long startedAt = System.currentTimeMillis();
         RoutingCallResult<MultiIntentRoutingResult> call = callRoutingModel(
                 "unified-routing", null, 0, prompt, configVO, observationContext,
+                structuredOutputValidator.unified(),
                 this::parseUnifiedResponse,
                 error -> fallbackMultiIntentResult(error));
         MultiIntentRoutingResult result = call.result();
@@ -104,6 +114,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                                          AiAgentClientFlowConfigVO configVO) {
         String prompt = IntentRoutingPrompt.buildQueryDecompositionPrompt(userMessage, historyMessages);
         return callRoutingModel("query-decomposition", null, 0, prompt, configVO, Map.of(),
+                structuredOutputValidator.queryDecomposition(),
                 response -> parseQueryDecompositionResponse(response, userMessage),
                 error -> fallbackDecomposition(userMessage, error));
     }
@@ -122,6 +133,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(taskContent);
         String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages, fewshotSamples);
         return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO, Map.of(),
+                structuredOutputValidator.taskIntentRouting(),
                 response -> {
                     IntentRoutingResult parsed = parseResponse(response);
                     return parsed.getIntent() == null || parsed.getIntent() == IntentTypeEnum.UNKNOWN
@@ -165,24 +177,27 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     }
 
     public QueryDecompositionResult parseQueryDecompositionResponse(String response, String userMessage) {
-        if (!StringUtils.hasText(response)) {
-            return fallbackDecomposition(userMessage, "LLM returned an empty response");
-        }
         try {
-            JSONObject json = JSON.parseObject(extractJson(response));
-            List<DecomposedTask> tasks = json.getJSONArray("taskList") == null
-                    ? List.of() : json.getJSONArray("taskList").toJavaList(DecomposedTask.class);
+            QueryDecompositionOutput output = structuredOutputValidator.parseQueryDecomposition(response);
+            List<DecomposedTask> tasks = output.getTaskList() == null ? List.of() : output.getTaskList().stream()
+                    .map(task -> DecomposedTask.builder()
+                            .taskId(task.getTaskId())
+                            .taskIndex(task.getTaskIndex())
+                            .totalTasks(task.getTotalTasks())
+                            .content(task.getContent())
+                            .dependsOn(task.getDependsOn() == null ? List.of() : task.getDependsOn())
+                            .build())
+                    .toList();
             if (tasks.isEmpty()) {
                 return fallbackDecomposition(userMessage, "taskList is empty");
             }
-            tasks.forEach(task -> task.setDependsOn(task.getDependsOn() == null ? List.of() : task.getDependsOn()));
             return QueryDecompositionResult.builder()
                     .multiTask(tasks.size() > 1)
-                    .reasoning(defaultReasoning(json.getString("reasoning")))
+                    .reasoning(defaultReasoning(output.getReasoning()))
                     .taskList(tasks)
                     .build();
-        } catch (Exception e) {
-            return fallbackDecomposition(userMessage, "JSON parsing failed: " + e.getMessage());
+        } catch (ResponseValidationException e) {
+            return fallbackDecomposition(userMessage, legacyValidationMessage(e));
         }
     }
 
@@ -260,106 +275,59 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     }
 
     public IntentRoutingResult parseResponse(String response) {
-        if (response == null || response.isBlank()) {
-            log.warn("意图识别 LLM 返回为空，降级为 UNKNOWN + LOW");
-            return fallbackResult("LLM返回为空");
-        }
-
         try {
-            String jsonStr = extractJson(response);
-            JSONObject json = JSON.parseObject(jsonStr);
-
-            String intentCode = json.getString("intent");
-            String confidenceCode = json.getString("confidence");
-            String reasoning = json.getString("reasoning");
-            if (reasoning == null) {
-                reasoning = "无推理过程";
-            }
-
-            IntentTypeEnum intent = IntentTypeEnum.fromCode(intentCode);
-            ConfidenceEnum confidence = ConfidenceEnum.fromCode(confidenceCode);
-
-            if (intent == null || intent == IntentTypeEnum.UNKNOWN) {
-                log.warn("意图识别结果无效，降级为 UNKNOWN: response={}", response);
-                return fallbackResult("intent字段无效");
-            }
-
-            BaseSlot baseSlot = null;
-            if (json.containsKey("baseSlot") && json.getJSONObject("baseSlot") != null) {
-                baseSlot = json.getObject("baseSlot", BaseSlot.class);
-            }
-
-            Map<String, Object> intentSpecificSlots = null;
-            if (json.containsKey("intentSpecificSlots") && json.getJSONObject("intentSpecificSlots") != null) {
-                intentSpecificSlots = json.getJSONObject("intentSpecificSlots").getInnerMap();
-            }
-
+            TaskIntentRoutingOutput output = structuredOutputValidator.parseTaskIntentRouting(response);
+            IntentTypeEnum intent = IntentTypeEnum.fromCode(output.getIntent());
+            ConfidenceEnum confidence = ConfidenceEnum.fromCode(output.getConfidence());
+            Map<String, Object> intentSpecificSlots = output.getIntentSpecificSlots();
             if (intent == IntentTypeEnum.STOCK_ANALYSIS && intentSpecificSlots != null) {
                 intentSpecificSlots = buildStockSlot(intentSpecificSlots);
             }
-
             return IntentRoutingResult.builder()
                     .intent(intent)
                     .confidence(confidence)
-                    .reasoning(reasoning)
-                    .baseSlot(baseSlot)
+                    .reasoning(defaultReasoning(output.getReasoning()))
+                    .baseSlot(output.getBaseSlot())
                     .intentSpecificSlots(intentSpecificSlots)
                     .build();
-        } catch (Exception e) {
-            log.warn("意图识别 JSON 解析失败，降级为 UNKNOWN + LOW: response={}, error={}",
-                    response, e.getMessage());
-            return fallbackResult("JSON解析失败: " + e.getMessage());
+        } catch (ResponseValidationException e) {
+            return fallbackResult(legacyValidationMessage(e));
         }
     }
 
     public MultiIntentRoutingResult parseUnifiedResponse(String response) {
-        if (response == null || response.isBlank()) {
-            log.warn("统一路由 LLM 返回为空，降级为 GENERAL_CHAT");
-            return fallbackMultiIntentResult("LLM返回为空");
-        }
-
         try {
-            String jsonStr = extractJson(response);
-            JSONObject json = JSON.parseObject(jsonStr);
+            UnifiedRoutingOutput output = structuredOutputValidator.parseUnified(response);
+            List<String> missingInfo = output.getMissingInfo() == null ? List.of() : output.getMissingInfo();
+            String reasoning = defaultReasoning(output.getReasoning());
+            List<SubTask> taskList = toSubTasks(output);
 
-            Boolean multiTask = json.getBoolean("multiTask");
-            Boolean needsClarification = json.getBoolean("needsClarification");
-            String reasoning = defaultReasoning(json.getString("reasoning"));
-            List<String> missingInfo = extractMissingInfo(json.getJSONArray("missingInfo"));
-            String clarificationPrompt = defaultClarificationPrompt(json.getString("clarificationPrompt"), missingInfo);
-            List<SubTask> taskList = extractTaskList(json.getJSONArray("taskList"));
-
-            if (Boolean.TRUE.equals(needsClarification)) {
+            if (Boolean.TRUE.equals(output.getNeedsClarification())) {
                 return MultiIntentRoutingResult.builder()
-                        .multiTask(Boolean.TRUE.equals(multiTask))
+                        .multiTask(Boolean.TRUE.equals(output.getMultiTask()))
                         .needsClarification(true)
                         .missingInfo(missingInfo)
-                        .clarificationPrompt(clarificationPrompt)
+                        .clarificationPrompt(defaultClarificationPrompt(output.getClarificationPrompt(), missingInfo))
                         .reasoning(reasoning)
                         .taskList(taskList)
                         .build();
             }
-
             if (taskList.isEmpty()) {
-                log.warn("统一路由 taskList 为空，降级为 GENERAL_CHAT: response={}", response);
                 return fallbackMultiIntentResult("taskList为空");
             }
 
-            taskGraphValidator.validateSubTasks(taskList);
             taskList.forEach(this::normalizeTask);
 
             return MultiIntentRoutingResult.builder()
-                    .multiTask(Boolean.TRUE.equals(multiTask) && taskList.size() > 1)
+                    .multiTask(Boolean.TRUE.equals(output.getMultiTask()) && taskList.size() > 1)
                     .needsClarification(false)
                     .missingInfo(missingInfo)
-                    .clarificationPrompt(clarificationPrompt)
+                    .clarificationPrompt(defaultClarificationPrompt(output.getClarificationPrompt(), missingInfo))
                     .reasoning(reasoning)
                     .taskList(taskList)
                     .build();
-        } catch (Exception e) {
-            log.warn("统一路由 JSON 解析失败，降级为 GENERAL_CHAT: response={}, error={}",
-                    response, e.getMessage());
-            return fallbackMultiIntentResult("JSON解析失败: " + e.getMessage());
+        } catch (ResponseValidationException e) {
+            return fallbackMultiIntentResult(legacyValidationMessage(e));
         }
     }
 
@@ -389,19 +357,24 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         return "请补充以下信息: " + String.join("、", missingInfo);
     }
 
-    private List<String> extractMissingInfo(JSONArray missingInfoArray) {
-        if (missingInfoArray == null) {
+    private List<SubTask> toSubTasks(UnifiedRoutingOutput output) {
+        if (output.getTaskList() == null || output.getTaskList().isEmpty()) {
             return List.of();
         }
-        return missingInfoArray.toJavaList(String.class);
-    }
-
-    private List<SubTask> extractTaskList(JSONArray taskArray) {
-        if (taskArray == null || taskArray.isEmpty()) {
-            return List.of();
+        List<SubTask> tasks = new ArrayList<>();
+        for (UnifiedRoutingOutput.TaskOutput task : output.getTaskList()) {
+            tasks.add(SubTask.builder()
+                    .taskId(task.getTaskId())
+                    .taskIndex(task.getTaskIndex())
+                    .totalTasks(task.getTotalTasks())
+                    .content(task.getContent())
+                    .intent(IntentTypeEnum.fromCode(task.getIntent()))
+                    .confidence(ConfidenceEnum.fromCode(task.getConfidence()))
+                    .slots(task.getSlots() == null ? new HashMap<>() : new HashMap<>(task.getSlots()))
+                    .dependsOn(task.getDependsOn() == null ? List.of() : task.getDependsOn())
+                    .build());
         }
-
-        return taskArray.toJavaList(SubTask.class);
+        return tasks;
     }
 
     private void normalizeTask(SubTask subTask) {
@@ -409,7 +382,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             return;
         }
 
-        if (subTask.getIntent() == null) {
+        if (subTask.getIntent() == null || subTask.getIntent() == IntentTypeEnum.UNKNOWN) {
             subTask.setIntent(IntentTypeEnum.GENERAL_CHAT);
         }
 
@@ -517,9 +490,12 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                       String prompt,
                                                       AiAgentClientFlowConfigVO configVO,
                                                       Map<String, Object> observationContext,
+                                                      ChatResponseValidator validator,
                                                       Function<String, T> parser,
                                                       Function<String, T> fallback) {
         long startedAt = System.currentTimeMillis();
+        String content = "";
+        ChatResponse response = null;
         try {
             ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
             Map<String, Object> advisorContext = new HashMap<>();
@@ -527,24 +503,42 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                 advisorContext.putAll(observationContext);
             }
             advisorContext.putIfAbsent("client_id", configVO.getClientId());
-            ChatResponse response = chatClient.prompt(prompt)
-                    .advisors(advisor -> advisorContext.forEach(advisor::param))
-                    .call()
-                    .chatResponse();
-            String content = response == null || response.getResult() == null
+            response = ResponseValidationContext.withValidator(validator,
+                    () -> chatClient.prompt(prompt)
+                            .options(jsonObjectOptions())
+                            .advisors(advisor -> advisorContext.forEach(advisor::param))
+                            .call()
+                            .chatResponse());
+            if (validator != null) {
+                validator.validate(response);
+            }
+            content = response == null || response.getResult() == null
                     || response.getResult().getOutput() == null
                     ? null : response.getResult().getOutput().getText();
             RoutingStageMetric metric = buildMetric(stageName, taskId, callIndex, configVO.getClientId(),
-                    startedAt, prompt, content, response, true, null);
+                    startedAt, prompt, content, response, true, null, null);
+            metric.setJsonModeEnabled(true);
+            metric.setSchemaValidationEnabled(validator != null);
             if (!StringUtils.hasText(content)) {
                 metric.setSuccess(false);
                 metric.setErrorMessage("LLM returned an empty response");
+                metric.setFinalFailureType(ResponseValidationFailureType.EMPTY_RESPONSE.name());
                 return new RoutingCallResult<>(fallback.apply(metric.getErrorMessage()), metric);
             }
-            return new RoutingCallResult<>(parser.apply(content), metric);
+            try {
+                return new RoutingCallResult<>(parser.apply(content), metric);
+            } catch (ResponseValidationException e) {
+                metric.setSuccess(false);
+                metric.setErrorMessage(e.getMessage());
+                metric.setFinalFailureType(e.getFailureType().name());
+                return new RoutingCallResult<>(fallback.apply(e.getMessage()), metric);
+            }
         } catch (Exception e) {
+            ResponseValidationFailureType failureType = failureTypeOf(e);
             RoutingStageMetric metric = buildMetric(stageName, taskId, callIndex, configVO.getClientId(),
-                    startedAt, prompt, "", null, false, e.getMessage());
+                    startedAt, prompt, content, response, false, e.getMessage(), failureType);
+            metric.setJsonModeEnabled(true);
+            metric.setSchemaValidationEnabled(validator != null);
             log.error("Routing model call failed: stage={}, taskId={}, error={}", stageName, taskId, e.getMessage(), e);
             return new RoutingCallResult<>(fallback.apply("LLM调用异常: " + e.getMessage()), metric);
         }
@@ -559,7 +553,8 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                            String content,
                                            ChatResponse response,
                                            boolean success,
-                                           String errorMessage) {
+                                           String errorMessage,
+                                           ResponseValidationFailureType failureType) {
         Integer promptTokens = null;
         Integer completionTokens = null;
         Integer totalTokens = null;
@@ -593,6 +588,34 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                 .estimatedTokens(estimated)
                 .success(success)
                 .errorMessage(errorMessage)
+                .finalFailureType(failureType == null ? null : failureType.name())
+                .jsonModeEnabled(true)
+                .schemaValidationEnabled(true)
+                .build();
+    }
+
+    private ResponseValidationFailureType failureTypeOf(Exception e) {
+        if (e instanceof ResponseValidationException validationException) {
+            return validationException.getFailureType();
+        }
+        return ResponseValidationFailureType.INFRA_ERROR;
+    }
+
+    private String legacyValidationMessage(ResponseValidationException e) {
+        if (e.getFailureType() == ResponseValidationFailureType.EMPTY_RESPONSE) {
+            return "LLM返回为空";
+        }
+        if (e.getFailureType() == ResponseValidationFailureType.JSON_PARSE_ERROR) {
+            return "JSON解析失败: " + e.getMessage();
+        }
+        return e.getMessage();
+    }
+
+    private OpenAiChatOptions jsonObjectOptions() {
+        return OpenAiChatOptions.builder()
+                .responseFormat(ResponseFormat.builder()
+                        .type(ResponseFormat.Type.JSON_OBJECT)
+                        .build())
                 .build();
     }
 

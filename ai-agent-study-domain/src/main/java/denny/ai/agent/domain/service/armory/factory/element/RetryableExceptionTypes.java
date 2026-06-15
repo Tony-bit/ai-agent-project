@@ -36,6 +36,9 @@ public final class RetryableExceptionTypes {
         if (e == null) {
             return false;
         }
+        if (e instanceof ResponseValidationException) {
+            return true;
+        }
 
         String className = e.getClass().getName();
         if (className.contains(TRANSIENT_AI_EXCEPTION)) {

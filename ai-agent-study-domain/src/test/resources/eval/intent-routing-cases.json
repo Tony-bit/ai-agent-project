@@ -530,7 +530,7 @@
       "taskIntents": ["INSPECTION"],
       "executorNodes": ["intelligentInspection"],
       "confidences": ["HIGH"],
-      "taskTypes": [2],
+      "taskTypes": [0],
       "taskStatuses": ["PENDING"]
     },
     "tags": ["intent-routing", "inspection", "normalization"]

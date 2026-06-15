@@ -161,6 +161,14 @@ public class RetryableExceptionTypesTest {
         assertFalse(RetryableExceptionTypes.isRetryable(e));
     }
 
+    @Test
+    public void shouldTreatResponseValidationExceptionAsRetryable() {
+        ResponseValidationException e = new ResponseValidationException(
+                ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR, "schema mismatch");
+
+        assertTrue(RetryableExceptionTypes.isRetryable(e));
+    }
+
     // ========== TC-RET-06: 组合场景 ==========
 
     @Test

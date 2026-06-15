@@ -8,9 +8,11 @@ import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.StockSlot;
 import denny.ai.agent.domain.model.valobj.SubTask;
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
+import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
 import org.junit.Before;
 import org.junit.Test;
@@ -24,6 +26,9 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 
 import java.lang.reflect.Field;
 import java.util.List;
@@ -33,6 +38,8 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -221,6 +228,8 @@ public class IntentRoutingServiceTest {
                 {
                   "multiTask": false,
                   "needsClarification": false,
+                  "missingInfo": [],
+                  "clarificationPrompt": "",
                   "reasoning": "知识检索",
                   "taskList": [
                     {
@@ -229,9 +238,8 @@ public class IntentRoutingServiceTest {
                       "totalTasks": 1,
                       "content": "解释向量数据库",
                       "intent": "PE_RETRIEVAL",
-                      "executorNode": "step1AnalyzerNode",
                       "confidence": "HIGH",
-                      "taskType": 0,
+                      "dependsOn": [],
                       "slots": {
                         "baseSlot": {"topic": "向量数据库", "sentiment": "neutral"},
                         "intentSpecificSlots": {"topic": "向量数据库"}
@@ -643,6 +651,36 @@ public class IntentRoutingServiceTest {
         assertEquals(Integer.valueOf(2), result.getMetrics().getStageMetrics().get(2).getCallIndex());
         org.mockito.Mockito.verify(chatModel, org.mockito.Mockito.times(3))
                 .call(any(org.springframework.ai.chat.prompt.Prompt.class));
+    }
+
+    @Test
+    public void should_retry_inside_retry_chat_model_when_unified_structure_validation_fails() {
+        RetryChatModel retryChatModel = new RetryChatModel(chatModel, RetryConfig.builder()
+                .enabled(true)
+                .maxAttempts(3)
+                .initialIntervalMs(10)
+                .build());
+        when(armoryObjectRegistry.get("ai_client_intent-routing-clienttaskType0"))
+                .thenReturn(ChatClient.builder(retryChatModel).build());
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(response("{\"multiTask\":false"))
+                .thenReturn(response("""
+                        {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                         "reasoning":"valid","taskList":[
+                           {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"hello",
+                            "intent":"GENERAL_CHAT","confidence":"HIGH","dependsOn":[],"slots":{}}
+                         ]}
+                        """));
+
+        MultiIntentRoutingResult result = intentRoutingService.routeUnified("hello", List.of(), configVO);
+
+        assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
+        org.mockito.ArgumentCaptor<Prompt> captor = forClass(Prompt.class);
+        verify(chatModel, org.mockito.Mockito.times(2)).call(captor.capture());
+        assertSame(captor.getAllValues().get(0), captor.getAllValues().get(1));
+        assertTrue(captor.getValue().getOptions() instanceof OpenAiChatOptions);
+        OpenAiChatOptions options = (OpenAiChatOptions) captor.getValue().getOptions();
+        assertEquals(ResponseFormat.Type.JSON_OBJECT, options.getResponseFormat().getType());
     }
 
     @Test

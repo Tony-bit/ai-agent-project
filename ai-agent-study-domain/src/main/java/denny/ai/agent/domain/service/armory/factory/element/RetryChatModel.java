@@ -201,7 +201,12 @@ public class RetryChatModel implements ChatModel {
 
         @Override
         protected ChatResponse doExecute(Prompt prompt) {
-            return delegate.call(prompt);
+            ChatResponse response = delegate.call(prompt);
+            ChatResponseValidator validator = ResponseValidationContext.currentValidator();
+            if (validator != null) {
+                validator.validate(response);
+            }
+            return response;
         }
 
         @Override

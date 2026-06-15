@@ -272,6 +272,9 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("routingMode", run.getRoutingMode());
         metadata.put("totalTokens", run.getTotalTokens());
         metadata.put("stageCount", run.getStageCount());
+        metadata.put("finalFailureType", run.getFinalFailureType());
+        metadata.put("jsonModeEnabled", run.getJsonModeEnabled());
+        metadata.put("schemaValidationEnabled", run.getSchemaValidationEnabled());
         return metadata;
     }
 
@@ -304,7 +307,7 @@ public class IntentRoutingOnlineEvaluator {
         run.setMissingInfo(safeList(result.getMissingInfo()));
         run.setActualIntents(extractIntents(result));
 
-        OutcomeType outcomeType = classifyOutcome(result.getReasoning());
+        OutcomeType outcomeType = classifyOutcome(run);
         run.setOutcomeType(outcomeType.name());
         run.setSignature(buildSignature(outcomeType, run));
         run.setPassed(outcomeType == OutcomeType.ROUTE && matchesExpected(c, run));
@@ -322,9 +325,31 @@ public class IntentRoutingOnlineEvaluator {
         run.setEstimated(metrics.getEstimated());
         run.setStageMetrics(safeList(metrics.getStageMetrics()));
         run.setStageCount(run.getStageMetrics().size());
+        run.setFinalFailureType(firstFailureType(run.getStageMetrics()));
+        run.setJsonModeEnabled(run.getStageMetrics().stream()
+                .anyMatch(stage -> Boolean.TRUE.equals(stage.getJsonModeEnabled())));
+        run.setSchemaValidationEnabled(run.getStageMetrics().stream()
+                .anyMatch(stage -> Boolean.TRUE.equals(stage.getSchemaValidationEnabled())));
     }
 
-    private OutcomeType classifyOutcome(String reasoning) {
+    private String firstFailureType(List<RoutingStageMetric> stages) {
+        return stages.stream()
+                .map(RoutingStageMetric::getFinalFailureType)
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private OutcomeType classifyOutcome(RunResult run) {
+        String failureType = run.getFinalFailureType();
+        if ("INFRA_ERROR".equals(failureType)) {
+            return OutcomeType.INFRA_ERROR;
+        }
+        if (failureType != null && !failureType.isBlank()) {
+            return OutcomeType.FORMAT_ERROR;
+        }
+        String reasoning = run.getReasoning();
         if (reasoning != null && reasoning.startsWith(INFRA_PREFIX)) {
             return OutcomeType.INFRA_ERROR;
         }
@@ -339,6 +364,9 @@ public class IntentRoutingOnlineEvaluator {
             return "INFRA_ERROR|LLM_CALL";
         }
         if (outcomeType == OutcomeType.FORMAT_ERROR) {
+            if (run.getFinalFailureType() != null && !run.getFinalFailureType().isBlank()) {
+                return "FORMAT_ERROR|" + run.getFinalFailureType();
+            }
             if (run.getReasoning() != null && run.getReasoning().startsWith("LLM\u8fd4\u56de\u4e3a\u7a7a")) {
                 return "FORMAT_ERROR|EMPTY_RESPONSE";
             }
@@ -670,6 +698,9 @@ public class IntentRoutingOnlineEvaluator {
         private Integer totalTokens;
         private Integer stageCount;
         private Boolean estimated;
+        private String finalFailureType;
+        private Boolean jsonModeEnabled;
+        private Boolean schemaValidationEnabled;
         private List<RoutingStageMetric> stageMetrics = new ArrayList<>();
     }
 

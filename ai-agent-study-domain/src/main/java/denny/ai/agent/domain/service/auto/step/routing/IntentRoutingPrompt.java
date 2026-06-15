@@ -99,15 +99,15 @@ public class IntentRoutingPrompt {
         4. 若无需补充，输出 taskList
         5. 单任务时也必须使用 taskList，且 taskList 中仅保留 1 个任务
 
-        ## 意图类型与执行节点映射
-        | 意图类型 | 执行节点 (executorNode) | 说明 |
-        |----------|------------------------|------|
-        | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
-        | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
-        | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
-        | PE_RETRIEVAL | step1AnalyzerNode | 知识库检索、多文档汇总、外部资料整合 |
-        | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
-        | GENERAL_CHAT | generalChatNode | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
+        ## 意图类型
+        | 意图类型 | 说明 |
+        |----------|------|
+        | STOCK_ANALYSIS | 股票/市场分析 |
+        | PE_REASONING | 逻辑推理、问题分析 |
+        | PE_CALCULATION | 数学计算、数据处理 |
+        | PE_RETRIEVAL | 知识库检索、多文档汇总、外部资料整合 |
+        | INSPECTION | 系统巡检、健康检查 |
+        | GENERAL_CHAT | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
 
         ## 判断规则
         1. 多任务场景：用户明确提出多个可独立执行的任务，或多个实体需要分别处理
@@ -132,6 +132,7 @@ public class IntentRoutingPrompt {
         %s
 
         ## 输出要求
+        不要输出 executorNode、taskType、status、result、latencyMs、errorMessage 或 metrics。
         请严格按以下 JSON 输出，不要包含任何额外内容：
         {
           "multiTask": true/false,
@@ -146,9 +147,8 @@ public class IntentRoutingPrompt {
               "totalTasks": 1,
               "content": "任务描述",
               "intent": "PE_RETRIEVAL",
-              "executorNode": "step1AnalyzerNode",
               "confidence": "HIGH",
-              "taskType": 0,
+              "dependsOn": [],
               "slots": {
                 "baseSlot": {
                   "topic": "主题",
@@ -225,21 +225,21 @@ public class IntentRoutingPrompt {
         ## 角色
         你是一个专业的意图分解助手，负责分析用户输入并将其拆分为多个可独立执行的子任务。
 
-        ## 意图类型与执行节点映射
-        | 意图类型 | 执行节点 (executorNode) | 说明 |
-        |----------|------------------------|------|
-        | STOCK_ANALYSIS | tradingStarter | 股票/市场分析 |
-        | PE_REASONING | step1AnalyzerNode | 逻辑推理、问题分析 |
-        | PE_CALCULATION | step1AnalyzerNode | 数学计算、数据处理 |
-        | PE_RETRIEVAL | step1AnalyzerNode | 知识库检索、多文档汇总、外部资料整合 |
-        | INSPECTION | intelligentInspection | 系统巡检、健康检查 |
-        | GENERAL_CHAT | generalChatNode | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
+        ## 意图类型
+        | 意图类型 | 说明 |
+        |----------|------|
+        | STOCK_ANALYSIS | 股票/市场分析 |
+        | PE_REASONING | 逻辑推理、问题分析 |
+        | PE_CALCULATION | 数学计算、数据处理 |
+        | PE_RETRIEVAL | 知识库检索、多文档汇总、外部资料整合 |
+        | INSPECTION | 系统巡检、健康检查 |
+        | GENERAL_CHAT | 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话 |
 
         ## 分解规则
         1. 每个子任务应该是独立的、可单独执行的
         2. 子任务之间应尽量无依赖（串行执行）
         3. 按实体粒度分解：不同股票/实体拆成独立任务
-        4. 每个 SubTask 必须指定 executorNode（对应执行节点名称）
+        4. 不要输出 executorNode、taskType、status、result、latencyMs、errorMessage 或 metrics；这些运行期字段由服务端生成
 
         ## 应该触发多任务分解的场景
         - 复杂多步骤任务（3个或更多步骤）
@@ -267,18 +267,12 @@ public class IntentRoutingPrompt {
               "totalTasks": 2,
               "content": "分析贵州茅台走势",
               "intent": "STOCK_ANALYSIS",
-              "executorNode": "tradingStarter",
               "confidence": "HIGH",
-              "taskType": 0,
+              "dependsOn": [],
               "slots": {"stockCode": "600519", "stockQueryType": "TECHNICAL"}
             }
           ]
         }
-
-        ## taskType 字段说明
-        - taskType 必须为整数，表示执行该子任务使用的模型配置编号
-        - 推荐使用 taskType=0（通用模型），除非任务需要特殊模型
-        - taskType 仅限非负整数，禁止包含字母或特殊字符
         """;
 
     /**

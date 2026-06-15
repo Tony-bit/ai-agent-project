@@ -21,4 +21,9 @@ public class RoutingStageMetric {
     private Boolean estimatedTokens;
     private Boolean success;
     private String errorMessage;
+    private String finalFailureType;
+    private Boolean jsonModeEnabled;
+    private Boolean schemaValidationEnabled;
+    private Integer attemptCount;
+    private String retryReasons;
 }

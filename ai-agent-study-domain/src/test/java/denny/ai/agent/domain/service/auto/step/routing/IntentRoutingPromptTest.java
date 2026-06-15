@@ -13,8 +13,8 @@ import static org.junit.Assert.*;
  * <p>
  * 测试覆盖：
  * 1. TC-IRP-001: 用户消息被嵌入 Prompt
- * 2. TC-IRP-002: Prompt 包含意图-执行节点映射
- * 3. TC-IRP-003: Prompt 包含 executorNode 字段说明
+ * 2. TC-IRP-002: Prompt 包含合法意图
+ * 3. TC-IRP-003: Prompt 禁止输出运行期字段
  * 4. TC-IRP-004: Prompt 包含多任务分解规则
  * 5. TC-IRP-005: Prompt 包含应该/不应该触发多任务的场景
  * </p>
@@ -69,26 +69,27 @@ public class IntentRoutingPromptTest {
     }
 
     /**
-     * TC-IRP-002: Prompt 包含意图-执行节点映射
+     * TC-IRP-002: Prompt 包含合法意图
      */
     @Test
-    public void testBuildMultiTaskDecomposePrompt_containsIntentMapping() {
+    public void testBuildMultiTaskDecomposePrompt_containsIntentCodes() {
         String prompt = IntentRoutingPrompt.buildMultiTaskDecomposePrompt("测试消息", Collections.emptyList());
 
-        assertTrue("Prompt 应包含 tradingStarter 映射", prompt.contains("tradingStarter"));
-        assertTrue("Prompt 应包含 generalChatNode 映射", prompt.contains("generalChatNode"));
-        assertTrue("Prompt 应包含 step1AnalyzerNode 映射", prompt.contains("step1AnalyzerNode"));
-        assertTrue("Prompt 应包含 intelligentInspection 映射", prompt.contains("intelligentInspection"));
+        assertTrue("Prompt 应包含 STOCK_ANALYSIS", prompt.contains("STOCK_ANALYSIS"));
+        assertTrue("Prompt 应包含 GENERAL_CHAT", prompt.contains("GENERAL_CHAT"));
+        assertTrue("Prompt 应包含 PE_REASONING", prompt.contains("PE_REASONING"));
+        assertTrue("Prompt 应包含 INSPECTION", prompt.contains("INSPECTION"));
     }
 
     /**
-     * TC-IRP-003: Prompt 包含 executorNode 字段说明
+     * TC-IRP-003: Prompt 禁止输出运行期字段
      */
     @Test
-    public void testBuildMultiTaskDecomposePrompt_containsExecutorNodeField() {
+    public void testBuildMultiTaskDecomposePrompt_rejectsRuntimeFields() {
         String prompt = IntentRoutingPrompt.buildMultiTaskDecomposePrompt("测试消息", Collections.emptyList());
 
-        assertTrue("Prompt 应包含 executorNode 字段说明", prompt.contains("executorNode"));
+        assertTrue("Prompt 应说明不要输出 executorNode", prompt.contains("不要输出 executorNode"));
+        assertTrue("Prompt 应说明运行期字段由服务端生成", prompt.contains("运行期字段由服务端生成"));
     }
 
     /**

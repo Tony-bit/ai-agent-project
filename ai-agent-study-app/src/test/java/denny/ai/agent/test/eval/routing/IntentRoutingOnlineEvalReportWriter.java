@@ -231,11 +231,12 @@ public class IntentRoutingOnlineEvalReportWriter {
             markdown.append("- Expected: `").append(String.join(",", c.getExpectedIntents())).append("`\n");
             markdown.append("- Pass rate: ").append(percent(c.getPassRate())).append("\n");
             markdown.append("- Consistency: ").append(percent(c.getConsistencyRate())).append("\n\n");
-            markdown.append("| Run | Outcome | Signature | Passed | Latency ms | Routing latency ms | Tokens | Stages | Reasoning |\n");
-            markdown.append("|---:|---|---|---|---:|---:|---:|---:|---|\n");
+            markdown.append("| Run | Outcome | Failure type | Signature | Passed | Latency ms | Routing latency ms | Tokens | Stages | Reasoning |\n");
+            markdown.append("|---:|---|---|---|---|---:|---:|---:|---:|---|\n");
             for (RunResult run : c.getRuns()) {
                 markdown.append("| ").append(run.getRunIndex()).append(" | ")
                         .append(run.getOutcomeType()).append(" | ")
+                        .append(display(run.getFinalFailureType())).append(" | ")
                         .append(escape(run.getSignature())).append(" | ")
                         .append(run.isPassed()).append(" | ")
                         .append(run.getLatencyMs()).append(" | ")

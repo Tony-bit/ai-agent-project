@@ -1,6 +1,9 @@
 package denny.ai.agent.domain.service.armory;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationContext;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationException;
+import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationFailureType;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -12,6 +15,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -204,6 +208,77 @@ public class RetryChatModelTest {
 
         assertNotNull(result);
         verify(delegate, times(2)).call(any(Prompt.class));
+    }
+
+    @Test
+    public void testResponseValidationException_retryThenSuccessWithOriginalPrompt() {
+        RetryConfig config = RetryConfig.builder()
+                .enabled(true)
+                .maxAttempts(3)
+                .initialIntervalMs(10)
+                .build();
+        Prompt prompt = makePrompt("hello");
+        AtomicInteger validationCount = new AtomicInteger();
+
+        when(delegate.call(any(Prompt.class))).thenReturn(successResponse);
+
+        RetryChatModel retryChatModel = new RetryChatModel(delegate, config);
+        ChatResponse result = ResponseValidationContext.withValidator(response -> {
+            if (validationCount.incrementAndGet() == 1) {
+                throw new ResponseValidationException(ResponseValidationFailureType.JSON_PARSE_ERROR,
+                        "invalid json");
+            }
+        }, () -> retryChatModel.call(prompt));
+
+        assertSame(successResponse, result);
+        verify(delegate, times(2)).call(same(prompt));
+        assertEquals(2, validationCount.get());
+    }
+
+    @Test
+    public void should_default_max_attempts_to_three_for_response_validation_errors() {
+        RetryConfig config = RetryConfig.builder()
+                .enabled(true)
+                .initialIntervalMs(10)
+                .build();
+        Prompt prompt = makePrompt("hello");
+        AtomicInteger validationCount = new AtomicInteger();
+
+        when(delegate.call(any(Prompt.class))).thenReturn(successResponse);
+
+        RetryChatModel retryChatModel = new RetryChatModel(delegate, config);
+        ChatResponse result = ResponseValidationContext.withValidator(response -> {
+            if (validationCount.incrementAndGet() < 3) {
+                throw new ResponseValidationException(ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR,
+                        "schema mismatch");
+            }
+        }, () -> retryChatModel.call(prompt));
+
+        assertSame(successResponse, result);
+        verify(delegate, times(3)).call(same(prompt));
+        assertEquals(3, validationCount.get());
+    }
+
+    @Test
+    public void should_exhaust_configured_attempts_for_response_validation_errors() {
+        RetryConfig config = RetryConfig.builder()
+                .enabled(true)
+                .maxAttempts(2)
+                .initialIntervalMs(10)
+                .build();
+        Prompt prompt = makePrompt("hello");
+
+        when(delegate.call(any(Prompt.class))).thenReturn(successResponse);
+
+        RetryChatModel retryChatModel = new RetryChatModel(delegate, config);
+        ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
+                ResponseValidationContext.withValidator(response -> {
+                    throw new ResponseValidationException(ResponseValidationFailureType.BUSINESS_VALIDATION_ERROR,
+                            "business rule failed");
+                }, () -> retryChatModel.call(prompt)));
+
+        assertEquals(ResponseValidationFailureType.BUSINESS_VALIDATION_ERROR, thrown.getFailureType());
+        verify(delegate, times(2)).call(same(prompt));
     }
 
     /**
