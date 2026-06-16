@@ -67,20 +67,19 @@
 
 这类配置属于低频变更、高频读取数据，应增加应用级或短 TTL 缓存，并提供版本失效机制。否则高并发时会把每轮请求的固定成本放大。
 
-### 2.5 persona 已缓存，但注入和消费链路不够统一
+### 2.5 persona 已缓存，本期暂不改变消费链路
 
 `injectPersonaContext()` 会把 persona 写入 `DynamicContext`。PE 链路已经有消费点，但通用对话、意图路由、split routing 并没有统一把 persona 纳入 prompt 预算和上下文快照。
 
-这会产生两个问题：
+当前决策是：本期暂不扩大 persona 的使用范围，不额外把 persona 注入 routing/split routing，也不重构现有 `injectPersonaContext()` 链路。原因是 persona 属于用户级长期偏好，完整画像进入路由 prompt 可能污染意图判断或影响 structured output 稳定性。
 
-- 有些请求加载了 persona，但实际没有用上。
-- 不同节点是否使用 persona 取决于各自实现，体验不一致。
+后续如需个性化路由，可按节点策略注入短 persona hints，而不是完整 persona。例如只注入“用户关注领域”“回答风格偏好”等小字段。
 
-### 2.6 few-shot 检索每轮按 query 触发
+### 2.6 few-shot 检索每轮按 query 实时触发
 
-`IntentRoutingService.retrieveFewshotSamples(userMessage)` 对非 trivial 输入每轮走 PGvector TopK 检索。方向正确，但缺少 query 级短缓存和路由阶段的 memoization。
+`IntentRoutingService.retrieveFewshotSamples(userMessage)` 对非 trivial 输入每轮走 PGvector TopK 检索。方向正确，本期继续保持实时检索，不引入 query 级缓存或路由阶段 memoization。
 
-在真实在线评测、重复 query、前端重试、用户连续修正输入时，这部分会产生重复向量检索成本。
+当前决策是：few-shot 不做缓存，意图识别阶段每次实时访问 PostgreSQL/PGvector 检索。原因是 few-shot 样例会影响路由效果，实时检索能避免新增、修改、删除样例后仍命中旧缓存。重复 query 带来的向量检索成本先接受，后续只有在观测到明确性能瓶颈时再评估短 TTL 或评测专用缓存。
 
 ### 2.7 skills 渐进披露方向正确，但开发期 autoReload 可能放大开销
 
@@ -113,9 +112,9 @@ trading skills 当前配置：
 
 1. 保持 `ChatClient` 全局复用，不引入 session 私有 ChatClient。
 2. 建立清晰的上下文生命周期边界：应用级、用户级、会话级、单轮级。
-3. 新增 session runtime 层，一轮内统一加载并复用 history、persona、flow config、few-shot 等上下文。
-4. 不同 session 可以并发，同一 session 默认串行执行。
-5. 降低重复 DB/Redis/Mem0/PGvector 访问。
+3. 新增 session runtime 层，一轮内统一加载并复用 history、flow config、few-shot 等上下文素材；persona 本期保持现有链路。
+4. 不同 session 可以并发；同一 session 现阶段依赖前端“生成中禁止再次提交”的交互约束，后端串行 guard 作为后续增强。
+5. 降低重复 DB/Redis/Mem0 访问；few-shot 保持实时 PostgreSQL/PGvector 检索。
 6. 为后续 token-aware history 裁剪、session summary、skill working set 复用留接口。
 7. 尽量兼容现有 `DynamicContext`，避免一次性重写所有节点。
 
@@ -126,8 +125,9 @@ trading skills 当前配置：
 3. 不把 session history、persona、tool state 塞入 `ChatClient`。
 4. 不重构 Spring AI `ChatClient`、`Advisor`、`ToolCallback` 的装配方式。
 5. 不改变 PE、通用对话、巡检、交易分析的业务语义。
-6. 不在第一期引入分布式锁；单机应用内先用本地 session guard。
-7. 不在第一期实现完整 session summary 压缩，只预留接口。
+6. 不在第一期引入后端 session 串行锁、分布式锁或消息队列 actor；同 session 并发乱序作为边界风险记录。
+7. 不在第一期改造会话持久化可靠性，不新增 MySQL/Redis 重试、pending queue、outbox 或缓存补偿机制。
+8. 不在第一期实现完整 session summary 压缩，只预留接口。
 
 ---
 
@@ -188,15 +188,15 @@ Turn Scope
   current query / traceId / emitter / routing result / metrics / temporary node data
 ```
 
-### 4.3 同 session 串行，不同 session 并行
+### 4.3 同 session 执行中不重复提交，不同 session 并行
 
 ```text
-session-A turn-1 -> session-A turn-2 -> session-A turn-3
+session-A turn-1 完成后 -> session-A turn-2
 
 session-A turn-1 并行 session-B turn-1 并行 session-C turn-1
 ```
 
-这是最符合聊天语义的默认策略。后续如需要支持同 session 并行，可引入 message version 和 conflict merge，但第一期不做。
+当前由前端禁止同一 session 在执行中再次提交，满足主要聊天语义。后续如需要支持多端、多标签页或 API 直连，可补充后端 `SessionExecutionGuard`；如需要支持同 session 真并行，则需要引入 message version 和 conflict merge，本期不做。
 
 ---
 
@@ -207,30 +207,27 @@ session-A turn-1 并行 session-B turn-1 并行 session-C turn-1
 ```text
 HTTP Controller
   -> AutoAgentExecuteStrategy
-     -> SessionExecutionGuard.acquire(sessionId)
-        -> TurnContext 创建
-    -> RuntimeContextAssembler.prepare(...)
-       -> UserRuntimeContext
-       -> SessionRuntimeContext
-       -> 写入 DynamicContext 兼容 key
-    -> RootNode / downstream nodes
-       -> 按节点级 PromptContextPolicy 构建节点专属 prompt context
-    -> ConversationPersistence
-    -> RuntimeContextAssembler.afterTurn(...)
-     -> SessionExecutionGuard.release(sessionId)
+     -> create DynamicContext / TurnContext
+     -> RuntimeContextAssembler.prepare(...)
+        -> UserRuntimeContext
+        -> SessionRuntimeContext
+        -> 写入 DynamicContext 兼容 key
+     -> RootNode / downstream nodes
+        -> 按节点级 PromptContextPolicy 构建节点专属 prompt context
+     -> ConversationPersistence
 ```
 
 ### 5.2 新增组件
 
-#### SessionExecutionGuard
+#### SessionExecutionGuard（后续增强）
 
 职责：
 
-- 为每个 sessionId 提供串行执行门禁。
+- 在需要多端、多标签页或 API 直连时，为每个 sessionId 提供串行执行门禁。
 - 不同 sessionId 不互相阻塞。
 - 支持超时等待、错误释放、指标记录。
 
-建议第一期实现：
+可选接口：
 
 ```java
 public interface SessionExecutionGuard {
@@ -244,7 +241,7 @@ public interface SessionExecutionGuard {
 - 或 `Striped<Lock>` 风格的固定分片锁
 - 或 session actor mailbox
 
-第一期推荐 `ConcurrentHashMap + ReentrantLock + finally release`，简单透明。
+如果后续要实现，推荐 `ConcurrentHashMap + ReentrantLock + finally release` 起步，简单透明。本期不作为必做项。
 
 #### RuntimeContextAssembler
 
@@ -261,6 +258,7 @@ public interface RuntimeContextAssembler {
     TurnRuntimeContext prepare(ExecuteCommandEntity request,
                                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext);
 
+    // 后续需要 afterTurn 主动刷新本地 session cache 时再引入。
     void afterTurn(ExecuteCommandEntity request,
                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                    TurnRuntimeContext turnContext);
@@ -271,10 +269,9 @@ public interface RuntimeContextAssembler {
 
 职责：
 
-- 按 userId 缓存 persona。
-- 后续扩展长期记忆摘要、用户偏好。
+- 后续按 userId 管理 persona、长期记忆摘要、用户偏好等用户级上下文。
 
-第一期可复用现有 `IUserPersonaCacheService`，只在 assembler 内统一调用，不让业务节点直接调用。
+本期不迁移 persona 链路，继续复用现有 `IUserPersonaCacheService` 与 `injectPersonaContext()` 行为。`UserRuntimeContextManager` 作为后续扩展预留。
 
 #### SessionRuntimeContextManager
 
@@ -325,20 +322,17 @@ TTL:
   后续可接入配置更新时间/version
 ```
 
-#### RoutingFewshotCache
+#### RoutingFewshotCache（本期不做）
 
-职责：
+few-shot 暂不缓存。`IntentRoutingService.retrieveFewshotSamples(userMessage)` 继续每次调用 `IntentFewshotService.retrieveTopK(query, k)`，实时访问 PostgreSQL/PGvector。
 
-- 缓存 `IntentFewshotService.retrieveTopK(query, k)` 结果。
-- 减少重复 query 和评测场景下 PGvector 开销。
+不做缓存的原因：
 
-建议第一期：
+- 样例新增、更新、删除后应尽快影响路由；
+- query 语义检索结果与样例库当前状态强相关；
+- 本期目标是上下文读取收敛，不把 few-shot 引入缓存失效复杂度。
 
-```text
-cache key = normalize(query) + ":" + k
-TTL = 5-30 分钟
-maxSize = 1000
-```
+后续如果评测或线上指标显示 PGvector 成本成为瓶颈，可再单独设计短 TTL 缓存或评测专用缓存。
 
 #### PromptContextBuilder 与 NodePromptContextPolicy
 
@@ -355,7 +349,7 @@ maxSize = 1000
 public class NodePromptContextPolicy {
     private String nodeName;
     private HistoryMode historyMode;
-    private boolean includePersona;
+    private boolean includePersona; // 本期默认 false，后续按节点策略开启
     private boolean includeSessionSummary;
     private boolean includeFewshot;
     private boolean includeActiveSkillNames;
@@ -396,7 +390,6 @@ public final class RuntimeContextKeys {
 
 - `dynamicContext.setValue("sessionId", request.getSessionId())`
 - `dynamicContext.setValue("userId", request.getUserId())`
-- `dynamicContext.setValue("persona", userContext.getPersona())`
 - `dynamicContext.setValue("recentHistoryMessages", sessionContext.getRecentHistoryMessages())`
 - `dynamicContext.setAiAgentClientFlowConfigVOMap(flowConfigMap)`
 - `dynamicContext.setValue("turnRuntimeContext", turnContext)`
@@ -407,7 +400,7 @@ public final class RuntimeContextKeys {
 - `QueryDecompositionNode` 从相同 key 取历史。
 - `TaskRoutingSlotNode` 从相同 key 取历史。
 - `RootNode` 不再直接查询 flow config。
-- persona 注入逻辑从 `RootNode` 下沉到 assembler。
+- persona 注入逻辑本期保持现状，不下沉到 assembler；后续如需统一再按 `NodePromptContextPolicy` 迁移。
 
 ---
 
@@ -417,23 +410,19 @@ public final class RuntimeContextKeys {
 
 ```text
 AutoAgentExecuteStrategy
-  -> SessionExecutionGuard.execute(sessionId)
-    -> create DynamicContext
-    -> RuntimeContextAssembler.prepare
-      -> load flow config from AgentRuntimeConfigCache
-      -> load persona from UserRuntimeContextManager
+  -> create DynamicContext
+  -> RuntimeContextAssembler.prepare
+    -> load flow config from AgentRuntimeConfigCache
       -> load recent history from SessionRuntimeContextManager
-      -> write compatibility keys
-    -> RootNode
-      -> choose IntentRoutingNode or QueryDecompositionNode
+    -> write compatibility keys
+  -> RootNode
+    -> choose IntentRoutingNode or QueryDecompositionNode
     -> routing nodes
       -> read recentHistoryMessages from DynamicContext
       -> IntentRoutingService
-        -> retrieve few-shot through RoutingFewshotCache
-    -> downstream node
-    -> persist conversation
-    -> RuntimeContextAssembler.afterTurn
-      -> refresh session history snapshot
+        -> retrieve few-shot from PostgreSQL/PGvector in real time
+  -> downstream node
+  -> persist conversation through existing ChatMemoryPersistenceService
 ```
 
 ### 7.2 显式 aiAgentId 链路
@@ -443,7 +432,6 @@ AutoAgentExecuteStrategy
   -> guard
   -> assembler.prepare
     -> load agent flow config by aiAgentId from AgentRuntimeConfigCache
-    -> load persona
     -> load recent history
   -> RootNode
     -> Step1AnalyzerNode / IntelligentInspection
@@ -458,7 +446,7 @@ AutoAgentExecuteStrategy
 - `user_id`
 - `trace_id`
 
-如果需要 persona，应由 `GeneralChatNode` 从 `TurnRuntimeContext` 或 `DynamicContext` 读取统一构造 system supplement，而不是自行调用 memory service。
+如果需要 persona，本期仍沿用现有 `DynamicContext` / `injectPersonaContext()` 链路。后续若迁移到 `TurnRuntimeContext`，应由节点按自身 policy 构造 system supplement，而不是自行调用 memory service。
 
 ---
 
@@ -470,12 +458,12 @@ AutoAgentExecuteStrategy
 | --- | --- |
 | 不同 userId，不同 sessionId | 并行 |
 | 同 userId，不同 sessionId | 并行，共享 user-level persona cache |
-| 同 sessionId | 串行 |
-| 同 sessionId 第二个请求到达 | 等待、排队或快速返回 busy，第一期建议等待并配置超时 |
+| 同 sessionId | 当前由前端禁止“执行中再次查询”来约束 |
+| 同 sessionId 第二个请求到达 | 第一阶段后端不新增排队/锁；多标签页、脚本直调、重试重复提交作为已知边界风险 |
 
-### 8.2 Guard 行为
+### 8.2 SessionExecutionGuard 后续增强
 
-第一期建议：
+如果后续开放多端、多标签页、API 直连或前端不再限制执行中提交，可以新增后端 session guard：
 
 ```text
 tryLock(waitTimeout)
@@ -485,19 +473,19 @@ finally
   release lock
 ```
 
-配置建议：
+可选配置：
 
 ```yaml
-agent.runtime.session-guard.enabled: true
+agent.runtime.session-guard.enabled: false
 agent.runtime.session-guard.wait-timeout-ms: 3000
 agent.runtime.session-guard.max-lock-idle-minutes: 30
 ```
 
-如果希望前端第二条消息等待同一 SSE 连接返回结果，可以把 wait timeout 调大。若希望交互更明确，可以快速返回 busy。
+本期默认不启用。若希望前端第二条消息等待同一 SSE 连接返回结果，可以把 wait timeout 调大；若希望交互更明确，可以快速返回 busy。
 
 ### 8.3 锁清理
 
-`ConcurrentHashMap<String, ReentrantLock>` 会有 session key 增长风险。第一期可在 guard 中记录 lastAccessTime，定时清理空闲且未锁定的 lock。
+如果后续实现 `ConcurrentHashMap<String, ReentrantLock>`，会有 session key 增长风险。可在 guard 中记录 lastAccessTime，定时清理空闲且未锁定的 lock。
 
 后续如果部署多实例，需要升级为 Redis lock 或基于消息队列的 session actor。
 
@@ -546,9 +534,9 @@ agent.runtime.session-context-cache.maximum-size: 10000
 
 Caffeine 过期只表示本机快照失效，不表示会话历史丢失。下一轮请求应通过 `SessionRuntimeContextManager` 从 Redis/MySQL 或现有 `ChatMemoryPersistenceService` 重新加载最近窗口并回填 Caffeine。
 
-### 9.3 单实例缓存一致性协议
+### 9.3 本期缓存一致性边界
 
-即使第一期只考虑单实例，也必须显式约束 MySQL、Redis、Caffeine、`TurnRuntimeContext` 之间的一致性。推荐模型是：
+本期不改造现有会话持久化可靠性，也不引入持久化重试、Redis 写失败补偿、pending queue 或 outbox。推荐模型保持轻量：
 
 ```text
 MySQL / ChatMemoryPersistenceService: 事实源
@@ -557,15 +545,15 @@ Caffeine SessionRuntimeContext: 单机运行期快照
 TurnRuntimeContext: 单轮请求内只读视图
 ```
 
-一致性原则：
+本期原则：
 
-1. 同一 `sessionId` 的 turn 必须先经过 `SessionExecutionGuard` 串行化。
-2. 一轮请求开始后，节点只读取本轮 `TurnRuntimeContext`，不再各自访问 Redis/MySQL。
-3. Caffeine 只能在持久化成功后刷新，不能在 LLM 生成中或持久化前提前推进。
-4. 任一持久化或 Redis recent window 更新失败时，应 invalidate 当前 session 的 Caffeine key，让下一轮回源重建。
-5. `SessionRuntimeContext` 必须携带 `lastMessageIndex` 或 `version`，刷新 Caffeine 时只允许新版本覆盖旧版本。
+1. 读路径继续信任 Redis：Redis 有数据则直接返回，miss 后回源 MySQL 并回填。
+2. `RuntimeContextAssembler.prepare()` 只在 turn 开始时读取一次当前可用历史，形成本轮只读视图。
+3. 本期不做 `afterTurn()` 主动刷新 Caffeine，避免在持久化失败语义不明确时制造新的事实源。
+4. 如果现有 `ChatMemoryPersistenceService` 写 MySQL 或 Redis 失败，保持当前日志降级策略，不阻断当前轮回答；下一轮可能缺失最新上下文，这是已知降级风险。
+5. 后续若要引入 `afterTurn()` 刷新或更强会话缓存，需要先补充持久化结果契约，例如 success、latestMessageIndex/version，再决定是否刷新或失效本地缓存。
 
-推荐读路径：
+本期读路径：
 
 ```text
 SessionRuntimeContextManager.getOrLoad(sessionId)
@@ -578,38 +566,23 @@ SessionRuntimeContextManager.getOrLoad(sessionId)
      -> 回填 Caffeine
 ```
 
-推荐成功写路径：
+本期写路径保持现状：
 
 ```text
 LLM 输出完成
   -> 持久化 user/assistant message 到 MySQL
   -> 更新 Redis recent window
-  -> 基于持久化后的最新窗口构造 SessionRuntimeContext
-  -> 使用 lastMessageIndex/version 防旧写刷新 Caffeine
-  -> release SessionExecutionGuard
 ```
 
-推荐失败路径：
+后续可靠性增强可参考：
 
 ```text
-持久化失败或 Redis 刷新失败
-  -> 不刷新 Caffeine
-  -> invalidate session context cache key
-  -> 记录错误与 traceId
-  -> release SessionExecutionGuard
+持久化返回 PersistConversationResult
+  -> success=true 且携带 latestMessageIndex/version 时，才允许 afterTurn 刷新本地 session cache
+  -> success=false 时，不刷新本地 session cache，由下一轮按 Redis/MySQL 读路径重建
 ```
 
-版本防护建议：
-
-```java
-boolean canReplace(SessionRuntimeContext oldValue, SessionRuntimeContext newValue) {
-    return oldValue == null
-        || newValue.getLastMessageIndex() >= oldValue.getLastMessageIndex()
-        || newValue.getVersion() >= oldValue.getVersion();
-}
-```
-
-在单实例 + 同 session 串行锁成立时，版本防护通常不会触发冲突；保留它是为了防止异常重试、异步刷新、测试桩或未来演进引入旧 snapshot 覆盖新 snapshot。
+该增强不纳入本期范围。
 
 ### 9.4 User Context Cache
 
@@ -624,16 +597,9 @@ boolean canReplace(SessionRuntimeContext oldValue, SessionRuntimeContext newValu
 - assembler 不直接访问 Mem0，只调用 `IUserPersonaCacheService`。
 - 后续在用户触发 memory sync 后主动清理 persona cache。
 
-### 9.5 Few-Shot Cache
+### 9.5 Few-Shot 实时检索
 
-缓存对象：
-
-- route query -> topK few-shot samples
-
-失效策略：
-
-- TTL 默认 10 分钟。
-- 样本新增、删除、更新后清理 cache。
+few-shot 不进入 runtime cache。每次意图识别按当前 query 调用 PostgreSQL/PGvector TopK 检索，确保样例变更后立即影响后续路由。后续如需优化性能，应单独评估短 TTL 缓存、评测专用缓存或 PGvector 查询优化。
 
 ---
 
@@ -703,14 +669,42 @@ RuntimeContextAssembler.prepare()
 - `PromptContextBuilder` 负责“当前节点可以拿哪些上下文、拿多少、超预算时如何裁剪”；
 - 具体节点负责“如何组织自己的 system/task/user prompt”。
 
-### 10.2 节点级上下文策略示例
+### 10.2 ChatMemoryAdvisor 与 Node Prompt 的边界
+
+`ChatMemoryAdvisor` 可以承载通用会话能力，例如：
+
+- 根据 `sessionId` 读取常规聊天上下文；
+- 维护或注入普通对话窗口；
+- 屏蔽底层 Redis/MySQL 读取细节；
+- 在通用聊天场景中按 advisor 语义注入历史。
+
+但业务节点的专属 prompt 组织仍应显式保留在节点逻辑中。原因是不同节点消费上下文的目的不同：
+
+- `IntentRoutingNode` 需要路由决策视图，尤其是澄清追问后的短答、多轮指代、任务修正和未完成槽位；
+- `QueryDecompositionNode` 需要任务拆解视图；
+- `TaskRoutingSlotNode` 需要槽位补全视图；
+- `GeneralChatNode` 需要自然对话视图，可以继续利用 ChatMemoryAdvisor；
+- PE / trading 节点需要领域任务执行视图。
+
+因此，本方案强调“统一原始历史来源，不统一最终注入格式”。同一份 session history 可以来自 Redis/MySQL 或现有 `ChatMemoryPersistenceService`，但进入不同节点前应形成不同的 `NodeContextView`。
+
+```text
+Session history source
+  -> RoutingContextView: clarification / short answer / recent intent / slot clues
+  -> ChatContextView: normal conversational history through ChatMemoryAdvisor
+  -> DomainTaskContextView: domain task state and required recent turns
+```
+
+`ChatMemoryAdvisor` 不承载 `IntentRoutingNode`、slot routing、PE/trading 等节点的业务 prompt 语义；这些节点可以复用同一历史素材，但应由节点自己的 prompt builder 明确拼接。
+
+### 10.3 节点级上下文策略示例
 
 | 节点 | 建议使用的上下文 | 不应默认携带的上下文 |
 | --- | --- | --- |
 | `RootNode` | flow config、`aiAgentId`、`agentType`、routing mode | 完整 history、persona、few-shot |
-| `IntentRoutingNode` | 当前 query、少量 recent history、routing few-shot | 长 persona、完整 session summary |
-| `QueryDecompositionNode` | 当前 query、recent history、routing result | 与分解无关的 persona、skill working set |
-| `TaskRoutingSlotNode` | decomposition result、slot schema、必要 recent history | routing few-shot、完整 persona |
+| `IntentRoutingNode` | 当前 query、澄清上下文、短答补全、多轮指代、routing few-shot | 长 persona、完整 session summary |
+| `QueryDecompositionNode` | 当前 query、任务拆解所需 recent history、routing result | 与分解无关的 persona、skill working set |
+| `TaskRoutingSlotNode` | decomposition result、slot schema、槽位补全所需 recent history | routing few-shot、完整 persona |
 | `GeneralChatNode` | 当前 query、recent history/chat memory advisor 参数、persona 可选 | routing few-shot、flow config 细节 |
 | PE / trading 节点 | domain prompt、任务上下文、必要 history、工具约束 | 与任务无关的通用上下文 |
 
@@ -768,38 +762,41 @@ spring.ai.trading.skills.auto-reload: false
 
 1. 新增 `RuntimeContextAssembler`。
 2. 新增 `RuntimeContextKeys`。
-3. 新增 `SessionRuntimeContext`、`UserRuntimeContext`、`TurnRuntimeContext`。
+3. 新增 `SessionRuntimeContext`、`TurnRuntimeContext`；`UserRuntimeContext` 本期不落地或仅预留空壳。
 4. `AutoAgentExecuteStrategy` 在进入 `RootNode` 前调用 assembler。
 5. `IntentRoutingNode`、`QueryDecompositionNode`、`TaskRoutingSlotNode` 从 `DynamicContext` 读取 recent history。
 6. 保持原有 fallback：如果 `recentHistoryMessages` 不存在，再调用现有 history 方法。
+7. 明确 ChatMemoryAdvisor 与节点专属 prompt 的边界：通用聊天可继续走 advisor，路由/拆解/槽位节点保留显式 prompt 拼接。
+8. `GeneralChatNode` 不纳入 Phase 1 改造，继续沿用现有 ChatMemoryAdvisor 行为。
 
 验收：
 
 - 同一轮 split routing 只读取一次 conversation history。
 - 现有 routing 单元测试通过。
 - 现有通用对话、PE 链路行为不变。
+- 澄清追问、短答补全、多轮指代场景中，路由节点仍能显式获得所需上下文。
+- `GeneralChatNode` 的 advisor 参数、历史注入和流式输出行为不变化。
 
-### Phase 2：flow config 与 few-shot 缓存
+### Phase 2：flow config 缓存
 
 目标：
 
 1. 新增 `AgentRuntimeConfigCache`。
 2. `RootNode` 不直接调用 repository 查询 flow config，改由 assembler 准备。
-3. 新增 `RoutingFewshotCache`。
-4. `IntentRoutingService` 通过缓存获取 few-shot。
+3. few-shot 不接入缓存，仍由 `IntentRoutingService` 每次实时检索 PostgreSQL/PGvector。
 
 验收：
 
 - 高频请求下 flow config DB 查询明显下降。
-- 重复 query 的 PGvector 查询命中缓存。
-- 支持手动清理缓存。
+- 支持手动清理 flow config 缓存。
+- few-shot 样例新增、修改、删除后，后续意图识别实时使用最新检索结果。
 
-### Phase 3：同 session 串行执行
+### Phase 3：同 session 串行执行（后续增强）
 
 目标：
 
-1. 新增 `SessionExecutionGuard`。
-2. `AutoAgentExecuteStrategy.execute()` 包裹完整 turn。
+1. 在需要支持多端、多标签页或 API 直连时，新增 `SessionExecutionGuard`。
+2. `AutoAgentExecuteStrategy.execute()` 可选择包裹完整 turn。
 3. 增加 busy/timeout 降级策略。
 4. 增加并发测试。
 
@@ -808,6 +805,8 @@ spring.ai.trading.skills.auto-reload: false
 - 同一 session 并发请求不会乱序写入 messageIndex。
 - 不同 session 请求仍可并发执行。
 - turn 异常时锁必定释放。
+
+本期由于前端已禁止同一 session 在执行中再次查询，后端 session guard 不作为必做项。
 
 ### Phase 4：token-aware prompt context
 
@@ -850,21 +849,34 @@ ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/runtime/
   RuntimeContextAssembler.java
   DefaultRuntimeContextAssembler.java
   RuntimeContextKeys.java
-  SessionExecutionGuard.java
-  LocalSessionExecutionGuard.java
   SessionRuntimeContextManager.java
-  UserRuntimeContextManager.java
   AgentRuntimeConfigCache.java
-  RoutingFewshotCache.java
-  PromptContextBuilder.java
-  DefaultPromptContextBuilder.java
 
 ai-agent-study-domain/src/main/java/denny/ai/agent/domain/model/valobj/runtime/
   TurnRuntimeContext.java
   SessionRuntimeContext.java
+```
+
+后续做 token-aware prompt context 或 persona 统一时，再新增：
+
+```text
+ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/runtime/
+  UserRuntimeContextManager.java
+  PromptContextBuilder.java
+  DefaultPromptContextBuilder.java
+
+ai-agent-study-domain/src/main/java/denny/ai/agent/domain/model/valobj/runtime/
   UserRuntimeContext.java
   RuntimePromptContext.java
   NodePromptContextPolicy.java
+```
+
+后续启用后端 session guard 时，再新增：
+
+```text
+ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/runtime/
+  SessionExecutionGuard.java
+  LocalSessionExecutionGuard.java
 ```
 
 ### 13.2 修改点
@@ -873,11 +885,11 @@ ai-agent-study-domain/src/main/java/denny/ai/agent/domain/model/valobj/runtime/
 | --- | --- |
 | `AutoAgentExecuteStrategy.java` | 创建 DynamicContext 后调用 assembler；后续接入 SessionExecutionGuard |
 | `RootNode.java` | 不再直接加载 flow config；保留 fallback |
-| `AbstractExecuteSupport.java` | persona 注入逻辑迁移到 assembler；保留旧方法兼容一段时间 |
+| `AbstractExecuteSupport.java` | persona 注入逻辑本期不迁移，保留现有 `injectPersonaContext()` |
 | `IntentRoutingNode.java` | 读取 `recentHistoryMessages` |
 | `QueryDecompositionNode.java` | 读取 `recentHistoryMessages` |
 | `TaskRoutingSlotNode.java` | 读取 `recentHistoryMessages` |
-| `IntentRoutingService.java` | few-shot 获取通过缓存适配层 |
+| `IntentRoutingService.java` | few-shot 保持实时调用 `IntentFewshotService.retrieveTopK(query, k)` |
 | `TradingSkillsConfig.java` | `autoReload` 配置化 |
 
 ---
@@ -888,12 +900,11 @@ ai-agent-study-domain/src/main/java/denny/ai/agent/domain/model/valobj/runtime/
 
 | 测试类 | 覆盖点 |
 | --- | --- |
-| `DefaultRuntimeContextAssemblerTest` | user/session/turn context 构建、兼容 key 写入、异常降级 |
-| `SessionRuntimeContextManagerTest` | history cache 命中、miss 后读取、afterTurn 成功后刷新、失败时 invalidate、lastMessageIndex/version 防旧写 |
+| `DefaultRuntimeContextAssemblerTest` | session/turn context 构建、兼容 key 写入、异常降级；persona 保持现有链路 |
+| `SessionRuntimeContextManagerTest` | history cache 命中、miss 后读取、TurnRuntimeContext 构建、现有 Redis/MySQL fallback 行为 |
 | `AgentRuntimeConfigCacheTest` | intent routing config 缓存、agent config 缓存、手动失效 |
-| `RoutingFewshotCacheTest` | query 归一化、命中、TTL、样本变更失效 |
-| `LocalSessionExecutionGuardTest` | 同 session 串行、不同 session 并行、异常释放锁 |
-| `PromptContextBuilderTest` | 按节点 policy 选择上下文、token 超预算裁剪、不同节点不共享最终 prompt context |
+| `LocalSessionExecutionGuardTest` | 后续增强项：同 session 串行、不同 session 并行、异常释放锁 |
+| `PromptContextBuilderTest` | 后续增强项：按节点 policy 选择上下文、token 超预算裁剪、不同节点不共享最终 prompt context |
 
 ### 14.2 节点回归测试
 
@@ -907,49 +918,53 @@ ai-agent-study-domain/src/main/java/denny/ai/agent/domain/model/valobj/runtime/
 
 ### 14.3 并发测试
 
-1. 同 session 两个请求并发进入，验证第二个等待或 busy。
-2. 同 session 第一个请求异常，验证第二个请求可以继续执行。
+1. 后续启用 `SessionExecutionGuard` 时，同 session 两个请求并发进入，验证第二个等待或 busy。
+2. 后续启用 `SessionExecutionGuard` 时，同 session 第一个请求异常，验证第二个请求可以继续执行。
 3. 不同 session 多请求并发，验证没有全局阻塞。
-4. 同 userId 不同 session 并发，验证 persona cache 可共享但 session history 不共享。
+4. 同 userId 不同 session 并发，验证 session history 不共享；persona 仍沿用现有缓存链路。
 
 ### 14.4 集成测试
 
 1. 连续三轮通用对话，验证 history 顺序正确。
 2. split routing 场景，验证 conversation history 只读取一次。
-3. repeated query 触发 few-shot cache 命中。
-4. 修改 flow config 后手动清 cache，验证新配置生效。
-5. 模拟持久化成功但 Redis/Caffeine 刷新路径，验证下一轮读取到最新 history。
-6. 模拟持久化或 Redis 刷新失败，验证 Caffeine 被 invalidate，下一轮从事实源重建。
+3. 修改 flow config 后手动清 cache，验证新配置生效。
+4. few-shot 样例变更后，验证下一次意图识别实时检索最新样例。
+5. 验证下一轮按现有 Redis -> MySQL fallback 路径读取历史。
+6. 后续引入 afterTurn 刷新时，再补充持久化结果契约、失败不刷新和版本防旧写测试。
 
 ---
 
 ## 15. 风险与取舍
 
-### 15.1 持锁执行完整流式请求会增加同 session 等待
+### 15.1 同 session 并发由前端约束覆盖
 
-这是为了保证聊天顺序。第一期可通过 wait timeout 控制体验。如果用户希望允许同 session 同时发多条消息，需要引入 message version 和 merge 机制，复杂度明显上升。
+当前前端已禁止同一 session 在执行中再次查询，因此本期不引入后端 session guard。多标签页、脚本直调、接口重试等绕过前端约束的场景仍可能造成同 session 并发乱序，作为已知边界风险记录。
 
-### 15.2 本地 session guard 不适用于多实例
+### 15.2 后端 session guard 不适用于多实例
 
-第一期默认单实例或粘性会话。多实例部署时需要升级 Redis lock、数据库乐观锁或消息队列 actor。
+如果后续新增本地 session guard，它只适用于单实例或粘性会话。多实例部署时需要升级 Redis lock、数据库乐观锁或消息队列 actor。
 
-### 15.3 缓存会带来配置变更延迟
+### 15.3 配置缓存会带来配置变更延迟
 
-flow config 和 few-shot cache 需要 TTL 与手动失效机制。生产环境应提供管理接口或配置发布后主动清理。
+flow config cache 需要 TTL 与手动失效机制。生产环境应提供管理接口或配置发布后主动清理。few-shot 本期不缓存，每次意图识别实时检索 PostgreSQL/PGvector，因此不引入样例变更后的缓存延迟。
 
 ### 15.4 DynamicContext 兼容期会继续存在字符串 key
 
 第一期不强行消灭字符串 key，以降低改造风险。后续可逐步让节点依赖 `TurnRuntimeContext` 强类型对象。
+
+### 15.5 持久化失败补偿不纳入本期
+
+本期不新增 MySQL/Redis 重试、pending queue、outbox 或缓存补偿。若现有会话持久化失败，当前轮回答不阻断，但下一轮可能缺失最新上下文。这是现有系统的降级风险，不在本次上下文读取收敛范围内解决。
 
 ---
 
 ## 16. 成功标准
 
 1. `ChatClient` 继续全局复用，且没有 session 状态进入 `ChatClient`。
-2. 一轮请求内 history、persona、flow config 不再被多个节点重复读取。
-3. 同 session 并发请求不会导致 messageIndex、Redis history 或上下文乱序。
-4. flow config 与 few-shot 高频重复读取有缓存。
-5. session context cache 遵守持久化成功后刷新、失败时失效、version 防旧写的一致性协议。
+2. 一轮请求内 history、flow config 不再被多个节点重复读取；persona 本期保持现有消费链路。
+3. 本期不新增后端 session guard；正常前端交互下，同一 session 在执行中不会再次提交。
+4. flow config 高频重复读取有缓存；few-shot 保持实时 PostgreSQL/PGvector 检索。
+5. session context cache 不改变现有持久化语义；本期不做 afterTurn 主动刷新和失败补偿。
 6. 节点逻辑仍可通过 `DynamicContext` 兼容运行。
 7. 节点级 prompt context 可以按节点职责区分，runtime context 不会退化为全局通用 prompt。
 8. 后续可以自然接入 token-aware history、session summary、active skill working set。
@@ -958,11 +973,11 @@ flow config 和 few-shot cache 需要 TTL 与手动失效机制。生产环境�
 
 ## 17. 建议优先级
 
-推荐先做 Phase 1 和 Phase 3：
+推荐先做 Phase 1：
 
 1. Phase 1 先收敛上下文读取，收益直接，风险低。
-2. Phase 3 解决同 session 并发乱序，这是正确性的底线。
-3. Phase 2 缓存优化可随后补上，主要改善性能。
+2. Phase 2 只做 flow config 缓存，主要改善低频配置表的重复读取。
+3. Phase 3 后端 session guard 作为后续增强，等多端、多标签页或 API 直连场景需要时再做。
 4. Phase 4/5 属于长会话质量优化，等基础边界稳定后再做。
 
 这条路径能在不推翻现有 armory、routing、memory 设计的前提下，把 runtime 从“节点各自按需加载”推进到“统一上下文装配 + 明确生命周期隔离”。

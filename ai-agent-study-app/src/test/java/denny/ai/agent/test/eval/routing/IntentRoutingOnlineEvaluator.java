@@ -6,6 +6,7 @@ import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
+import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import lombok.Data;
@@ -268,6 +269,9 @@ public class IntentRoutingOnlineEvaluator {
         metadata.put("outcomeType", run.getOutcomeType());
         metadata.put("signature", run.getSignature());
         metadata.put("actualIntents", run.getActualIntents());
+        metadata.put("routingConfidences", run.getRoutingConfidences());
+        metadata.put("routingMinConfidence", run.getRoutingMinConfidence());
+        metadata.put("routingHasLowConfidence", run.getRoutingHasLowConfidence());
         metadata.put("latencyMs", run.getLatencyMs());
         metadata.put("routingMode", run.getRoutingMode());
         metadata.put("totalTokens", run.getTotalTokens());
@@ -306,6 +310,9 @@ public class IntentRoutingOnlineEvaluator {
         run.setActualNeedsClarification(Boolean.TRUE.equals(result.getNeedsClarification()));
         run.setMissingInfo(safeList(result.getMissingInfo()));
         run.setActualIntents(extractIntents(result));
+        run.setRoutingConfidences(extractConfidenceCodes(result));
+        run.setRoutingMinConfidence(minConfidence(run.getRoutingConfidences()));
+        run.setRoutingHasLowConfidence(run.getRoutingConfidences().contains(ConfidenceEnum.LOW.getCode()));
 
         OutcomeType outcomeType = classifyOutcome(run);
         run.setOutcomeType(outcomeType.name());
@@ -451,6 +458,36 @@ public class IntentRoutingOnlineEvaluator {
                 .map(SubTask::getIntent)
                 .map(intent -> intent == null ? "UNKNOWN" : intent.getCode())
                 .toList();
+    }
+
+    private List<String> extractConfidenceCodes(MultiIntentRoutingResult result) {
+        if (result.getTaskList() == null) {
+            return List.of();
+        }
+        return result.getTaskList().stream()
+                .map(SubTask::getConfidence)
+                .map(confidence -> confidence == null ? ConfidenceEnum.LOW : confidence)
+                .map(ConfidenceEnum::getCode)
+                .toList();
+    }
+
+    private String minConfidence(List<String> confidences) {
+        ConfidenceEnum min = null;
+        for (String code : confidences) {
+            ConfidenceEnum confidence = ConfidenceEnum.fromCode(code);
+            if (min == null || confidenceRank(confidence) < confidenceRank(min)) {
+                min = confidence;
+            }
+        }
+        return min == null ? null : min.getCode();
+    }
+
+    private int confidenceRank(ConfidenceEnum confidence) {
+        return switch (confidence) {
+            case LOW -> 1;
+            case MEDIUM -> 2;
+            case HIGH -> 3;
+        };
     }
 
     private void summarizeCase(CaseResult result) {
@@ -690,6 +727,9 @@ public class IntentRoutingOnlineEvaluator {
         private boolean actualMultiTask;
         private boolean actualNeedsClarification;
         private List<String> actualIntents = new ArrayList<>();
+        private List<String> routingConfidences = new ArrayList<>();
+        private String routingMinConfidence;
+        private Boolean routingHasLowConfidence;
         private List<String> missingInfo = new ArrayList<>();
         private String routingMode;
         private Long routingLatencyMs;

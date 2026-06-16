@@ -10,6 +10,7 @@ import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -23,6 +24,7 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +35,7 @@ public class RoutingResultHandlerTest {
     @Mock private GeneralChatNode generalChatNode;
     @Mock private MultiTaskExecutionNode multiTaskExecutionNode;
     @Mock private ApplicationContext applicationContext;
+    @Mock private ObservabilityService observabilityService;
 
     private RoutingResultHandler handler;
     private ExecuteCommandEntity request;
@@ -41,7 +44,7 @@ public class RoutingResultHandlerTest {
     @Before
     public void setUp() {
         handler = new RoutingResultHandler(step1AnalyzerNode, intelligentInspection, generalChatNode,
-                multiTaskExecutionNode, applicationContext);
+                multiTaskExecutionNode, applicationContext, observabilityService);
         request = ExecuteCommandEntity.builder().message("original").sessionId("session").build();
         context = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
     }
@@ -98,6 +101,23 @@ public class RoutingResultHandlerTest {
     }
 
     @Test
+    public void publishesRoutingConfidenceMetadataWhenTraceExists() throws Exception {
+        context.setTraceId("trace-1");
+        MultiIntentRoutingResult result = result(true, List.of(
+                task("sub-1", 1, 2, IntentTypeEnum.PE_REASONING, ConfidenceEnum.MEDIUM),
+                task("sub-2", 2, 2, IntentTypeEnum.GENERAL_CHAT, ConfidenceEnum.LOW)));
+
+        handler.handle(request, context, result);
+
+        verify(observabilityService).updateTraceMetadata(eq("trace-1"), eq(Map.of(
+                "routingConfidences", List.of("MEDIUM", "LOW"),
+                "routingMinConfidence", "LOW",
+                "routingHasLowConfidence", true
+        )));
+        verify(multiTaskExecutionNode).apply(any(), any());
+    }
+
+    @Test
     public void routesStockAnalysisToGeneralChatWhenTradingBeanIsMissing() throws Exception {
         when(applicationContext.getBean("tradingIntentRoutingNode"))
                 .thenThrow(new RuntimeException("missing bean"));
@@ -121,13 +141,17 @@ public class RoutingResultHandlerTest {
     }
 
     private SubTask task(String id, int index, int total, IntentTypeEnum intent) {
+        return task(id, index, total, intent, ConfidenceEnum.HIGH);
+    }
+
+    private SubTask task(String id, int index, int total, IntentTypeEnum intent, ConfidenceEnum confidence) {
         return SubTask.builder()
                 .taskId(id)
                 .taskIndex(index)
                 .totalTasks(total)
                 .content("task")
                 .intent(intent)
-                .confidence(ConfidenceEnum.HIGH)
+                .confidence(confidence)
                 .executorNode("node")
                 .slots(Map.of("intentSpecificSlots", Map.of()))
                 .dependsOn(List.of())

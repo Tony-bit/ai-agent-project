@@ -12,6 +12,7 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,8 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     private GeneralChatNode generalChatNode;
     @Resource
     private MultiTaskExecutionNode multiTaskExecutionNode;
+    @Resource
+    private ObservabilityService observabilityService;
 
     @Override
     protected String doApply(ExecuteCommandEntity request,
@@ -79,7 +82,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     private RoutingResultHandler handler() {
         if (routingResultHandler == null) {
             routingResultHandler = new RoutingResultHandler(step1AnalyzerNode, intelligentInspection,
-                    generalChatNode, multiTaskExecutionNode, applicationContext);
+                    generalChatNode, multiTaskExecutionNode, applicationContext, observabilityService);
         }
         return routingResultHandler;
     }

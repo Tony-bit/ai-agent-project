@@ -13,10 +13,12 @@ import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,17 +39,20 @@ public class RoutingResultHandler {
     private final GeneralChatNode generalChatNode;
     private final MultiTaskExecutionNode multiTaskExecutionNode;
     private final ApplicationContext applicationContext;
+    private final ObservabilityService observabilityService;
 
     public RoutingResultHandler(Step1AnalyzerNode step1AnalyzerNode,
                                 IntelligentInspection intelligentInspection,
                                 GeneralChatNode generalChatNode,
                                 MultiTaskExecutionNode multiTaskExecutionNode,
-                                ApplicationContext applicationContext) {
+                                ApplicationContext applicationContext,
+                                ObservabilityService observabilityService) {
         this.step1AnalyzerNode = step1AnalyzerNode;
         this.intelligentInspection = intelligentInspection;
         this.generalChatNode = generalChatNode;
         this.multiTaskExecutionNode = multiTaskExecutionNode;
         this.applicationContext = applicationContext;
+        this.observabilityService = observabilityService;
     }
 
     public String handle(ExecuteCommandEntity request,
@@ -56,6 +61,7 @@ public class RoutingResultHandler {
         if (result.getMetrics() != null) {
             context.setValue(METRICS_KEY, result.getMetrics());
         }
+        publishRoutingConfidenceMetadata(context, result);
         if (Boolean.TRUE.equals(result.getNeedsClarification())) {
             context.setValue("clarificationPrompt", result.getClarificationPrompt());
             context.setValue("missingInfo", result.getMissingInfo());
@@ -80,6 +86,51 @@ public class RoutingResultHandler {
                     single.getIntent(), single.getReasoning(), request.getSessionId());
         }
         return select(context).apply(request, context);
+    }
+
+    private void publishRoutingConfidenceMetadata(DefaultAutoAgentExecuteStrategyFactory.DynamicContext context,
+                                                  MultiIntentRoutingResult result) {
+        String traceId = context == null ? null : context.getTraceId();
+        if (traceId == null || traceId.isBlank() || result == null) {
+            return;
+        }
+
+        List<String> confidences = extractConfidenceCodes(result);
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("routingConfidences", confidences);
+        metadata.put("routingMinConfidence", minConfidence(confidences));
+        metadata.put("routingHasLowConfidence", confidences.contains(ConfidenceEnum.LOW.getCode()));
+        observabilityService.updateTraceMetadata(traceId, metadata);
+    }
+
+    private List<String> extractConfidenceCodes(MultiIntentRoutingResult result) {
+        if (result.getTaskList() == null) {
+            return List.of();
+        }
+        return result.getTaskList().stream()
+                .map(SubTask::getConfidence)
+                .map(confidence -> confidence == null ? ConfidenceEnum.LOW : confidence)
+                .map(ConfidenceEnum::getCode)
+                .toList();
+    }
+
+    private String minConfidence(List<String> confidences) {
+        ConfidenceEnum min = null;
+        for (String code : confidences) {
+            ConfidenceEnum confidence = ConfidenceEnum.fromCode(code);
+            if (min == null || confidenceRank(confidence) < confidenceRank(min)) {
+                min = confidence;
+            }
+        }
+        return min == null ? null : min.getCode();
+    }
+
+    private int confidenceRank(ConfidenceEnum confidence) {
+        return switch (confidence) {
+            case LOW -> 1;
+            case MEDIUM -> 2;
+            case HIGH -> 3;
+        };
     }
 
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> select(

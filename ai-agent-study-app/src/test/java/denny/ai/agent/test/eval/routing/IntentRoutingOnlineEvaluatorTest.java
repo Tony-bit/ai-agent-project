@@ -6,6 +6,7 @@ import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.SubTask;
+import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService;
@@ -118,6 +119,10 @@ public class IntentRoutingOnlineEvaluatorTest {
                 "routing_correct".equals(score.name) && score.value == 1.0));
         assertTrue(observability.scores.stream().anyMatch(score ->
                 "run_accuracy".equals(score.name) && score.value == 1.0));
+        assertTrue(observability.endedTraces.stream().anyMatch(trace ->
+                List.of("HIGH").equals(trace.metadata.get("routingConfidences"))
+                        && "HIGH".equals(trace.metadata.get("routingMinConfidence"))
+                        && Boolean.FALSE.equals(trace.metadata.get("routingHasLowConfidence"))));
     }
 
     @Test
@@ -303,7 +308,7 @@ public class IntentRoutingOnlineEvaluatorTest {
     }
 
     private static SubTask task(IntentTypeEnum intent) {
-        return SubTask.builder().intent(intent).build();
+        return SubTask.builder().intent(intent).confidence(ConfidenceEnum.HIGH).build();
     }
 
     private static MultiIntentRoutingResult fallback(String reasoning) {
@@ -356,6 +361,7 @@ public class IntentRoutingOnlineEvaluatorTest {
     private static class RecordingObservabilityService implements ObservabilityService {
         private final List<String> startedTraces = new ArrayList<>();
         private final List<RecordedScore> scores = new ArrayList<>();
+        private final List<RecordedTrace> endedTraces = new ArrayList<>();
 
         @Override
         public String startTrace(String sessionId, String input, Map<String, Object> metadata) {
@@ -389,14 +395,22 @@ public class IntentRoutingOnlineEvaluatorTest {
         }
 
         @Override
+        public void updateTraceMetadata(String traceId, Map<String, Object> metadata) {
+        }
+
+        @Override
         public void endSpan(String spanId, boolean success, String errorMessage) {
         }
 
         @Override
         public void endTrace(String traceId, String output, Map<String, Object> metadata) {
+            endedTraces.add(new RecordedTrace(traceId, output, metadata == null ? Map.of() : new HashMap<>(metadata)));
         }
     }
 
     private record RecordedScore(String traceId, String name, double value) {
+    }
+
+    private record RecordedTrace(String traceId, String output, Map<String, Object> metadata) {
     }
 }
