@@ -1,28 +1,28 @@
-# Intent Routing Dataset MVP Implementation Plan
+# 意图路由数据集 MVP 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供执行人员使用：** 必须使用 `superpowers:executing-plans` 技能逐项实施本计划。所有步骤均使用复选框（`- [ ]`）跟踪状态。
 
-**Goal:** Build, validate, review, and version the first synthetic intent-routing dataset containing 2,000 training, 200 validation, and 200 test records.
+**目标：** 构建、校验、审核并版本化第一版合成意图路由数据集，其中包含 2,000 条训练数据、200 条验证数据和 200 条测试数据。
 
-**Architecture:** Keep human-readable source records as the single source of truth, validate them against a JSON Schema plus routing business rules, and derive GLM SFT JSONL deterministically. Generate each split from separate scenario families, then run exact and character-ngram vector similarity checks before exporting review sheets and freezing the dataset manifest.
+**架构：** 以便于人工阅读的源记录作为唯一事实来源，通过 JSON Schema 和路由业务规则进行校验，并确定性地派生 GLM SFT JSONL。训练集、验证集和测试集分别使用独立场景族生成；导出人工审核表并冻结数据清单前，执行精确重复检查和字符 n-gram 向量相似度检查。
 
-**Tech Stack:** Python 3.10+, standard library, `jsonschema`, `scikit-learn`, JSONL, unittest
+**技术栈：** Python 3.10+、标准库、`jsonschema`、`scikit-learn`、JSONL、unittest
 
 ---
 
-## Scope Decomposition
+## 范围拆分
 
-The approved design contains three independently testable subsystems:
+已确认的总体设计包含三个可独立测试的子系统：
 
-1. synthetic dataset construction and review;
-2. GLM-4-9B LoRA training and before/after evaluation;
-3. Langfuse Dataset, Run, Trace, and Score integration.
+1. 合成数据集构建与审核；
+2. GLM-4-9B LoRA 训练及微调前后评测；
+3. Langfuse Dataset、Run、Trace 和 Score 集成。
 
-This plan implements subsystem 1 only. It ends with frozen source and SFT datasets, validation reports, leakage reports, and human-review artifacts. Training does not begin until the dataset review gate passes. Separate implementation plans will cover training/evaluation and Langfuse after this plan is accepted.
+本计划只实现子系统 1。最终产物包括冻结后的源数据集和 SFT 数据集、校验报告、泄漏检查报告以及人工审核产物。只有数据集通过审核门禁后才允许开始训练。训练/评测和 Langfuse 将在本计划验收后分别编写实施计划。
 
-## File Structure
+## 文件结构
 
-Create a self-contained dataset workspace:
+创建独立、完整的数据集工作区：
 
 ```text
 fine-tune/intent-routing/
@@ -64,34 +64,34 @@ fine-tune/intent-routing/
     └── test_build_sft.py
 ```
 
-Responsibilities:
+各文件职责如下：
 
-- `scenario-matrix-v1.json`: exact split sizes and scenario-bucket quotas;
-- `intent-routing-v1.schema.json`: structural contract for source records;
-- `dataset_common.py`: shared JSONL reading, canonicalization, constants, and hashing;
-- `validate_dataset.py`: schema and routing-domain validation;
-- `check_leakage.py`: duplicate and cross-split similarity detection;
-- `export_review.py`: deterministic stratified human-review sheets;
-- `build_sft.py`: source-record to GLM prompt/completion conversion;
-- `manifest.json`: immutable summary of counts and SHA-256 hashes after review.
+- `scenario-matrix-v1.json`：精确规定各数据切分规模与场景桶配额；
+- `intent-routing-v1.schema.json`：定义源记录的结构契约；
+- `dataset_common.py`：提供共享的 JSONL 读写、规范化、常量和哈希能力；
+- `validate_dataset.py`：执行 Schema 与路由领域规则校验；
+- `check_leakage.py`：检测重复数据和跨切分相似数据；
+- `export_review.py`：确定性生成分层人工审核表；
+- `build_sft.py`：将源记录转换成 GLM 的 prompt/completion 格式；
+- `manifest.json`：记录审核后不可变的数据数量与 SHA-256 哈希摘要。
 
-### Task 1: Scaffold the Dataset Workspace and Scenario Matrix
+### 任务 1：搭建数据集工作区和场景矩阵
 
-**Files:**
-- Create: `fine-tune/intent-routing/README.md`
-- Create: `fine-tune/intent-routing/requirements.txt`
-- Create: `fine-tune/intent-routing/config/scenario-matrix-v1.json`
+**文件：**
+- 新建：`fine-tune/intent-routing/README.md`
+- 新建：`fine-tune/intent-routing/requirements.txt`
+- 新建：`fine-tune/intent-routing/config/scenario-matrix-v1.json`
 
-- [ ] **Step 1: Create the dependency file**
+- [ ] **步骤 1：创建依赖文件**
 
 ```text
 jsonschema>=4.23,<5
 scikit-learn>=1.5,<2
 ```
 
-- [ ] **Step 2: Create the exact scenario matrix**
+- [ ] **步骤 2：创建精确的场景矩阵**
 
-Use this complete bucket allocation for each split:
+各数据切分使用以下完整场景桶配额：
 
 ```json
 {
@@ -139,9 +139,9 @@ Use this complete bucket allocation for each split:
 }
 ```
 
-- [ ] **Step 3: Document commands and review semantics**
+- [ ] **步骤 3：记录命令与审核状态语义**
 
-Write `README.md` with these commands and meanings:
+在 `README.md` 中记录以下命令及其用途：
 
 ```powershell
 python -m pip install -r fine-tune/intent-routing/requirements.txt
@@ -151,47 +151,47 @@ python fine-tune/intent-routing/scripts/export_review.py --root fine-tune/intent
 python fine-tune/intent-routing/scripts/build_sft.py --root fine-tune/intent-routing/data/v1
 ```
 
-Define review values exactly as `pending`, `approved`, and `rejected`. State that every test row must be `approved` before the manifest can be frozen.
+审核状态严格限定为 `pending`、`approved` 和 `rejected`。明确规定：冻结数据清单前，每一条测试数据都必须处于 `approved` 状态。
 
-- [ ] **Step 4: Verify the scenario totals**
+- [ ] **步骤 4：核对场景数量合计**
 
-Run:
+运行：
 
 ```powershell
 python -c "import json; p=json.load(open('fine-tune/intent-routing/config/scenario-matrix-v1.json',encoding='utf-8')); print({k:sum(v.values()) for k,v in p['splits'].items()})"
 ```
 
-Expected:
+预期输出：
 
 ```text
 {'train': 2000, 'validation': 200, 'test': 200}
 ```
 
-- [ ] **Step 5: Commit the scaffold**
+- [ ] **步骤 5：提交工作区骨架**
 
 ```powershell
 git add fine-tune/intent-routing/README.md fine-tune/intent-routing/requirements.txt fine-tune/intent-routing/config/scenario-matrix-v1.json
 git commit -m "chore: scaffold intent routing dataset workspace"
 ```
 
-### Task 2: Define the Source Record Contract
+### 任务 2：定义源记录契约
 
-**Files:**
-- Create: `fine-tune/intent-routing/schemas/intent-routing-v1.schema.json`
-- Create: `fine-tune/intent-routing/tests/fixtures/valid-record.json`
-- Create: `fine-tune/intent-routing/tests/fixtures/invalid-record-cycle.json`
+**文件：**
+- 新建：`fine-tune/intent-routing/schemas/intent-routing-v1.schema.json`
+- 新建：`fine-tune/intent-routing/tests/fixtures/valid-record.json`
+- 新建：`fine-tune/intent-routing/tests/fixtures/invalid-record-cycle.json`
 
-- [ ] **Step 1: Write a valid fixture**
+- [ ] **步骤 1：编写合法测试夹具**
 
-Create a complete two-task record whose first task is `PE_RETRIEVAL`, whose second task is `PE_REASONING`, and whose second task contains `"dependsOn":["sub-1"]`. Include all top-level fields from the approved design: `caseId`, `split`, `scenarioFamily`, `scenarioBucket`, `difficulty`, `input`, `expected`, and `metadata`.
+创建一条完整的双任务记录：第一个任务为 `PE_RETRIEVAL`，第二个任务为 `PE_REASONING`，且第二个任务包含 `"dependsOn":["sub-1"]`。记录必须包含已确认设计中的全部顶层字段：`caseId`、`split`、`scenarioFamily`、`scenarioBucket`、`difficulty`、`input`、`expected` 和 `metadata`。
 
-- [ ] **Step 2: Write an invalid cyclic fixture**
+- [ ] **步骤 2：编写包含循环依赖的非法夹具**
 
-Copy the valid fixture, change its ID to `fixture-invalid-cycle`, make `sub-1` depend on `sub-2`, and keep `sub-2` depending on `sub-1`. This fixture must pass JSON Schema validation but fail domain validation.
+复制合法夹具，将 ID 改为 `fixture-invalid-cycle`，让 `sub-1` 依赖 `sub-2`，同时保留 `sub-2` 对 `sub-1` 的依赖。该夹具必须通过 JSON Schema 校验，但必须在领域规则校验中失败。
 
-- [ ] **Step 3: Implement the JSON Schema**
+- [ ] **步骤 3：实现 JSON Schema**
 
-The schema must enforce:
+Schema 必须强制约束以下基础结构：
 
 ```json
 {
@@ -203,44 +203,44 @@ The schema must enforce:
 }
 ```
 
-Complete the schema with these exact enums:
+使用以下精确枚举补全 Schema：
 
-- split: `train`, `validation`, `test`;
-- scenario bucket: `single_intent`, `intent_boundary`, `clarification`, `multi_task_independent`, `multi_task_dependent`, `multi_turn`;
-- difficulty: `easy`, `medium`, `hard`;
-- task intent: `STOCK_ANALYSIS`, `PE_REASONING`, `PE_CALCULATION`, `PE_RETRIEVAL`, `INSPECTION`, `GENERAL_CHAT`;
-- confidence: `HIGH`, `MEDIUM`, `LOW`;
-- review status: `generated`, `pending`, `approved`, `rejected`.
+- 数据切分：`train`、`validation`、`test`；
+- 场景桶：`single_intent`、`intent_boundary`、`clarification`、`multi_task_independent`、`multi_task_dependent`、`multi_turn`；
+- 难度：`easy`、`medium`、`hard`；
+- 任务意图：`STOCK_ANALYSIS`、`PE_REASONING`、`PE_CALCULATION`、`PE_RETRIEVAL`、`INSPECTION`、`GENERAL_CHAT`；
+- 置信度：`HIGH`、`MEDIUM`、`LOW`；
+- 审核状态：`generated`、`pending`、`approved`、`rejected`。
 
-Require `input.query` as a non-empty string and `input.historyMessages` as an array of strings. Require the full expected routing shape, including every task's IDs, indices, content, intent, executor node, confidence, type, slots, and `dependsOn` array.
+要求 `input.query` 为非空字符串，`input.historyMessages` 为字符串数组。要求 `expected` 包含完整路由结构，包括每个任务的 ID、序号、内容、意图、执行节点、置信度、类型、槽位和 `dependsOn` 数组。
 
-- [ ] **Step 4: Confirm both fixtures satisfy the structural contract**
+- [ ] **步骤 4：确认两个夹具都满足结构契约**
 
-Run:
+运行：
 
 ```powershell
 python -c "import json; from jsonschema import Draft202012Validator; s=json.load(open('fine-tune/intent-routing/schemas/intent-routing-v1.schema.json',encoding='utf-8')); [Draft202012Validator(s).validate(json.load(open(f'fine-tune/intent-routing/tests/fixtures/{n}',encoding='utf-8'))) for n in ['valid-record.json','invalid-record-cycle.json']]; print('schema fixtures valid')"
 ```
 
-Expected: `schema fixtures valid`.
+预期输出：`schema fixtures valid`。
 
-- [ ] **Step 5: Commit the contract**
+- [ ] **步骤 5：提交源记录契约**
 
 ```powershell
 git add fine-tune/intent-routing/schemas fine-tune/intent-routing/tests/fixtures
 git commit -m "feat: define intent routing dataset schema"
 ```
 
-### Task 3: Implement Schema and Domain Validation
+### 任务 3：实现 Schema 与领域规则校验
 
-**Files:**
-- Create: `fine-tune/intent-routing/scripts/dataset_common.py`
-- Create: `fine-tune/intent-routing/scripts/validate_dataset.py`
-- Create: `fine-tune/intent-routing/tests/test_validate_dataset.py`
+**文件：**
+- 新建：`fine-tune/intent-routing/scripts/dataset_common.py`
+- 新建：`fine-tune/intent-routing/scripts/validate_dataset.py`
+- 新建：`fine-tune/intent-routing/tests/test_validate_dataset.py`
 
-- [ ] **Step 1: Write failing validator tests**
+- [ ] **步骤 1：编写预期失败的校验器测试**
 
-Create unittest cases with these assertions:
+创建包含以下断言的 unittest 测试：
 
 ```python
 class ValidateDatasetTest(unittest.TestCase):
@@ -262,19 +262,19 @@ class ValidateDatasetTest(unittest.TestCase):
         self.assertTrue(any("taskIndex" in error for error in validate_record(record)))
 ```
 
-- [ ] **Step 2: Run the tests to verify failure**
+- [ ] **步骤 2：运行测试并确认其按预期失败**
 
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_validate_dataset.py" -v
 ```
 
-Expected: FAIL because `dataset_common` and `validate_dataset` do not exist.
+预期结果：测试失败，原因是 `dataset_common` 和 `validate_dataset` 尚不存在。
 
-- [ ] **Step 3: Implement shared utilities**
+- [ ] **步骤 3：实现共享工具函数**
 
-In `dataset_common.py`, implement:
+在 `dataset_common.py` 中实现：
 
 ```python
 import hashlib
@@ -323,51 +323,51 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 ```
 
-`canonical_json` must use sorted keys, compact separators, and UTF-8 Chinese without ASCII escaping. `normalized_query` must join history and query, lowercase Latin characters, normalize Unicode with NFKC, and collapse whitespace.
+`canonical_json` 必须按键排序、使用紧凑分隔符，并以 UTF-8 中文输出而不做 ASCII 转义。`normalized_query` 必须拼接历史消息和当前查询，将拉丁字符转换为小写，使用 NFKC 规范化 Unicode，并合并多余空白。
 
-- [ ] **Step 4: Implement domain validation**
+- [ ] **步骤 4：实现领域规则校验**
 
-In `validate_dataset.py`, expose `validate_record(record: dict) -> list[str]` and enforce:
+在 `validate_dataset.py` 中公开 `validate_record(record: dict) -> list[str]`，并强制执行：
 
-1. JSON Schema validity;
-2. unique task IDs;
-3. contiguous task indices from 1 to task count;
-4. every `totalTasks` equals task count;
-5. `multiTask` equals `task count > 1`;
-6. every dependency references an existing earlier task;
-7. dependency graph is acyclic;
-8. clarification true requires non-empty `missingInfo`, non-empty prompt, and empty task list;
-9. clarification false requires empty `missingInfo`, empty prompt, and non-empty task list;
-10. executor node mapping: stock to `tradingStarter`, inspection to `intelligentInspection`, general chat to `generalChatNode`, and all PE intents to `step1AnalyzerNode`;
-11. record split matches the file being validated;
-12. all case IDs are globally unique.
+1. JSON Schema 合法；
+2. 任务 ID 唯一；
+3. `taskIndex` 从 1 到任务总数连续递增；
+4. 每个任务的 `totalTasks` 等于实际任务数；
+5. `multiTask` 等价于“任务数大于 1”；
+6. 每个依赖项都引用已存在且顺序更早的任务；
+7. 依赖图无环；
+8. 需要澄清时，`missingInfo` 和澄清问题非空，任务列表为空；
+9. 无需澄清时，`missingInfo` 和澄清问题为空，任务列表非空；
+10. 执行节点映射正确：股票对应 `tradingStarter`，巡检对应 `intelligentInspection`，通用对话对应 `generalChatNode`，全部 PE 意图对应 `step1AnalyzerNode`；
+11. 记录中的 split 与被校验文件一致；
+12. 全部 case ID 在数据集中全局唯一。
 
-The CLI must validate all three source files, write `reports/validation-report.json`, print counts by split and bucket, and return exit code 1 if any error exists.
+命令行程序必须校验三个源文件，写出 `reports/validation-report.json`，按数据切分和场景桶打印数量；发现任意错误时返回退出码 1。
 
-- [ ] **Step 5: Run validator tests**
+- [ ] **步骤 5：运行校验器测试**
 
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_validate_dataset.py" -v
 ```
 
-Expected: 4 tests PASS.
+预期结果：4 项测试全部通过。
 
-- [ ] **Step 6: Commit the validator**
+- [ ] **步骤 6：提交校验器**
 
 ```powershell
 git add fine-tune/intent-routing/scripts/dataset_common.py fine-tune/intent-routing/scripts/validate_dataset.py fine-tune/intent-routing/tests/test_validate_dataset.py
 git commit -m "feat: validate intent routing source records"
 ```
 
-### Task 4: Implement Duplicate and Cross-Split Leakage Checks
+### 任务 4：实现重复数据与跨切分泄漏检查
 
-**Files:**
-- Create: `fine-tune/intent-routing/scripts/check_leakage.py`
-- Create: `fine-tune/intent-routing/tests/test_check_leakage.py`
+**文件：**
+- 新建：`fine-tune/intent-routing/scripts/check_leakage.py`
+- 新建：`fine-tune/intent-routing/tests/test_check_leakage.py`
 
-- [ ] **Step 1: Write failing leakage tests**
+- [ ] **步骤 1：编写预期失败的泄漏检查测试**
 
 ```python
 class LeakageTest(unittest.TestCase):
@@ -384,51 +384,51 @@ class LeakageTest(unittest.TestCase):
         self.assertEqual([], findings["nearCrossSplit"])
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [ ] **步骤 2：运行测试并确认其按预期失败**
 
-Run:
-
-```powershell
-python -m unittest discover -s fine-tune/intent-routing/tests -p "test_check_leakage.py" -v
-```
-
-Expected: FAIL because `check_leakage` does not exist.
-
-- [ ] **Step 3: Implement leakage detection**
-
-Use `TfidfVectorizer(analyzer="char", ngram_range=(2, 4), min_df=1)` and cosine similarity over normalized history plus query. Report:
-
-- exact duplicates inside a split;
-- exact duplicates across splits;
-- cross-split pairs at or above threshold `0.72`;
-- reused `scenarioFamily` values across splits.
-
-The CLI must write `reports/leakage-report.json` and exit 1 when any exact cross-split duplicate, reused scenario family, or near pair at/above threshold exists.
-
-- [ ] **Step 4: Run leakage tests**
-
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_check_leakage.py" -v
 ```
 
-Expected: 3 tests PASS.
+预期结果：测试失败，原因是 `check_leakage` 尚不存在。
 
-- [ ] **Step 5: Commit leakage checks**
+- [ ] **步骤 3：实现泄漏检测**
+
+使用 `TfidfVectorizer(analyzer="char", ngram_range=(2, 4), min_df=1)` 对规范化后的历史消息和当前查询计算余弦相似度，并报告：
+
+- 同一切分内部的精确重复；
+- 不同切分之间的精确重复；
+- 跨切分且相似度不低于 `0.72` 的样本对；
+- 被不同切分重复使用的 `scenarioFamily`。
+
+命令行程序必须写出 `reports/leakage-report.json`。如果存在跨切分精确重复、跨切分场景族复用，或达到阈值的近似样本对，则返回退出码 1。
+
+- [ ] **步骤 4：运行泄漏检查测试**
+
+运行：
+
+```powershell
+python -m unittest discover -s fine-tune/intent-routing/tests -p "test_check_leakage.py" -v
+```
+
+预期结果：3 项测试全部通过。
+
+- [ ] **步骤 5：提交泄漏检查功能**
 
 ```powershell
 git add fine-tune/intent-routing/scripts/check_leakage.py fine-tune/intent-routing/tests/test_check_leakage.py
 git commit -m "feat: detect intent dataset split leakage"
 ```
 
-### Task 5: Implement Deterministic Human-Review Exports
+### 任务 5：实现确定性的人工审核表导出
 
-**Files:**
-- Create: `fine-tune/intent-routing/scripts/export_review.py`
-- Create: `fine-tune/intent-routing/tests/test_export_review.py`
+**文件：**
+- 新建：`fine-tune/intent-routing/scripts/export_review.py`
+- 新建：`fine-tune/intent-routing/tests/test_export_review.py`
 
-- [ ] **Step 1: Write failing review-export tests**
+- [ ] **步骤 1：编写预期失败的审核表导出测试**
 
 ```python
 class ExportReviewTest(unittest.TestCase):
@@ -447,81 +447,81 @@ class ExportReviewTest(unittest.TestCase):
         self.assertEqual(6, len({r["scenarioBucket"] for r in selected}))
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [ ] **步骤 2：运行测试并确认其按预期失败**
 
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_export_review.py" -v
 ```
 
-Expected: FAIL because `export_review` does not exist.
+预期结果：测试失败，原因是 `export_review` 尚不存在。
 
-- [ ] **Step 3: Implement stratified selection and CSV output**
+- [ ] **步骤 3：实现分层抽样和 CSV 输出**
 
-The CSV columns must be:
+CSV 必须包含以下列：
 
 ```text
 case_id,split,scenario_bucket,scenario_family,difficulty,query,history_json,expected_json,review_status,review_comment
 ```
 
-Train and Validation sampling must allocate at least one row to every scenario bucket and distribute remaining rows proportionally. Test must export all 200 rows. Initial `review_status` is `pending`; reviewers may change it only to `approved` or `rejected` and add a comment.
+训练集和验证集抽样必须保证每个场景桶至少有一条记录，其余名额按比例分配。测试集必须导出全部 200 条记录。`review_status` 初始值为 `pending`；审核人员只能将其改为 `approved` 或 `rejected`，并可填写审核备注。
 
-- [ ] **Step 4: Run review-export tests**
+- [ ] **步骤 4：运行审核表导出测试**
 
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_export_review.py" -v
 ```
 
-Expected: 3 tests PASS.
+预期结果：3 项测试全部通过。
 
-- [ ] **Step 5: Commit review tooling**
+- [ ] **步骤 5：提交审核工具**
 
 ```powershell
 git add fine-tune/intent-routing/scripts/export_review.py fine-tune/intent-routing/tests/test_export_review.py
 git commit -m "feat: export stratified intent dataset reviews"
 ```
 
-### Task 6: Generate the Train Source Dataset in Ten Validated Batches
+### 任务 6：分十个批次生成并校验训练集源数据
 
-**Files:**
-- Create: `fine-tune/intent-routing/data/v1/source/train.jsonl`
+**文件：**
+- 新建：`fine-tune/intent-routing/data/v1/source/train.jsonl`
 
-- [ ] **Step 1: Generate train batches 01-06**
+- [ ] **步骤 1：生成训练批次 01～06**
 
-Generate 1,200 `single_intent` records, 200 for each executable intent. Give each intent at least 40 easy, 100 medium, and 60 hard examples. Use train-only scenario families prefixed `tr-`. Do not derive multiple records by changing only an entity, number, or punctuation.
+生成 1,200 条 `single_intent` 记录，每个可执行意图 200 条。每个意图至少包含 40 条简单样本、100 条中等样本和 60 条困难样本。使用以 `tr-` 开头且仅供训练集使用的场景族。禁止只替换实体、数字或标点来批量衍生样本。
 
-- [ ] **Step 2: Validate the first 1,200 records**
+- [ ] **步骤 2：校验前 1,200 条记录**
 
-Run the validator and require zero structural or domain errors before continuing. Expected partial output includes `train: 1200` and `single_intent: 1200`.
+运行校验器；只有结构错误和领域错误均为零时才继续。预期部分输出包含 `train: 1200` 和 `single_intent: 1200`。
 
-- [ ] **Step 3: Generate train batch 07**
+- [ ] **步骤 3：生成训练批次 07**
 
-Generate 240 `intent_boundary` records. Allocate 60 each to retrieval-vs-general, reasoning-vs-general, calculation-vs-general, and inspection-vs-reasoning boundaries. At least half must be hard negatives whose surface keywords suggest the wrong intent.
+生成 240 条 `intent_boundary` 记录。检索与通用对话、推理与通用对话、计算与通用对话、巡检与推理四类边界各分配 60 条。至少一半必须是表面关键词容易诱导到错误意图的困难负样本。
 
-- [ ] **Step 4: Generate train batch 08**
+- [ ] **步骤 4：生成训练批次 08**
 
-Generate 160 clarification records. Cover missing retrieval topic, truly unresolvable stock target, missing inspection target, ambiguous calculation inputs, and ambiguous references. Do not mark a stock Chinese name or document reference as missing when current routing rules say downstream layers can resolve it.
+生成 160 条澄清记录，覆盖缺少检索主题、确实无法解析的股票标的、缺少巡检目标、计算输入含糊和指代不明等情况。当现有路由规则规定下游能够解析股票中文名或文档引用时，不得将其误标为信息缺失。
 
-- [ ] **Step 5: Generate train batch 09**
+- [ ] **步骤 5：生成训练批次 09**
 
-Generate 160 independent multi-task and 160 dependent multi-task records. Independent tasks must have empty dependencies. Dependent tasks must form an acyclic graph and include retrieval-then-reasoning, calculation-then-reasoning, and inspection-then-reasoning chains.
+生成 160 条独立多任务记录和 160 条依赖型多任务记录。独立任务的依赖必须为空；依赖型任务必须形成无环图，并覆盖“先检索再推理”“先计算再推理”和“先巡检再推理”等任务链。
 
-- [ ] **Step 6: Generate train batch 10**
+- [ ] **步骤 6：生成训练批次 10**
 
-Generate 80 multi-turn records with one to six history messages. Cover short follow-up answers, pronoun resolution, correction of a prior task, and completion of missing slots.
+生成 80 条多轮记录，每条包含 1～6 条历史消息。覆盖简短追答、代词消解、修正上一轮任务和补充缺失槽位等情况。
 
-- [ ] **Step 7: Validate counts and rules**
+- [ ] **步骤 7：校验数量和业务规则**
 
-Run:
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/validate_dataset.py --root fine-tune/intent-routing/data/v1
 ```
 
-Expected train totals:
+训练集预期合计：
 
 ```text
 train: 2000
@@ -534,108 +534,108 @@ multi_turn: 80
 errors: 0
 ```
 
-- [ ] **Step 8: Commit the train source data**
+- [ ] **步骤 8：提交训练集源数据**
 
 ```powershell
 git add fine-tune/intent-routing/data/v1/source/train.jsonl fine-tune/intent-routing/data/v1/reports/validation-report.json
 git commit -m "data: add synthetic intent routing train split"
 ```
 
-### Task 7: Generate Isolated Validation and Test Source Datasets
+### 任务 7：生成相互隔离的验证集和测试集源数据
 
-**Files:**
-- Create: `fine-tune/intent-routing/data/v1/source/validation.jsonl`
-- Create: `fine-tune/intent-routing/data/v1/source/test.jsonl`
+**文件：**
+- 新建：`fine-tune/intent-routing/data/v1/source/validation.jsonl`
+- 新建：`fine-tune/intent-routing/data/v1/source/test.jsonl`
 
-- [ ] **Step 1: Generate validation records from validation-only families**
+- [ ] **步骤 1：使用验证集专属场景族生成验证数据**
 
-Generate exactly 200 records using scenario families prefixed `va-` and the validation bucket quotas. None may be a direct paraphrase of a train record. Single-intent records must contain 20 examples for each executable intent.
+严格生成 200 条记录，使用以 `va-` 开头的验证集专属场景族，并遵守验证集场景桶配额。任何记录都不得是训练记录的直接改写。单意图记录中，每个可执行意图必须包含 20 条样本。
 
-- [ ] **Step 2: Generate test records from test-only families**
+- [ ] **步骤 2：使用测试集专属场景族生成测试数据**
 
-Generate exactly 200 records using scenario families prefixed `te-` and the test bucket quotas. Single-intent records must contain 20 examples for each executable intent. Emphasize compositional generalization, boundary hard negatives, colloquial Chinese, typos, and unseen entity combinations.
+严格生成 200 条记录，使用以 `te-` 开头的测试集专属场景族，并遵守测试集场景桶配额。单意图记录中，每个可执行意图必须包含 20 条样本。重点覆盖组合泛化、边界困难负样本、中文口语、错别字和训练集中未出现的实体组合。
 
-- [ ] **Step 3: Validate all source records**
+- [ ] **步骤 3：校验全部源记录**
 
-Run:
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/validate_dataset.py --root fine-tune/intent-routing/data/v1
 ```
 
-Expected: train 2,000, validation 200, test 200, errors 0.
+预期结果：训练集 2,000 条、验证集 200 条、测试集 200 条，错误数为 0。
 
-- [ ] **Step 4: Run leakage checks**
+- [ ] **步骤 4：运行泄漏检查**
 
-Run:
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/check_leakage.py --root fine-tune/intent-routing/data/v1
 ```
 
-Expected: no exact cross-split duplicates, no cross-split scenario-family reuse, and no cross-split pair at or above 0.72.
+预期结果：不存在跨切分精确重复、不存在跨切分场景族复用、不存在相似度达到或超过 0.72 的跨切分样本对。
 
-- [ ] **Step 5: Resolve every leakage finding**
+- [ ] **步骤 5：处理全部泄漏问题**
 
-For each finding, remove or rewrite the entire scenario instance while preserving bucket counts. Re-run validation and leakage checks until both exit 0.
+对每一项问题，删除或重写整个场景实例，同时保持场景桶数量不变。重复运行数据校验和泄漏检查，直到两者退出码均为 0。
 
-- [ ] **Step 6: Commit validation and test data**
+- [ ] **步骤 6：提交验证集和测试集数据**
 
 ```powershell
 git add fine-tune/intent-routing/data/v1/source/validation.jsonl fine-tune/intent-routing/data/v1/source/test.jsonl fine-tune/intent-routing/data/v1/reports/validation-report.json fine-tune/intent-routing/data/v1/reports/leakage-report.json
 git commit -m "data: add isolated intent validation and test splits"
 ```
 
-### Task 8: Export and Complete the Human Review Gate
+### 任务 8：导出并完成人工审核门禁
 
-**Files:**
-- Create: `fine-tune/intent-routing/data/v1/review/train-review.csv`
-- Create: `fine-tune/intent-routing/data/v1/review/validation-review.csv`
-- Create: `fine-tune/intent-routing/data/v1/review/test-review.csv`
-- Modify: rejected records in `fine-tune/intent-routing/data/v1/source/*.jsonl`
+**文件：**
+- 新建：`fine-tune/intent-routing/data/v1/review/train-review.csv`
+- 新建：`fine-tune/intent-routing/data/v1/review/validation-review.csv`
+- 新建：`fine-tune/intent-routing/data/v1/review/test-review.csv`
+- 修改：`fine-tune/intent-routing/data/v1/source/*.jsonl` 中审核不通过的记录
 
-- [ ] **Step 1: Export review sheets**
+- [ ] **步骤 1：导出审核表**
 
-Run:
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/export_review.py --root fine-tune/intent-routing/data/v1 --config fine-tune/intent-routing/config/scenario-matrix-v1.json
 ```
 
-Expected: 50 train rows, 50 validation rows, and all 200 test rows.
+预期结果：训练集 50 条、验证集 50 条、测试集全部 200 条。
 
-- [ ] **Step 2: Review train and validation samples**
+- [ ] **步骤 2：审核训练集和验证集抽样数据**
 
-For each selected row, verify input realism, intent, clarification decision, task split, dependency direction, executor mapping, and slots. Set every accepted row to `approved`. Set incorrect rows to `rejected` with a concrete reason.
+逐条检查输入是否自然、意图是否正确、澄清判断是否合理、任务拆分和依赖方向是否正确、执行节点映射和槽位是否准确。正确记录标记为 `approved`；错误记录标记为 `rejected`，并填写具体原因。
 
-- [ ] **Step 3: Review every test sample**
+- [ ] **步骤 3：审核全部测试样本**
 
-Review all 200 test rows using the same criteria. Test review must not reference model predictions; reviewers inspect only input, context, and expected output.
+使用相同标准审核全部 200 条测试数据。审核测试数据时不得参考任何模型预测，只检查输入、上下文和期望输出。
 
-- [ ] **Step 4: Correct rejected source records by scenario family**
+- [ ] **步骤 4：按场景族修正审核不通过的源记录**
 
-When a rejected row exposes a systematic issue, inspect and correct all records with the same scenario family. Regenerate review CSVs after corrections so they match source hashes.
+如果某条不通过记录暴露出系统性问题，则检查并修正同一场景族的全部记录。修正后重新生成审核 CSV，确保其与源数据哈希一致。
 
-- [ ] **Step 5: Re-run both gates**
+- [ ] **步骤 5：重新运行两项门禁检查**
 
-Run validator and leakage checker. Expected: both exit 0, with unchanged split and bucket totals.
+运行数据校验器和泄漏检查器。预期两者退出码均为 0，且数据切分与场景桶数量保持不变。
 
-- [ ] **Step 6: Commit reviewed source data**
+- [ ] **步骤 6：提交审核后的源数据**
 
 ```powershell
 git add fine-tune/intent-routing/data/v1/source fine-tune/intent-routing/data/v1/review fine-tune/intent-routing/data/v1/reports
 git commit -m "data: complete intent routing dataset review"
 ```
 
-### Task 9: Build Deterministic GLM SFT Files
+### 任务 9：构建确定性的 GLM SFT 文件
 
-**Files:**
-- Create: `fine-tune/intent-routing/scripts/build_sft.py`
-- Create: `fine-tune/intent-routing/tests/test_build_sft.py`
-- Create: `fine-tune/intent-routing/data/v1/sft/train.jsonl`
-- Create: `fine-tune/intent-routing/data/v1/sft/validation.jsonl`
+**文件：**
+- 新建：`fine-tune/intent-routing/scripts/build_sft.py`
+- 新建：`fine-tune/intent-routing/tests/test_build_sft.py`
+- 新建：`fine-tune/intent-routing/data/v1/sft/train.jsonl`
+- 新建：`fine-tune/intent-routing/data/v1/sft/validation.jsonl`
 
-- [ ] **Step 1: Write failing SFT conversion tests**
+- [ ] **步骤 1：编写预期失败的 SFT 转换测试**
 
 ```python
 class BuildSftTest(unittest.TestCase):
@@ -655,79 +655,79 @@ class BuildSftTest(unittest.TestCase):
             build_split("test", [load_fixture("valid-record.json")])
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [ ] **步骤 2：运行测试并确认其按预期失败**
 
-Run:
-
-```powershell
-python -m unittest discover -s fine-tune/intent-routing/tests -p "test_build_sft.py" -v
-```
-
-Expected: FAIL because `build_sft` does not exist.
-
-- [ ] **Step 3: Implement deterministic conversion**
-
-Create a concise system message that contains the six intent definitions, JSON-only requirement, clarification invariants, executor mapping, and dependency rule. Add history to the user content under a stable `Recent conversation:` section and current query under `Current request:`. Serialize completion using canonical compact JSON.
-
-Export Train and Validation only. Preserve `caseId`, `scenarioBucket`, and `difficulty` as non-training metadata fields for diagnosis.
-
-- [ ] **Step 4: Run SFT tests**
-
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_build_sft.py" -v
 ```
 
-Expected: 3 tests PASS.
+预期结果：测试失败，原因是 `build_sft` 尚不存在。
 
-- [ ] **Step 5: Build SFT files**
+- [ ] **步骤 3：实现确定性转换**
 
-Run:
+创建精简的系统消息，其中包含六类意图定义、仅输出 JSON 的要求、澄清字段不变量、执行节点映射和任务依赖规则。将历史消息放入固定的 `Recent conversation:` 段落，将当前查询放入 `Current request:` 段落。completion 使用规范化紧凑 JSON 序列化。
+
+只导出训练集和验证集。保留 `caseId`、`scenarioBucket` 和 `difficulty` 作为不参与训练的诊断元数据字段。
+
+- [ ] **步骤 4：运行 SFT 测试**
+
+运行：
+
+```powershell
+python -m unittest discover -s fine-tune/intent-routing/tests -p "test_build_sft.py" -v
+```
+
+预期结果：3 项测试全部通过。
+
+- [ ] **步骤 5：构建 SFT 文件**
+
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/build_sft.py --root fine-tune/intent-routing/data/v1
 ```
 
-Expected: 2,000 train SFT records and 200 validation SFT records; no test SFT file.
+预期结果：生成 2,000 条训练 SFT 记录和 200 条验证 SFT 记录，不生成测试集 SFT 文件。
 
-- [ ] **Step 6: Commit SFT artifacts**
+- [ ] **步骤 6：提交 SFT 产物**
 
 ```powershell
 git add fine-tune/intent-routing/scripts/build_sft.py fine-tune/intent-routing/tests/test_build_sft.py fine-tune/intent-routing/data/v1/sft
 git commit -m "feat: build GLM intent routing SFT dataset"
 ```
 
-### Task 10: Freeze the Dataset Manifest and Run the Final Gate
+### 任务 10：冻结数据集清单并执行最终门禁
 
-**Files:**
-- Create: `fine-tune/intent-routing/data/v1/reports/manifest.json`
-- Modify: `fine-tune/intent-routing/README.md`
+**文件：**
+- 新建：`fine-tune/intent-routing/data/v1/reports/manifest.json`
+- 修改：`fine-tune/intent-routing/README.md`
 
-- [ ] **Step 1: Run the complete test suite**
+- [ ] **步骤 1：运行完整测试套件**
 
-Run:
+运行：
 
 ```powershell
 python -m unittest discover -s fine-tune/intent-routing/tests -p "test_*.py" -v
 ```
 
-Expected: all validator, leakage, review, and SFT tests PASS.
+预期结果：数据校验、泄漏检查、人工审核导出和 SFT 转换测试全部通过。
 
-- [ ] **Step 2: Run production-data validation and leakage gates**
+- [ ] **步骤 2：运行正式数据校验和泄漏门禁**
 
-Run:
+运行：
 
 ```powershell
 python fine-tune/intent-routing/scripts/validate_dataset.py --root fine-tune/intent-routing/data/v1
 python fine-tune/intent-routing/scripts/check_leakage.py --root fine-tune/intent-routing/data/v1
 ```
 
-Expected: both exit 0; exact split counts remain 2,000/200/200.
+预期结果：两个命令退出码均为 0，数据切分数量严格保持为 2,000/200/200。
 
-- [ ] **Step 3: Freeze the manifest**
+- [ ] **步骤 3：冻结数据清单**
 
-Write `manifest.json` with:
+按以下结构写入 `manifest.json`：
 
 ```json
 {
@@ -741,29 +741,29 @@ Write `manifest.json` with:
 }
 ```
 
-Populate `files` with the SHA-256 of every source, SFT, review, and report file except `manifest.json` itself. Refuse to freeze if any required review row is not `approved` or if either gate fails.
+在 `files` 中记录除 `manifest.json` 自身以外的全部源数据、SFT 数据、审核文件和报告文件的 SHA-256。只要任一必审记录不是 `approved`，或者任一门禁未通过，就必须拒绝冻结。
 
-- [ ] **Step 4: Document the immutable dataset version**
+- [ ] **步骤 4：记录不可变数据集版本规则**
 
-Update `README.md` to state that any post-freeze source change requires a new dataset version directory and a new manifest. Document that Test must never be copied into SFT files, Prompt examples, or the Few-shot vector store.
+更新 `README.md`：数据冻结后，任何源数据变更都必须创建新的数据版本目录和新清单。明确规定测试集绝不能复制到 SFT 文件、Prompt 示例或 Few-shot 向量库中。
 
-- [ ] **Step 5: Commit the frozen MVP dataset**
+- [ ] **步骤 5：提交冻结后的 MVP 数据集**
 
 ```powershell
 git add fine-tune/intent-routing/README.md fine-tune/intent-routing/data/v1/reports/manifest.json
 git commit -m "data: freeze intent routing dataset v1"
 ```
 
-## Completion Criteria
+## 完成标准
 
-This plan is complete only when:
+只有同时满足以下条件，本计划才算完成：
 
-- source counts are exactly 2,000/200/200;
-- bucket quotas match `scenario-matrix-v1.json`;
-- all automated tests pass;
-- schema and domain validation report zero errors;
-- leakage checks report zero blocking findings;
-- 50 Train, 50 Validation, and all 200 Test rows are approved;
-- Train and Validation SFT files exist and Test SFT does not;
-- `manifest.json` contains hashes for all versioned artifacts;
-- all task commits are present in Git history.
+- 源数据数量严格为 2,000/200/200；
+- 场景桶配额与 `scenario-matrix-v1.json` 完全一致；
+- 全部自动化测试通过；
+- Schema 和领域规则校验错误数为零；
+- 泄漏检查不存在阻断项；
+- 训练集 50 条、验证集 50 条和测试集全部 200 条均审核通过；
+- 训练集和验证集 SFT 文件存在，测试集 SFT 文件不存在；
+- `manifest.json` 包含全部版本化产物的哈希；
+- 所有任务提交均可在 Git 历史中追溯。
