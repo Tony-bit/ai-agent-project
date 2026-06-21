@@ -10,7 +10,8 @@ const {
     classifyAgentEvent,
     validateSseResponse,
     resolveRuntimeConfig,
-    buildApiUrl
+    buildApiUrl,
+    createRequestLifecycle
 } = require('../js/agent-ui-core.js');
 
 function memoryStorage(initial = {}) {
@@ -69,6 +70,52 @@ test('buildApiUrl joins same-origin and configured base URLs', () => {
         buildApiUrl('http://localhost:8090', '/api/v1/agent/auto_agent'),
         'http://localhost:8090/api/v1/agent/auto_agent'
     );
+});
+
+test('request lifecycle rejects duplicate starts and finishes the matching token once', () => {
+    const states = [];
+    const controller = { signal: {}, abortCalled: 0, abort() { this.abortCalled += 1; } };
+    const lifecycle = createRequestLifecycle({
+        onChange: (state) => states.push(state.status),
+        controllerFactory: () => controller
+    });
+
+    const request = lifecycle.start('general');
+    assert.deepEqual(request, { id: 1, mode: 'general' });
+    assert.equal(lifecycle.start('trading'), null);
+    assert.equal(lifecycle.finish(request, 'completed'), true);
+    assert.equal(lifecycle.finish(request, 'completed'), false);
+    assert.deepEqual(states, ['running', 'completed']);
+});
+
+test('request lifecycle aborts an active request as cancelled', () => {
+    const states = [];
+    const controller = { signal: { id: 'signal' }, abortCalled: 0, abort() { this.abortCalled += 1; } };
+    const lifecycle = createRequestLifecycle({
+        onChange: (state) => states.push(state),
+        controllerFactory: () => controller
+    });
+
+    const request = lifecycle.start('trading');
+    assert.deepEqual(lifecycle.signal(request), { id: 'signal' });
+    assert.equal(lifecycle.cancel(request), true);
+    assert.equal(controller.abortCalled, 1);
+    assert.equal(states.at(-1).status, 'cancelled');
+    assert.equal(lifecycle.isRunning(), false);
+});
+
+test('a cancelled request cannot finish a newer request', () => {
+    const lifecycle = createRequestLifecycle({
+        onChange: () => {},
+        controllerFactory: () => ({ signal: {}, abort() {} })
+    });
+    const oldRequest = lifecycle.start('general');
+    assert.equal(lifecycle.cancel(oldRequest), true);
+    const newRequest = lifecycle.start('trading');
+
+    assert.equal(lifecycle.finish(oldRequest, 'failed'), false);
+    assert.equal(lifecycle.isActive(newRequest), true);
+    assert.equal(lifecycle.finish(newRequest, 'completed'), true);
 });
 
 test('createSseParser joins a JSON event split across chunks', () => {

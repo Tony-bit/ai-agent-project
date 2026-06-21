@@ -237,6 +237,63 @@
         return `${apiBase || ''}${normalizedPath}`;
     }
 
+    function createRequestLifecycle({ onChange, controllerFactory }) {
+        let sequence = 0;
+        let active = null;
+        const makeController = controllerFactory || (() => new AbortController());
+
+        function matches(request) {
+            return Boolean(active && request && active.id === request.id);
+        }
+
+        function transition(status, request) {
+            onChange({
+                status,
+                mode: request ? request.mode : null,
+                requestId: request ? request.id : null
+            });
+        }
+
+        return {
+            start(mode) {
+                if (active) return null;
+                active = { id: ++sequence, mode, controller: makeController() };
+                const request = Object.freeze({ id: active.id, mode: active.mode });
+                transition('running', request);
+                return request;
+            },
+            finish(request, status) {
+                if (!matches(request)) return false;
+                const finished = { id: active.id, mode: active.mode };
+                active = null;
+                transition(status, finished);
+                return true;
+            },
+            cancel(request) {
+                if (!matches(request)) return false;
+                const cancelled = { id: active.id, mode: active.mode };
+                active.controller.abort();
+                active = null;
+                transition('cancelled', cancelled);
+                return true;
+            },
+            signal(request) {
+                return matches(request) ? active.controller.signal : undefined;
+            },
+            isRunning() {
+                return active !== null;
+            },
+            isActive(request) {
+                return matches(request);
+            },
+            snapshot() {
+                return active
+                    ? { status: 'running', id: active.id, mode: active.mode }
+                    : { status: 'idle', id: null, mode: null };
+            }
+        };
+    }
+
     return {
         createSseParser,
         escapeHtml,
@@ -245,6 +302,7 @@
         classifyAgentEvent,
         validateSseResponse,
         resolveRuntimeConfig,
-        buildApiUrl
+        buildApiUrl,
+        createRequestLifecycle
     };
 }));
