@@ -1,28 +1,28 @@
-# Frontend Polish Batch 1: Stream Correctness and Security Implementation Plan
+# 前端产品化打磨第一批：流式正确性与安全实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供智能体执行者使用：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 子技能逐项执行本计划。所有步骤使用复选框（`- [ ]`）跟踪状态。
 
-**Goal:** Make both Agent streams lossless across arbitrary network chunk boundaries, render all untrusted content safely, and terminate each request exactly once in the correct panel.
+**目标：** 保证两类 Agent 流在任意网络分块边界下都不丢失事件，安全渲染所有不可信内容，并让每次请求只在正确面板中结束一次。
 
-**Architecture:** Add one build-free UMD utility module beside the existing static assets so pure parsing, sanitizing, and event-classification logic can be tested with Node's built-in test runner. Keep the existing HTML shell and UI renderers, but route both general and trading streams through the shared module and one raw-event adapter.
+**架构：** 在现有静态资源旁新增一个无需构建的 UMD 工具模块，使纯解析、清洗和事件分类逻辑能够使用 Node 内置测试运行器验证。保留现有 HTML 外壳和 UI 渲染器，但让通用流与交易流统一经过共享模块和原始事件适配器。
 
-**Tech Stack:** Vanilla JavaScript, Fetch streams, DOMPurify, marked, highlight.js, Node.js `node:test`, static HTML/Tailwind CSS.
+**技术栈：** 原生 JavaScript、Fetch 流、DOMPurify、marked、highlight.js、Node.js `node:test`、静态 HTML/Tailwind CSS。
 
 ---
 
-## File map
+## 文件结构
 
-- Create `docs/dev-ops/nginx/html/js/agent-ui-core.js`: build-free pure utilities shared by the page and Node tests.
-- Create `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`: parser, sanitizer, and event-classification tests.
-- Modify `docs/dev-ops/nginx/html/index.html:6-11,936-1765,1980-2035`: load the module, replace both ad-hoc stream parsers, sanitize rendering, and unify completion classification.
+- 新建 `docs/dev-ops/nginx/html/js/agent-ui-core.js`：供页面和 Node 测试共享的免构建纯工具模块。
+- 新建 `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`：解析器、清洗器和事件分类测试。
+- 修改 `docs/dev-ops/nginx/html/index.html:6-11,936-1765,1980-2035`：加载模块、替换两套临时流解析器、清洗渲染内容并统一完成事件分类。
 
-### Task 1: Specify the shared stream and rendering contract
+### 任务 1：定义共享流与渲染契约
 
-**Files:**
-- Create: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 新建：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Create failing tests for fragmented SSE, CRLF, multiline data, sanitizing, and event classification**
+- [ ] **步骤 1：为 SSE 分片、CRLF、多行数据、内容清洗和事件分类编写失败测试**
 
 ```javascript
 'use strict';
@@ -111,30 +111,30 @@ test('classifyAgentEvent sends terminal results to the result panel', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests and verify the module is missing**
+- [ ] **步骤 2：运行测试并确认模块缺失**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: FAIL with `Cannot find module '../js/agent-ui-core.js'`.
+预期：测试失败，并显示 `Cannot find module '../js/agent-ui-core.js'`。
 
-- [ ] **Step 3: Commit the executable contract**
+- [ ] **步骤 3：提交可执行契约**
 
 ```powershell
 git add docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 git commit -m "test: define frontend stream safety contract"
 ```
 
-### Task 2: Implement the build-free core utilities
+### 任务 2：实现免构建核心工具
 
-**Files:**
-- Create: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 新建：`docs/dev-ops/nginx/html/js/agent-ui-core.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Implement the UMD module**
+- [ ] **步骤 1：实现 UMD 模块**
 
 ```javascript
 (function (root, factory) {
@@ -244,38 +244,38 @@ git commit -m "test: define frontend stream safety contract"
 }));
 ```
 
-- [ ] **Step 2: Run the core tests**
+- [ ] **步骤 2：运行核心测试**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: 7 tests PASS, 0 FAIL.
+预期：7 项测试通过，0 项失败。
 
-- [ ] **Step 3: Commit the core module**
+- [ ] **步骤 3：提交核心模块**
 
 ```powershell
 git add docs/dev-ops/nginx/html/js/agent-ui-core.js
 git commit -m "feat: add tested frontend stream utilities"
 ```
 
-### Task 3: Enforce safe rendering in every message path
+### 任务 3：在所有消息路径中强制执行安全渲染
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:6-11,1272-1355,1665-1795`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:6-11,1272-1355,1665-1795`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Load the core module after third-party render libraries**
+- [ ] **步骤 1：在第三方渲染库之后加载核心模块**
 
-Add after `highlight.min.js`:
+在 `highlight.min.js` 之后添加：
 
 ```html
 <script src="js/agent-ui-core.js"></script>
 ```
 
-- [ ] **Step 2: Replace the local escape helper with the tested implementation**
+- [ ] **步骤 2：用已测试实现替换本地转义工具**
 
 ```javascript
 const { createSseParser, escapeHtml, sanitizeMarkdown, classifyAgentEvent } = window.AgentUiCore;
@@ -285,11 +285,11 @@ function renderMarkdown(content) {
 }
 ```
 
-Delete the old DOM-based `escapeHtml` function so there is only one escaping implementation.
+删除旧的 DOM 版 `escapeHtml` 函数，确保转义逻辑只有一份实现。
 
-- [ ] **Step 3: Replace every direct Markdown parse used in HTML insertion**
+- [ ] **步骤 3：替换所有用于插入 HTML 的直接 Markdown 解析**
 
-Change all three forms below:
+修改以下三种写法：
 
 ```javascript
 const renderedContent = renderMarkdown(content);
@@ -297,45 +297,45 @@ const historyContent = renderMarkdown(msg.content || '');
 contentDiv.innerHTML = renderMarkdown(content);
 ```
 
-The history message template must interpolate `${historyContent}` instead of `${marked.parse(msg.content || '')}`. No `marked.parse(...)` call may remain outside `renderMarkdown`.
+历史消息模板必须插入 `${historyContent}`，不能继续使用 `${marked.parse(msg.content || '')}`。`renderMarkdown` 之外不得保留任何 `marked.parse(...)` 调用。
 
-- [ ] **Step 4: Escape user content before template insertion**
+- [ ] **步骤 4：在插入模板前转义用户内容**
 
-At the start of the user branch in `addMessage`:
+在 `addMessage` 的用户消息分支开头增加：
 
 ```javascript
 const safeContent = escapeHtml(content);
 ```
 
-Use `${safeContent}` in both user bubbles. Keep existing `escapeHtml(...)` calls in session list rendering, now backed by the shared implementation.
+两个用户气泡都使用 `${safeContent}`。会话列表渲染中现有的 `escapeHtml(...)` 调用继续保留，但底层改为共享实现。
 
-- [ ] **Step 5: Verify dangerous direct render paths are gone**
+- [ ] **步骤 5：确认危险的直接渲染路径已消失**
 
-Run:
+运行：
 
 ```powershell
 rg -n "marked\.parse|\$\{content\}" docs/dev-ops/nginx/html/index.html
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: `marked.parse` appears only inside `renderMarkdown` or not at all; no unescaped user `${content}` interpolation remains; all tests PASS.
+预期：`marked.parse` 只出现在 `renderMarkdown` 内部或完全不出现；不存在未转义的用户 `${content}` 插值；全部测试通过。
 
-- [ ] **Step 6: Commit safe rendering**
+- [ ] **步骤 6：提交安全渲染修改**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: sanitize agent and user message rendering"
 ```
 
-### Task 4: Replace both lossy stream readers with the shared parser
+### 任务 4：使用共享解析器替换两套有损流读取器
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:1398-1535,1930-2040`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:1398-1535,1930-2040`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Add one JSON event adapter and one stream consumer**
+- [ ] **步骤 1：新增统一 JSON 事件适配器和流消费器**
 
-Place these helpers before `sendMessage`:
+在 `sendMessage` 前放置以下工具函数：
 
 ```javascript
 function handleRawSseEvent(jsonData) {
@@ -368,9 +368,9 @@ async function consumeSseResponse(response) {
 }
 ```
 
-- [ ] **Step 2: Convert `sendMessage` to await the shared consumer**
+- [ ] **步骤 2：改造 `sendMessage`，等待共享消费器完成**
 
-Keep the existing request DTO and panel reset, but replace the nested recursive `readStream()` body with:
+保留现有请求 DTO 和面板重置逻辑，但将嵌套递归的 `readStream()` 主体替换为：
 
 ```javascript
 fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
@@ -397,7 +397,7 @@ fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
 .finally(() => closeLoadingState('general'));
 ```
 
-For Batch 1, define the temporary URL helper immediately above `sendMessage`; Batch 2 will make it configurable:
+第一批先在 `sendMessage` 上方定义临时 URL 工具；第二批再将其改为可配置实现：
 
 ```javascript
 function buildApiUrl(path) {
@@ -405,36 +405,36 @@ function buildApiUrl(path) {
 }
 ```
 
-- [ ] **Step 3: Convert `sendTradingAnalysis` to the same consumer**
+- [ ] **步骤 3：将 `sendTradingAnalysis` 改为使用同一消费器**
 
-Use the same structure with `buildApiUrl('/api/v1/trading/analysis')`, the existing trading request body, and `.finally(() => closeLoadingState('trading'))`. Remove the second `TextDecoder`, `reader.read()` recursion, and chunk-by-line loop.
+沿用相同结构，使用 `buildApiUrl('/api/v1/trading/analysis')`、现有交易请求体和 `.finally(() => closeLoadingState('trading'))`。删除第二套 `TextDecoder`、`reader.read()` 递归和逐行处理 chunk 的循环。
 
-- [ ] **Step 4: Verify both lossy parsing loops are removed**
+- [ ] **步骤 4：确认两套有损解析循环均已删除**
 
-Run:
+运行：
 
 ```powershell
 rg -n "chunk\.split|function readStream|new TextDecoder" docs/dev-ops/nginx/html/index.html
 ```
 
-Expected: no `chunk.split` or recursive `readStream`; exactly one `new TextDecoder` remains inside `consumeSseResponse`.
+预期：不存在 `chunk.split` 或递归 `readStream`；只在 `consumeSseResponse` 内保留一个 `new TextDecoder`。
 
-- [ ] **Step 5: Commit the shared stream consumer**
+- [ ] **步骤 5：提交共享流消费器**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: preserve fragmented SSE events"
 ```
 
-### Task 5: Make completion and panel routing idempotent
+### 任务 5：保证完成处理和面板路由幂等
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:1500-1765`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:1500-1765`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Track whether a request has already received a terminal event**
+- [ ] **步骤 1：记录请求是否已收到终止事件**
 
-Add beside the existing connection state:
+在现有连接状态旁新增：
 
 ```javascript
 let terminalEventReceived = false;
@@ -442,7 +442,7 @@ let terminalEventReceived = false;
 
 Set it to `false` at the beginning of both send functions and in `createNewChat`.
 
-- [ ] **Step 2: Replace `handleSSEMessage` with classification-driven logic**
+- [ ] **步骤 2：使用事件分类驱动的逻辑替换 `handleSSEMessage`**
 
 ```javascript
 function handleSSEMessage(jsonData) {
@@ -479,9 +479,9 @@ function handleSSEMessage(jsonData) {
 }
 ```
 
-- [ ] **Step 3: Let `addStageMessage` accept an explicit target**
+- [ ] **步骤 3：让 `addStageMessage` 接受显式目标面板**
 
-Change the signature and target selection:
+修改函数签名和目标选择逻辑：
 
 ```javascript
 function addStageMessage(type, subType, content, step, explicitTarget) {
@@ -490,11 +490,11 @@ function addStageMessage(type, subType, content, step, explicitTarget) {
     const targetContainer = document.getElementById(
         target === 'result' ? 'resultMessages' : 'thinkingMessages'
     );
-    // Keep the existing message construction, highlighting, append and scroll code.
+    // 保留现有消息构造、代码高亮、追加和滚动逻辑。
 }
 ```
 
-- [ ] **Step 4: Remove synthetic completion messages from network EOF**
+- [ ] **步骤 4：删除网络流结束时合成的完成消息**
 
 Neither `sendMessage` nor `sendTradingAnalysis` may append an unconditional `addStageMessage('complete', ...)` after `consumeSseResponse`. Business terminal events control visible completion; `.finally(...)` only restores UI state. If EOF occurs without a terminal event, add one warning before cleanup:
 
@@ -504,9 +504,9 @@ if (!terminalEventReceived) {
 }
 ```
 
-- [ ] **Step 5: Run automated and static checks**
+- [ ] **步骤 5：运行自动化测试和静态检查**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
@@ -514,24 +514,24 @@ rg -n "addStageMessage\('complete'|chunk\.split|marked\.parse" docs/dev-ops/ngin
 git diff --check
 ```
 
-Expected: tests PASS; no unconditional synthetic completion, lossy parser, or direct marked parse remains; `git diff --check` prints nothing.
+预期：测试全部通过；不存在无条件合成完成消息、有损解析器或直接 marked 解析；`git diff --check` 无输出。
 
-- [ ] **Step 6: Perform the Batch 1 browser smoke test**
+- [ ] **步骤 6：执行第一批浏览器冒烟测试**
 
-Serve the static directory through the existing Nginx setup and verify:
+通过现有 Nginx 配置提供静态目录并验证：
 
-1. General chat streams incrementally and produces one final result.
-2. Trading analysis places `final_decision` and `trading_complete` in the result panel.
+1. 通用对话能够增量流式输出，并且只生成一个最终结果。
+2. 交易分析将 `final_decision` 和 `trading_complete` 放入结果面板。
 3. Entering `<img src=x onerror=alert(1)>` displays text and does not execute code.
-4. A stopped backend restores both send buttons and shows a non-blocking error card.
+4. 后端停止后，两个发送按钮都能恢复，并显示非阻塞错误卡片。
 
-- [ ] **Step 7: Commit Batch 1 completion**
+- [ ] **步骤 7：提交第一批完成结果**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 git commit -m "fix: harden agent streaming and rendering"
 ```
 
-## Batch 1 checkpoint
+## 第一批检查点
 
-Stop after Task 5. Report automated-test output, the four browser smoke-test results, files changed, and any protocol event observed but not covered by `classifyAgentEvent`. Do not begin Batch 2 until the user has completed the real end-to-end demonstration for this batch.
+完成任务 5 后停止。汇报自动化测试输出、四项浏览器冒烟结果、修改文件，以及观察到但尚未被 `classifyAgentEvent` 覆盖的协议事件。用户完成本批真实端到端演示前，不得开始第二批。

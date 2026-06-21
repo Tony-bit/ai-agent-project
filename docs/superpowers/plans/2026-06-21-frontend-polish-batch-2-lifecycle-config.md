@@ -1,32 +1,32 @@
-# Frontend Polish Batch 2: Request Lifecycle and Runtime Configuration Implementation Plan
+# 前端产品化打磨第二批：请求生命周期与运行配置实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供智能体执行者使用：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 子技能逐项执行本计划。所有步骤使用复选框（`- [ ]`）跟踪状态。
 
-**Goal:** Give general chat, trading analysis, session history, and memory sync one consistent runtime configuration and a cancellable, idempotent request lifecycle.
+**目标：** 为通用对话、交易分析、会话历史和记忆同步提供统一运行配置，以及可取消、幂等的请求生命周期。
 
-**Architecture:** Extend the tested UMD core from Batch 1 with pure configuration and lifecycle utilities. The page resolves configuration once at startup, builds every API URL through one helper, and drives both streaming request UIs from one lifecycle object backed by `AbortController`.
+**架构：** 在第一批已经测试的 UMD 核心中增加纯配置与生命周期工具。页面启动时只解析一次配置，通过同一工具构造全部 API URL，并使用一个由 `AbortController` 支撑的生命周期对象驱动两类流式请求 UI。
 
-**Tech Stack:** Vanilla JavaScript, Fetch, AbortController, URLSearchParams, localStorage, Node.js `node:test`, static HTML/Tailwind CSS.
+**技术栈：** 原生 JavaScript、Fetch、AbortController、URLSearchParams、localStorage、Node.js `node:test`、静态 HTML/Tailwind CSS。
 
 ---
 
-## Prerequisite
+## 前置条件
 
-Batch 1 must be committed and its checkpoint accepted. The files `js/agent-ui-core.js` and `test/agent-ui-core.test.js` must exist and the Batch 1 tests must pass before this plan starts.
+开始本计划前，第一批必须已经提交并通过检查点验收；`js/agent-ui-core.js` 和 `test/agent-ui-core.test.js` 必须存在，且第一批测试全部通过。
 
-## File map
+## 文件结构
 
-- Modify `docs/dev-ops/nginx/html/js/agent-ui-core.js`: add validated runtime configuration and request lifecycle utilities.
-- Modify `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`: add deterministic config and lifecycle tests.
-- Modify `docs/dev-ops/nginx/html/index.html:768-775,936-1070,1160-1225,1390-1660,1800-2080`: add cancellation UI, resolve runtime config, update all Fetch calls, and unify request state transitions.
+- 修改 `docs/dev-ops/nginx/html/js/agent-ui-core.js`：增加带校验的运行配置和请求生命周期工具。
+- 修改 `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`：增加确定性的配置与生命周期测试。
+- 修改 `docs/dev-ops/nginx/html/index.html:768-775,936-1070,1160-1225,1390-1660,1800-2080`：增加取消 UI、解析运行配置、更新全部 Fetch 调用并统一请求状态转换。
 
-### Task 1: Specify runtime configuration behavior
+### 任务 1：定义运行配置行为
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Append tests for API Base URL and user ID precedence**
+- [ ] **步骤 1：追加 API Base URL 和用户 ID 优先级测试**
 
 ```javascript
 const { resolveRuntimeConfig, buildApiUrl } = require('../js/agent-ui-core.js');
@@ -90,23 +90,23 @@ test('buildApiUrl joins same-origin and configured base URLs', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests and verify the new exports are missing**
+- [ ] **步骤 2：运行测试并确认新导出尚不存在**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: FAIL because `resolveRuntimeConfig` and `buildApiUrl` are not exported.
+预期：测试失败，因为尚未导出 `resolveRuntimeConfig` 和 `buildApiUrl`。
 
-### Task 2: Implement validated runtime configuration
+### 任务 2：实现带校验的运行配置
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/js/agent-ui-core.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Add configuration helpers before the module return statement**
+- [ ] **步骤 1：在模块返回语句前增加配置工具**
 
 ```javascript
 const USER_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -123,7 +123,7 @@ function safeStorageSet(storage, key, value) {
     try {
         if (storage && storage.setItem) storage.setItem(key, value);
     } catch (_) {
-        // Storage is optional; in-memory configuration remains usable.
+        // 存储能力是可选的；内存中的配置仍然可用。
     }
 }
 
@@ -164,7 +164,7 @@ function buildApiUrl(apiBase, path) {
 }
 ```
 
-Update the export object:
+更新导出对象：
 
 ```javascript
 return {
@@ -177,31 +177,31 @@ return {
 };
 ```
 
-- [ ] **Step 2: Run all core tests**
+- [ ] **步骤 2：运行全部核心测试**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: all Batch 1 and Batch 2 configuration tests PASS.
+预期：第一批与第二批的全部配置测试通过。
 
-- [ ] **Step 3: Commit runtime configuration utilities**
+- [ ] **步骤 3：提交运行配置工具**
 
 ```powershell
 git add docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 git commit -m "feat: resolve frontend runtime configuration"
 ```
 
-### Task 3: Apply runtime configuration to every API call
+### 任务 3：将运行配置应用到全部 API 调用
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:936-1070,1160-1225,1390-1535,1930-2080`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:936-1070,1160-1225,1390-1535,1930-2080`
 
-- [ ] **Step 1: Resolve configuration once and preserve the current user default**
+- [ ] **步骤 1：只解析一次配置并保留当前默认用户**
 
-Extend the module destructuring and replace the hard-coded user constant:
+扩展模块解构并替换硬编码用户常量：
 
 ```javascript
 const {
@@ -226,11 +226,11 @@ function buildApiUrl(path) {
 }
 ```
 
-This intentionally keeps the user's current `test-user-f52b2ed1` value as the fallback.
+这里有意保留用户当前的 `test-user-f52b2ed1` 作为兜底值。
 
-- [ ] **Step 2: Replace all absolute Fetch URLs**
+- [ ] **步骤 2：替换全部 Fetch 绝对地址**
 
-Use these exact forms:
+严格使用以下形式：
 
 ```javascript
 buildApiUrl(`/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`)
@@ -240,46 +240,46 @@ buildApiUrl('/api/v1/trading/analysis')
 buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`)
 ```
 
-- [ ] **Step 3: Show the active user without adding a new business mode**
+- [ ] **步骤 3：在不增加业务模式的前提下展示当前用户**
 
-Next to the existing session ID status, add:
+在现有会话 ID 状态旁增加：
 
 ```html
 <span class="text-[10px] text-gray-500">用户:</span>
 <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
 ```
 
-Initialize it after resolving configuration:
+解析配置后初始化该元素：
 
 ```javascript
 document.getElementById('currentUserId').textContent = currentUserId;
 ```
 
-- [ ] **Step 4: Verify no API host or second user constant remains**
+- [ ] **步骤 4：确认不再存在固定 API 主机或第二份用户常量**
 
-Run:
+运行：
 
 ```powershell
 rg -n "http://localhost:8090|const currentUserId" docs/dev-ops/nginx/html/index.html
 ```
 
-Expected: no fixed API URL; exactly one `const currentUserId = runtimeConfig.userId`.
+预期：不存在固定 API URL；只保留一个 `const currentUserId = runtimeConfig.userId`。
 
-- [ ] **Step 5: Commit page configuration integration**
+- [ ] **步骤 5：提交页面配置集成**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: support same-origin and configurable frontend runtime"
 ```
 
-### Task 4: Specify and implement an idempotent request lifecycle
+### 任务 4：定义并实现幂等请求生命周期
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 修改：`docs/dev-ops/nginx/html/js/agent-ui-core.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Append lifecycle tests**
+- [ ] **步骤 1：追加生命周期测试**
 
 ```javascript
 const { createRequestLifecycle } = require('../js/agent-ui-core.js');
@@ -316,17 +316,17 @@ test('request lifecycle aborts an active request as cancelled', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify the lifecycle export is missing**
+- [ ] **步骤 2：运行测试并确认生命周期导出尚不存在**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: FAIL because `createRequestLifecycle` is not exported.
+预期：测试失败，因为尚未导出 `createRequestLifecycle`。
 
-- [ ] **Step 3: Implement the lifecycle utility**
+- [ ] **步骤 3：实现生命周期工具**
 
 ```javascript
 function createRequestLifecycle({ onChange, controllerFactory }) {
@@ -372,29 +372,29 @@ function createRequestLifecycle({ onChange, controllerFactory }) {
 }
 ```
 
-Add `createRequestLifecycle` to the exported object.
+将 `createRequestLifecycle` 加入导出对象。
 
-- [ ] **Step 4: Run all tests and commit**
+- [ ] **步骤 4：运行全部测试并提交**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: all tests PASS.
+预期：全部测试通过。
 
 ```powershell
 git add docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 git commit -m "feat: add cancellable frontend request lifecycle"
 ```
 
-### Task 5: Drive both streaming UIs from the shared lifecycle
+### 任务 5：使用共享生命周期驱动两类流式 UI
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:768-775,1390-1660,1800-2040`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:768-775,1390-1660,1800-2040`
 
-- [ ] **Step 1: Add a cancel control to the existing loading strip**
+- [ ] **步骤 1：在现有加载条中增加取消控件**
 
 Inside `#loading`, after the loading text, add:
 
@@ -405,7 +405,7 @@ Inside `#loading`, after the loading text, add:
 </button>
 ```
 
-- [ ] **Step 2: Create one lifecycle and one UI state renderer**
+- [ ] **步骤 2：创建统一生命周期对象和 UI 状态渲染器**
 
 ```javascript
 const requestLifecycle = window.AgentUiCore.createRequestLifecycle({
@@ -430,9 +430,9 @@ function restoreSendButtonContent() {
 }
 ```
 
-Extract the existing trading button HTML into `getTradingSendButtonContent()` and make `showLoadingState`/`closeLoadingState` thin wrappers or remove them after all callers use `requestLifecycle`.
+将现有交易按钮 HTML 抽取到 `getTradingSendButtonContent()`。在所有调用方都改用 `requestLifecycle` 后，将 `showLoadingState`/`closeLoadingState` 改成薄包装或删除。
 
-- [ ] **Step 3: Wire cancellation**
+- [ ] **步骤 3：接入取消操作**
 
 ```javascript
 document.getElementById('cancelRequestBtn').addEventListener('click', () => {
@@ -443,7 +443,7 @@ document.getElementById('cancelRequestBtn').addEventListener('click', () => {
 });
 ```
 
-- [ ] **Step 4: Start and finish general requests exactly once**
+- [ ] **步骤 4：保证通用请求只启动和结束一次**
 
 At the top of `sendMessage`, replace the `isConnected` branch with:
 
@@ -460,7 +460,7 @@ Pass the signal to Fetch:
 signal: requestLifecycle.signal()
 ```
 
-Use this terminal handling:
+使用以下终止处理逻辑：
 
 ```javascript
 .catch((error) => {
@@ -476,11 +476,11 @@ Use this terminal handling:
 });
 ```
 
-- [ ] **Step 5: Apply the same lifecycle to trading requests**
+- [ ] **步骤 5：将相同生命周期应用到交易请求**
 
-Use `requestLifecycle.start('trading')`, the same `signal`, AbortError handling, and idempotent `.finally(...)`. Remove the separate manual trading-button disable/restore code.
+使用 `requestLifecycle.start('trading')`、相同的 `signal`、AbortError 处理和幂等 `.finally(...)`。删除独立的交易按钮禁用与恢复代码。
 
-- [ ] **Step 6: Cancel before destructive UI transitions**
+- [ ] **步骤 6：在破坏性 UI 切换前取消当前请求**
 
 At the beginning of `createNewChat`, session selection, and mode switching:
 
@@ -490,15 +490,15 @@ if (requestLifecycle.isRunning()) {
 }
 ```
 
-Do not display an error Toast for these explicit navigation cancellations.
+这些由明确导航操作触发的取消不显示错误 Toast。
 
-- [ ] **Step 7: Replace blocking validation alerts**
+- [ ] **步骤 7：替换阻塞式校验提示**
 
 Replace the five non-confirmation `alert(...)` calls with `showToast(message, 'info')`. Keep the destructive `confirm(...)` for clearing all local chat UI because it requires explicit user confirmation.
 
-- [ ] **Step 8: Run static and automated checks**
+- [ ] **步骤 8：运行静态检查和自动化测试**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
@@ -506,48 +506,47 @@ rg -n "alert\(|http://localhost:8090|new AbortController" docs/dev-ops/nginx/htm
 git diff --check
 ```
 
-Expected: all tests PASS; no `alert(...)` or fixed API host remains; AbortController construction exists only in the core lifecycle default; diff check is clean.
+预期：全部测试通过；不存在 `alert(...)` 或固定 API 主机；AbortController 只在核心生命周期默认实现中构造；差异检查无异常。
 
-- [ ] **Step 9: Commit lifecycle integration**
+- [ ] **步骤 9：提交生命周期集成**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: unify and cancel frontend agent requests"
 ```
 
-### Task 6: Batch 2 integration checkpoint
+### 任务 6：第二批集成检查点
 
-**Files:**
-- Verify: `docs/dev-ops/nginx/html/index.html`
-- Verify: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
-- Verify: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 验证：`docs/dev-ops/nginx/html/index.html`
+- 验证：`docs/dev-ops/nginx/html/js/agent-ui-core.js`
+- 验证：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Run the full frontend utility test suite**
+- [ ] **步骤 1：运行完整前端工具测试套件**
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: all tests PASS.
+预期：全部测试通过。
 
-- [ ] **Step 2: Perform browser verification**
+- [ ] **步骤 2：执行浏览器验证**
 
-Verify these exact scenarios:
+严格验证以下场景：
 
-1. Two rapid send clicks create one network request.
-2. Cancel stops a general stream, restores controls, and allows a new request without refresh.
-3. Cancel stops a trading stream with the same behavior.
-4. Default same-origin deployment works without `apiBase`.
+1. 快速连续点击两次发送只创建一个网络请求。
+2. 取消能够停止通用流、恢复控件，并允许无需刷新直接发起新请求。
+3. 取消交易流时具有相同行为。
+4. 默认同源部署在没有 `apiBase` 时正常工作。
 5. `?apiBase=http://localhost:8090&userId=demo-user` uses the configured host and user.
 6. An invalid `userId=<script>` is rejected and falls back to the stored/default user.
-7. Session list, session messages, and memory sync use the same resolved configuration.
+7. 会话列表、会话消息和记忆同步使用同一份已解析配置。
 
-- [ ] **Step 3: Record the checkpoint commit**
+- [ ] **步骤 3：记录检查点提交**
 
 ```powershell
 git status --short
 git log -5 --oneline
 ```
 
-Expected: only unrelated pre-existing user files remain modified/untracked; Batch 2 commits are visible. Stop here and hand the build to the user for real end-to-end verification before starting Batch 3.
-
+预期：只剩与本轮无关的既有用户文件处于修改或未跟踪状态；第二批提交清晰可见。在此停止，将构建结果交给用户完成真实端到端验证后再开始第三批。

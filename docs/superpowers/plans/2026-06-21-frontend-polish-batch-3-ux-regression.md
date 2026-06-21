@@ -1,34 +1,34 @@
-# Frontend Polish Batch 3: UX, Accessibility, and Regression Delivery Implementation Plan
+# 前端产品化打磨第三批：体验、可访问性与回归交付实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供智能体执行者使用：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 子技能逐项执行本计划。所有步骤使用复选框（`- [ ]`）跟踪状态。
 
-**Goal:** Finish the existing Agent page as a resilient, readable product on desktop and narrow screens, then deliver a traceable regression document for all existing capabilities.
+**目标：** 将现有 Agent 页面打磨成在桌面和窄屏上都稳定、易读的产品，并为全部现有能力交付可追踪的回归文档。
 
-**Architecture:** Keep the existing page structure and add only small CSS/ARIA refinements plus one tested scroll-decision helper. Preserve user control while streaming by auto-scrolling only when the reader was already near the bottom, and document verification across normal, abnormal, boundary, and regression scenarios.
+**架构：** 保留现有页面结构，只增加小范围 CSS/ARIA 优化和一个经过测试的滚动决策工具。仅当读者原本就在底部附近时才自动滚动，以便在流式输出期间保留用户控制权；同时用文档覆盖正常、异常、边界和回归四类验证场景。
 
-**Tech Stack:** Vanilla JavaScript, static HTML/Tailwind CSS, Node.js `node:test`, Markdown test documentation, Maven/JUnit regression suite.
+**技术栈：** 原生 JavaScript、静态 HTML/Tailwind CSS、Node.js `node:test`、Markdown 测试文档、Maven/JUnit 回归套件。
 
 ---
 
-## Prerequisite
+## 前置条件
 
-Batches 1 and 2 must be committed and accepted. Their Node tests and real end-to-end checkpoints must pass before this plan starts.
+开始本计划前，第一批和第二批必须已经提交并通过验收，其 Node 测试和真实端到端检查点均须通过。
 
-## File map
+## 文件结构
 
-- Modify `docs/dev-ops/nginx/html/js/agent-ui-core.js`: add one pure near-bottom decision helper.
-- Modify `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`: cover scroll thresholds and unknown events.
-- Modify `docs/dev-ops/nginx/html/index.html:77-620,627-935,975-1020,1385-1810,2070-2100`: responsive layout, safe scroll behavior, accessible state announcements, readable fallback labels, and stable empty/error states.
-- Create `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`: executable four-layer regression and acceptance document.
-- Modify `docs/demo/README.md`: add front-end verification sequence and failure recovery notes without embedding Query values in product code.
+- 修改 `docs/dev-ops/nginx/html/js/agent-ui-core.js`：增加纯粹的底部邻近判断工具。
+- 修改 `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`：覆盖滚动阈值和未知事件。
+- 修改 `docs/dev-ops/nginx/html/index.html:77-620,627-935,975-1020,1385-1810,2070-2100`：优化响应式布局、安全滚动行为、可访问状态播报、可读兜底标签及稳定的空态/错误态。
+- 新建 `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`：可执行的四层回归与验收文档。
+- 修改 `docs/demo/README.md`：增加前端验证顺序和失败恢复说明，不在产品代码中嵌入 Query 值。
 
-### Task 1: Specify user-controlled auto-scroll and unknown-event fallback
+### 任务 1：定义用户可控自动滚动和未知事件兜底
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 
-- [ ] **Step 1: Append scroll-threshold and fallback tests**
+- [ ] **步骤 1：追加滚动阈值和兜底测试**
 
 ```javascript
 const { isNearBottom } = require('../js/agent-ui-core.js');
@@ -49,17 +49,17 @@ test('classifyAgentEvent safely falls back for an unknown event', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify `isNearBottom` is missing**
+- [ ] **步骤 2：运行测试并确认 `isNearBottom` 尚不存在**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: FAIL because `isNearBottom` is not exported.
+预期：测试失败，因为尚未导出 `isNearBottom`。
 
-- [ ] **Step 3: Implement and export `isNearBottom`**
+- [ ] **步骤 3：实现并导出 `isNearBottom`**
 
 ```javascript
 function isNearBottom({ scrollTop, scrollHeight, clientHeight }, threshold = 80) {
@@ -68,7 +68,7 @@ function isNearBottom({ scrollTop, scrollHeight, clientHeight }, threshold = 80)
 }
 ```
 
-Add it to the module export object:
+将其加入模块导出对象：
 
 ```javascript
 return {
@@ -83,7 +83,7 @@ return {
 };
 ```
 
-- [ ] **Step 4: Run all core tests and commit**
+- [ ] **步骤 4：运行全部核心测试并提交**
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
@@ -91,18 +91,18 @@ git add docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test
 git commit -m "feat: preserve reader position during streaming"
 ```
 
-Expected: all tests PASS and the commit succeeds.
+预期：全部测试通过且提交成功。
 
-### Task 2: Preserve reader scroll position while streaming
+### 任务 2：在流式输出期间保留读者滚动位置
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:1385-1400,1500-1810`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:1385-1400,1500-1810`
 
-- [ ] **Step 1: Import the tested helper**
+- [ ] **步骤 1：导入已测试工具**
 
-Add `isNearBottom` to the existing `window.AgentUiCore` destructuring.
+将 `isNearBottom` 加入现有 `window.AgentUiCore` 解构赋值。
 
-- [ ] **Step 2: Replace unconditional scrolling with intent-aware helpers**
+- [ ] **步骤 2：使用感知用户意图的工具替换无条件滚动**
 
 ```javascript
 function panelWasPinned(container) {
@@ -127,7 +127,7 @@ function scrollToBottom(container, force = false) {
 }
 ```
 
-- [ ] **Step 3: Capture pin state before DOM growth**
+- [ ] **步骤 3：在 DOM 增长前记录吸底状态**
 
 In `addStageMessage`, before `appendChild`:
 
@@ -146,33 +146,33 @@ contentDiv.innerHTML = renderMarkdown(content);
 if (container && keepPinned) container.scrollTop = container.scrollHeight;
 ```
 
-Remove the unconditional `scrollToBottom(targetContainer)` calls at the end of these functions. Keep `scrollToBottom(container, true)` for a newly submitted user message and initial session-history load.
+删除这些函数末尾无条件调用的 `scrollToBottom(targetContainer)`。新提交用户消息和首次加载会话历史时，继续使用 `scrollToBottom(container, true)`。
 
-- [ ] **Step 4: Verify streaming no longer steals history review**
+- [ ] **步骤 4：验证流式输出不再抢夺历史浏览位置**
 
-Manual check:
+手工检查：
 
-1. Start a response long enough to scroll.
-2. Scroll the thinking panel upward while tokens continue.
-3. Confirm the panel stays at the chosen history position.
-4. Scroll back within 80px of the bottom.
-5. Confirm subsequent tokens keep the panel pinned to the bottom.
+1. 发起一个内容足够长、能够产生滚动条的响应。
+2. 在 token 持续输出时向上滚动思考面板。
+3. 确认面板停留在用户选择的历史位置。
+4. 滚动回距离底部 80px 以内。
+5. 确认后续 token 继续让面板吸附在底部。
 
-- [ ] **Step 5: Commit scroll behavior**
+- [ ] **步骤 5：提交滚动行为修改**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: avoid stealing scroll during agent streaming"
 ```
 
-### Task 3: Refine responsive layout and long-content rendering
+### 任务 3：优化响应式布局和长内容渲染
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:77-620,627-935`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:77-620,627-935`
 
-- [ ] **Step 1: Add stable IDs for responsive layout without changing business structure**
+- [ ] **步骤 1：在不改变业务结构的前提下增加稳定响应式 ID**
 
-Change the outer workspace and panel row:
+修改外层工作区和面板行：
 
 ```html
 <div id="agentWorkspace" class="flex-1 flex overflow-hidden p-3 gap-3">
@@ -180,9 +180,9 @@ Change the outer workspace and panel row:
 <div id="agentPanels" class="flex-1 flex overflow-hidden">
 ```
 
-- [ ] **Step 2: Add long-content and focus styles**
+- [ ] **步骤 2：增加长内容和焦点样式**
 
-Append to the existing style block:
+追加到现有样式块：
 
 ```css
 .markdown-content {
@@ -216,7 +216,7 @@ select:focus-visible {
 }
 ```
 
-- [ ] **Step 3: Add one narrow-screen layout breakpoint**
+- [ ] **步骤 3：增加一个窄屏布局断点**
 
 ```css
 @media (max-width: 900px) {
@@ -267,31 +267,31 @@ select:focus-visible {
 }
 ```
 
-- [ ] **Step 4: Verify desktop and narrow layouts**
+- [ ] **步骤 4：验证桌面与窄屏布局**
 
-Check at 1280×720 and 390×844:
+分别在 1280×720 和 390×844 下检查：
 
-1. Navigation buttons remain visible.
-2. Session history is reachable.
-3. Thinking and result panels are both readable.
-4. General and trading inputs are not covered.
-5. Markdown tables and code blocks scroll horizontally without widening the page.
+1. 导航按钮保持可见。
+2. 会话历史可以正常访问。
+3. 思考面板和结果面板都可阅读。
+4. 通用输入区和交易输入区不被遮挡。
+5. Markdown 表格和代码块可以横向滚动，不会撑宽页面。
 
-- [ ] **Step 5: Commit responsive refinements**
+- [ ] **步骤 5：提交响应式优化**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "style: polish agent workspace responsiveness"
 ```
 
-### Task 4: Normalize states, event labels, and accessibility
+### 任务 4：统一状态、事件标签和可访问性
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/index.html:627-935,975-1020,1500-1765,2070-2100`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/index.html:627-935,975-1020,1500-1765,2070-2100`
 
-- [ ] **Step 1: Add accessible live-region semantics**
+- [ ] **步骤 1：增加可访问实时区域语义**
 
-Apply these attributes:
+应用以下属性：
 
 ```html
 <div id="loading" class="hidden mb-3" role="status" aria-live="polite" aria-atomic="true">
@@ -301,11 +301,11 @@ Apply these attributes:
 <span id="resultStatusLabel" ... aria-live="polite">就绪</span>
 ```
 
-Add `type="button"` to `newChatBtn`, `clearAllChatsBtn`, `refreshSessionListBtn`, `sendBtn`, `sendTradingBtn`, and `syncMemoryBtn`.
+为 `newChatBtn`、`clearAllChatsBtn`、`refreshSessionListBtn`、`sendBtn`、`sendTradingBtn` 和 `syncMemoryBtn` 增加 `type="button"`。
 
-- [ ] **Step 2: Remove front-end hard-coded example Queries**
+- [ ] **步骤 2：删除前端硬编码示例 Query**
 
-Delete the complete control block containing `label for="exampleSelect"` and the `select id="exampleSelect"`. Delete its change listener:
+删除包含 `label for="exampleSelect"` 和 `select id="exampleSelect"` 的完整控件块，并删除其 change 监听器：
 
 ```javascript
 document.getElementById('exampleSelect').addEventListener('change', function() {
@@ -318,11 +318,11 @@ document.getElementById('exampleSelect').addEventListener('change', function() {
 });
 ```
 
-Do not replace it with another preset, Query constant, hidden data attribute, or automatic fill behavior. Demonstration inputs remain the user's responsibility and belong only in external runbooks.
+不要用其他预设、Query 常量、隐藏数据属性或自动填充行为替代它。演示输入继续由用户负责，只能存在于产品外部的演示文档中。
 
-- [ ] **Step 3: Expand readable event labels and graceful fallback**
+- [ ] **步骤 3：扩充可读事件标签和友好兜底**
 
-Add these entries without changing existing labels:
+在不改变现有标签的前提下增加以下条目：
 
 ```javascript
 Object.assign(stageTypeMap, {
@@ -339,7 +339,7 @@ Object.assign(subTypeMap, {
 });
 ```
 
-Keep the existing fallback:
+保留现有兜底逻辑：
 
 ```javascript
 const stageInfo = stageTypeMap[type] || {
@@ -349,9 +349,9 @@ const stageInfo = stageTypeMap[type] || {
 };
 ```
 
-- [ ] **Step 4: Make status transitions announce the real outcome**
+- [ ] **步骤 4：让状态转换播报真实结果**
 
-Update the lifecycle `onChange` callback:
+更新生命周期 `onChange` 回调：
 
 ```javascript
 const statusText = {
@@ -367,11 +367,11 @@ if (!running) {
 }
 ```
 
-The existing running labels remain “思考中/分析中” and “等待结果”.
+现有运行中标签继续使用“思考中/分析中”和“等待结果”。
 
-- [ ] **Step 5: Make Toasts accessible and non-duplicating**
+- [ ] **步骤 5：让 Toast 可访问且不重复堆叠**
 
-Update `showToast`:
+更新 `showToast`：
 
 ```javascript
 function showToast(message, type = 'info') {
@@ -396,7 +396,7 @@ function showToast(message, type = 'info') {
 }
 ```
 
-- [ ] **Step 6: Run automated and markup checks**
+- [ ] **步骤 6：运行自动化测试和标记检查**
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
@@ -405,26 +405,26 @@ rg -n "exampleSelect" docs/dev-ops/nginx/html/index.html
 git diff --check
 ```
 
-Expected: all Node tests PASS; each new state/accessibility marker is found; `exampleSelect` prints no matches; diff check prints nothing.
+预期：全部 Node 测试通过；可以检索到每个新增状态/可访问性标记；`exampleSelect` 无匹配；差异检查无输出。
 
-- [ ] **Step 7: Commit state and accessibility polish**
+- [ ] **步骤 7：提交状态与可访问性优化**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
 git commit -m "fix: clarify agent states and accessibility"
 ```
 
-### Task 5: Create the formal regression and acceptance document
+### 任务 5：创建正式回归与验收文档
 
-**Files:**
-- Create: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
+**文件：**
+- 新建：`docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
 
-- [ ] **Step 1: Create the test document with all four scenario layers**
+- [ ] **步骤 1：创建覆盖四层场景的测试文档**
 
-Use the project `test-doc-template` skill and write the following complete scenario matrix. The document must explicitly reference `docs/superpowers/plans/2026-06-21-frontend-product-polish-design.md` and the three batch plans.
+使用项目 `test-doc-template` 技能编写以下完整场景矩阵。文档必须显式引用 `docs/superpowers/plans/2026-06-21-frontend-product-polish-design.md` 和三份分批计划。
 
 ```markdown
-# Test: AI Agent 前端产品化打磨
+# 测试：AI Agent 前端产品化打磨
 
 ## 1. 测试背景
 
@@ -540,98 +540,98 @@ Use the project `test-doc-template` skill and write the following complete scena
 | 用户端到端演示 | not-run |
 ```
 
-- [ ] **Step 2: Check the test document structure and statuses**
+- [ ] **步骤 2：检查测试文档结构和状态字段**
 
-Run:
+运行：
 
 ```powershell
 rg -n "^### 3\.[1-4]|\| TC-|\| AC-|status|not-run" docs/superpowers/test/2026-06-21-frontend-product-polish-test.md
 ```
 
-Expected: four scenario sections, TC rows, AC rows, and executable status fields are present.
+预期：包含四类场景章节、TC 行、AC 行和可执行的状态字段。
 
-- [ ] **Step 3: Commit the regression document**
+- [ ] **步骤 3：提交回归文档**
 
 ```powershell
 git add docs/superpowers/test/2026-06-21-frontend-product-polish-test.md
 git commit -m "test: add frontend product polish regression plan"
 ```
 
-### Task 6: Update the demo runbook and execute final regression
+### 任务 6：更新演示手册并执行最终回归
 
-**Files:**
-- Modify: `docs/demo/README.md`
-- Verify: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
+**文件：**
+- 修改：`docs/demo/README.md`
+- 验证：`docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
 
-- [ ] **Step 1: Add a front-end verification section to the runbook**
+- [ ] **步骤 1：在演示手册中增加前端验证章节**
 
-Append:
+追加：
 
 ```markdown
-## Front-end Product Verification
+## 前端产品验证
 
-Use the existing page inputs; do not add fixed demonstration queries to the front-end source.
+使用现有页面输入框；不要在前端源码中增加固定演示 Query。
 
-1. Confirm the active `userId` and session ID shown by the page.
-2. Run one general Agent request and verify incremental output, one final result, and restored controls.
-3. Run one trading analysis and verify analyst progress and final decision placement.
-4. While a long request is running, scroll upward and confirm the page does not force the panel back to the bottom.
-5. Cancel one running request and immediately start another without refreshing.
-6. Sync a completed conversation to memory and verify the control always leaves its loading state.
-7. Repeat the critical flow at a narrow viewport before the interview.
+1. 确认页面显示的当前 `userId` 和会话 ID。
+2. 执行一次通用 Agent 请求，验证增量输出、唯一最终结果以及控件恢复。
+3. 执行一次交易分析，验证分析师进度和最终决策位置。
+4. 长请求运行期间向上滚动，确认页面不会强制将面板拉回底部。
+5. 取消一个运行中请求，并在不刷新页面的情况下立即启动另一个请求。
+6. 将已完成的对话同步到记忆，确认控件总能退出加载状态。
+7. 面试前在窄屏视口下重复关键流程。
 
-Failure recovery:
+失败恢复：
 
-- If a provider is unavailable, wait for the page to return to a failed state and start another request; a refresh should not be required.
-- If a stream ends without a business completion event, treat the visible “连接中断” state as a real protocol failure rather than presenting it as success.
-- If runtime configuration changes, pass `apiBase` and `userId` through the page URL instead of editing source code.
+- 如果服务商不可用，等待页面回到失败状态后再发起新请求；不应要求刷新页面。
+- 如果流结束时没有收到业务完成事件，应将页面显示的“连接中断”视为真实协议失败，不能包装成成功。
+- 如果运行配置发生变化，通过页面 URL 传递 `apiBase` 和 `userId`，不要修改源码。
 ```
 
-- [ ] **Step 2: Run frontend automated tests**
+- [ ] **步骤 2：运行前端自动化测试**
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: all tests PASS.
+预期：全部测试通过。
 
-- [ ] **Step 3: Run repository regression tests**
+- [ ] **步骤 3：运行仓库回归测试**
 
 ```powershell
 mvn clean test
 ```
 
-Expected: all default Maven modules PASS; integration-profile tests remain excluded as designed.
+预期：全部默认 Maven 模块通过；集成 profile 测试继续按设计排除。
 
-- [ ] **Step 4: Execute and record browser scenarios**
+- [ ] **步骤 4：执行并记录浏览器场景**
 
-Run TC-001 through TC-305 from `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`. Change each executed row from `pending` to `pass` or `fail`, and replace the four `not-run` result values with the observed result. For any failure, add a `BUG-xxx` row containing the symptom, affected scenario, and status.
+执行 `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md` 中的 TC-001 至 TC-305。将每个已执行用例从 `pending` 改为 `pass` 或 `fail`，并将四个 `not-run` 结果替换为实际结果。任何失败都要新增一条 `BUG-xxx` 记录，包含现象、受影响场景和状态。
 
-- [ ] **Step 5: Run final repository checks**
+- [ ] **步骤 5：运行最终仓库检查**
 
 ```powershell
 git diff --check
 git status --short
 ```
 
-Expected: no whitespace errors; only intentional Batch 3 files and unrelated pre-existing user changes appear.
+预期：不存在空白错误；只出现第三批有意修改的文件和无关的既有用户改动。
 
-- [ ] **Step 6: Commit final delivery material**
+- [ ] **步骤 6：提交最终交付材料**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test/agent-ui-core.test.js docs/superpowers/test/2026-06-21-frontend-product-polish-test.md docs/demo/README.md
 git commit -m "docs: complete frontend polish verification"
 ```
 
-## Batch 3 and overall completion checkpoint
+## 第三批及整体完成检查点
 
-Report:
+汇报：
 
-1. Node test count and result.
-2. Maven module result.
-3. Desktop and narrow-screen verification result.
-4. TC/AC pass and fail counts.
-5. Any external-service scenario not executed.
-6. Remaining unrelated worktree changes.
+1. Node 测试数量和结果。
+2. Maven 模块结果。
+3. 桌面与窄屏验证结果。
+4. TC/AC 通过和失败数量。
+5. 所有未执行的外部服务场景。
+6. 工作区中剩余的无关改动。
 
-The three-batch initiative is complete only after the user independently performs the real end-to-end demonstration and confirms that a failed or cancelled request can be followed by another request without refreshing the page.
+只有在用户独立完成真实端到端演示，并确认失败或取消请求后无需刷新页面即可继续发起新请求时，三批打磨工作才算完成。
