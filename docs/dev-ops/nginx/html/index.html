@@ -961,9 +961,6 @@
     let eventSource = null;
     let currentStepMessages = new Map();
 
-    // 流式消息累积缓存：key = "type-subType-step", value = { div, content }
-    const streamingMessageCache = new Map();
-
     let sessionCursorTime = null;
     let sessionCursorId = null;
     let isLoadingSessions = false;
@@ -1410,6 +1407,62 @@
         });
     }
 
+    function buildApiUrl(path) {
+        return `http://localhost:8090${path}`;
+    }
+
+    function createStreamState(mode) {
+        return {
+            mode,
+            terminalSeen: false,
+            outcome: null,
+            protocolErrors: 0,
+            streamingCache: new Map()
+        };
+    }
+
+    function reportProtocolError(streamState, error, raw) {
+        streamState.protocolErrors += 1;
+        streamState.outcome = 'failed';
+        console.warn('SSE 协议数据无法解析:', String(raw || '').slice(0, 200), error.message);
+        if (streamState.protocolErrors === 1) {
+            addStageMessage('error', 'protocol_error', '收到无法解析的流式事件', null, 'thinking');
+        }
+    }
+
+    function handleRawSseEvent(streamState, rawEvent) {
+        let event;
+        try {
+            event = normalizeAgentEvent(rawEvent);
+        } catch (error) {
+            reportProtocolError(streamState, error, JSON.stringify(rawEvent));
+            return;
+        }
+        handleSSEMessage(streamState, event);
+    }
+
+    async function consumeSseResponse(response, streamState) {
+        validateSseResponse(response);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const parser = createSseParser({
+            onEvent: (event) => handleRawSseEvent(streamState, event),
+            onError: (error, raw) => reportProtocolError(streamState, error, raw)
+        });
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                parser.push(decoder.decode(value, { stream: true }));
+            }
+            parser.push(decoder.decode());
+            parser.finish();
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
     function sendMessage() {
         const messageInput = document.getElementById('messageInput');
         const message = messageInput.value.trim();
@@ -1441,7 +1494,10 @@
             requestData.aiAgentId = aiAgentId;
         }
 
-        fetch('http://localhost:8090/api/v1/agent/auto_agent', {
+        isConnected = true;
+        const streamState = createStreamState('general');
+
+        fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1449,14 +1505,7 @@
             },
             body: JSON.stringify(requestData)
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new NetworkError('网络请求失败: ' + response.status);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
+        .then(async (response) => {
             currentStepMessages.clear();
 
             const thinkingDiv = document.getElementById('thinkingMessages');
@@ -1468,89 +1517,70 @@
             const resultChildren = Array.from(resultDiv.children);
             resultChildren.slice(1).forEach(child => child.remove());
 
-            isConnected = true;
-
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        closeLoadingState('general');
-                        addStageMessage('complete', null, '任务执行完成', null);
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true });
-
-                    const lines = chunk.split('\n');
-                    for (let line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6).trim();
-                            if (data && data !== '[DONE]') {
-                                try {
-                                    const jsonData = JSON.parse(data);
-                                    handleSSEMessage(jsonData);
-                                } catch (e) {
-                                    console.warn('无法解析JSON数据，已忽略:', data.substring(0, 100));
-                                }
-                            }
-                        }
-                    }
-                    scrollToBottom();
-                    readStream();
-                }).catch(error => {
-                    console.error('读取流数据错误:', error);
-                    closeLoadingState('general');
-                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-                });
+            await consumeSseResponse(response, streamState);
+            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
+                streamState.outcome = 'failed';
+                addStageMessage('error', 'stream_interrupted',
+                    '连接已结束，但未收到任务完成事件', null, 'thinking');
             }
-            readStream();
         })
         .catch(error => {
             console.error('请求错误:', error);
-            closeLoadingState('general');
-            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-        });
+            streamState.outcome = 'failed';
+            if (streamState.protocolErrors === 0) {
+                addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+            }
+        })
+        .finally(() => closeLoadingState('general'));
     }
 
-    function handleSSEMessage(jsonData) {
-        const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
-
-        if (!content || content.trim() === '') {
+    function handleSSEMessage(streamState, event) {
+        if (streamState.terminalSeen) {
+            console.warn('忽略终止事件后的 SSE 数据:', event.type, event.subType || '');
             return;
         }
 
-        // 跳过流式开始的空消息（completed=false 的空 content）
-        if (completed === false && type === 'content') {
-            // 流式内容消息：累积追加到同一消息元素
-            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
-            let cached = streamingMessageCache.get(cacheKey);
+        const { type, subType, step, content, completed } = event;
+        const classification = classifyAgentEvent(event);
+        const cacheKey = `${type}-${subType || 'default'}-${step == null ? '' : step}`;
 
-            if (!cached) {
-                // 首次：创建新消息元素并缓存
-                cached = { div: addStageMessage(type, subType, content, step), content: content };
-                streamingMessageCache.set(cacheKey, cached);
-            } else {
-                // 追加：更新内容
-                cached.content += content;
-                updateMessageContent(cached.div, cached.content);
+        if (classification.requestTerminal) {
+            const protocolAlreadyFailed = streamState.outcome === 'failed';
+            streamState.terminalSeen = true;
+            if (streamState.outcome !== 'failed') {
+                streamState.outcome = classification.outcome;
             }
-            cached.div.classList.add('streaming-message');
+            if (protocolAlreadyFailed && classification.outcome === 'completed') {
+                console.warn('协议已失败，忽略后续成功终止事件');
+                return;
+            }
+        }
 
-            scrollToBottom(document.getElementById('thinkingMessages'));
+        if (type === 'content' && completed === false) {
+            let cached = streamState.streamingCache.get(cacheKey);
+            if (!cached) {
+                cached = { div: addStageMessage(type, subType, content, step, 'thinking'), content: '' };
+                streamState.streamingCache.set(cacheKey, cached);
+            }
+            cached.content += content;
+            updateMessageContent(cached.div, cached.content);
+            cached.div.classList.add('streaming-message');
             return;
         }
 
-        // 其他类型消息（完成、错误、final、system 等）：正常处理
-        addStageMessage(type, subType, content, step);
-
-        if (type === 'error' || type === 'final' ||
-            (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
-            closeLoadingState();
-        }
-
-        // 完成后清理缓存
-        if (completed) {
-            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
-            streamingMessageCache.delete(cacheKey);
+        if (type === 'content' && completed === true) {
+            const cached = streamState.streamingCache.get(cacheKey);
+            const finalContent = cached && cached.content ? cached.content : content;
+            if (finalContent.trim()) {
+                addStageMessage('summary', subType, finalContent, step, 'result');
+            }
+            if (cached) {
+                cached.div.classList.remove('streaming-message');
+            }
+            streamState.streamingCache.delete(cacheKey);
+        } else if (content.trim() || classification.error) {
+            const visibleContent = content.trim() ? content : '任务执行失败';
+            addStageMessage(type, subType, visibleContent, step, classification.target);
         }
     }
 
@@ -1689,16 +1719,12 @@
         return '请求失败（' + msg.substring(0, 50) + '），请稍后重试';
     }
 
-    function addStageMessage(type, subType, content, step) {
-        let targetContainer;
-        const isFinalResult =
-            type === 'complete' ||
-            (type === 'supervision' && subType === 'inspection_report');
-        if (isFinalResult) {
-            targetContainer = document.getElementById('resultMessages');
-        } else {
-            targetContainer = document.getElementById('thinkingMessages');
-        }
+    function addStageMessage(type, subType, content, step, explicitTarget) {
+        const classification = classifyAgentEvent({ type, subType });
+        const target = explicitTarget || classification.target;
+        const targetContainer = document.getElementById(
+            target === 'result' ? 'resultMessages' : 'thinkingMessages'
+        );
 
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message';
@@ -1987,7 +2013,10 @@
             sessionId: sessionId
         };
 
-        fetch('http://localhost:8090/api/v1/trading/analysis', {
+        isConnected = true;
+        const streamState = createStreamState('trading');
+
+        fetch(buildApiUrl('/api/v1/trading/analysis'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1995,14 +2024,7 @@
             },
             body: JSON.stringify(requestData)
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('网络请求失败: ' + response.status);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
+        .then(async (response) => {
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
             const thinkingChildren = Array.from(thinkingDiv.children);
@@ -2010,46 +2032,21 @@
             const resultChildren = Array.from(resultDiv.children);
             resultChildren.slice(1).forEach(child => child.remove());
 
-            isConnected = true;
-
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        closeLoadingState('trading');
-                        addStageMessage('complete', null, '金融分析完成', null);
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
-                    for (let line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6).trim();
-                            if (data && data !== '[DONE]') {
-                                try {
-                                    const jsonData = JSON.parse(data);
-                                    handleSSEMessage(jsonData);
-                                } catch (e) {
-                                    console.warn('无法解析JSON数据，已忽略');
-                                }
-                            }
-                        }
-                    }
-                    scrollToBottom();
-                    readStream();
-                }).catch(error => {
-                    console.error('读取流数据错误:', error);
-                    closeLoadingState('trading');
-                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-                });
+            await consumeSseResponse(response, streamState);
+            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
+                streamState.outcome = 'failed';
+                addStageMessage('error', 'stream_interrupted',
+                    '连接已结束，但未收到任务完成事件', null, 'thinking');
             }
-            readStream();
         })
         .catch(error => {
             console.error('请求错误:', error);
-            closeLoadingState('trading');
-            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-        });
+            streamState.outcome = 'failed';
+            if (streamState.protocolErrors === 0) {
+                addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+            }
+        })
+        .finally(() => closeLoadingState('trading'));
     }
 
     async function syncMemory() {
