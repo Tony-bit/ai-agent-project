@@ -770,6 +770,10 @@
                 <div class="flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg border border-primary-100">
                     <div class="w-4 h-4 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin"></div>
                     <span class="font-medium text-primary-700 text-xs">AI正在思考中，请稍候...</span>
+                    <button id="cancelRequestBtn" type="button"
+                            class="hidden ml-2 px-2.5 py-1 text-[10px] font-semibold text-red-600 bg-white border border-red-200 rounded-full hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300">
+                        取消任务
+                    </button>
                 </div>
             </div>
 
@@ -945,7 +949,8 @@
         classifyAgentEvent,
         validateSseResponse,
         resolveRuntimeConfig,
-        buildApiUrl: joinApiUrl
+        buildApiUrl: joinApiUrl,
+        createRequestLifecycle
     } = window.AgentUiCore;
 
     function renderMarkdown(content) {
@@ -975,6 +980,26 @@
     let isConnected = false;
     let eventSource = null;
     let currentStepMessages = new Map();
+    let currentMode = 'general';
+    let activeRequest = null;
+
+    const requestLifecycle = createRequestLifecycle({
+        onChange: ({ status, mode }) => {
+            const running = status === 'running';
+            isConnected = running;
+            document.getElementById('loading').classList.toggle('hidden', !running);
+            document.getElementById('sendBtn').disabled = running;
+            document.getElementById('sendTradingBtn').disabled = running;
+            document.getElementById('cancelRequestBtn').classList.toggle('hidden', !running);
+            setProcessingState(running, mode || currentMode);
+            if (running) {
+                setRunningButtonContent(mode);
+            } else {
+                clearStreamingEffects();
+                restoreSendButtonContent();
+            }
+        }
+    });
 
     let sessionCursorTime = null;
     let sessionCursorId = null;
@@ -1181,6 +1206,7 @@
     }
 
     async function selectSession(selectedSessionId, element) {
+        cancelActiveRequest(false);
         document.querySelectorAll('.session-item').forEach(item => {
             item.classList.remove('active');
         });
@@ -1483,20 +1509,20 @@
         const message = messageInput.value.trim();
 
         if (!message) {
-            alert('请输入消息内容');
+            showToast('请输入消息内容', 'info');
             return;
         }
 
-        if (isConnected) {
-            alert('正在处理中，请稍候...');
+        const request = requestLifecycle.start('general');
+        if (!request) {
+            showToast('已有任务正在处理中', 'info');
             return;
         }
+        activeRequest = request;
 
         addMessage(message, 'user');
         messageInput.value = '';
         updateInputCounter();
-
-        showLoadingState();
 
         const aiAgentId = document.getElementById('aiAgentSelect').value;
         const requestData = {
@@ -1509,7 +1535,6 @@
             requestData.aiAgentId = aiAgentId;
         }
 
-        isConnected = true;
         const streamState = createStreamState('general');
 
         fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
@@ -1518,7 +1543,8 @@
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: requestLifecycle.signal(request)
         })
         .then(async (response) => {
             currentStepMessages.clear();
@@ -1540,13 +1566,22 @@
             }
         })
         .catch(error => {
-            console.error('请求错误:', error);
-            streamState.outcome = 'failed';
-            if (streamState.protocolErrors === 0) {
-                addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+            if (error.name !== 'AbortError' && requestLifecycle.isActive(request)) {
+                console.error('请求错误:', error);
+                streamState.outcome = 'failed';
+                if (streamState.protocolErrors === 0) {
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+                }
+                requestLifecycle.finish(request, 'failed');
             }
         })
-        .finally(() => closeLoadingState('general'));
+        .finally(() => {
+            if (requestLifecycle.isActive(request)) {
+                requestLifecycle.finish(request,
+                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+            }
+            if (activeRequest && activeRequest.id === request.id) activeRequest = null;
+        });
     }
 
     function handleSSEMessage(streamState, event) {
@@ -1608,6 +1643,40 @@
         `;
     }
 
+    function getTradingSendButtonContent() {
+        return `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            开始金融分析
+        `;
+    }
+
+    function restoreSendButtonContent() {
+        document.getElementById('sendBtn').innerHTML = getGeneralSendButtonContent();
+        document.getElementById('sendTradingBtn').innerHTML = getTradingSendButtonContent();
+    }
+
+    function setRunningButtonContent(mode) {
+        const button = document.getElementById(mode === 'trading' ? 'sendTradingBtn' : 'sendBtn');
+        button.innerHTML = `
+            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ${mode === 'trading' ? '分析中...' : '发送中...'}
+        `;
+    }
+
+    function cancelActiveRequest(notifyUser) {
+        const request = activeRequest;
+        if (!request || !requestLifecycle.isActive(request)) return false;
+        if (!requestLifecycle.cancel(request)) return false;
+        if (activeRequest && activeRequest.id === request.id) activeRequest = null;
+        if (notifyUser) {
+            showToast('任务已取消', 'info');
+            addStageMessage('error', 'cancelled', '用户已取消本次任务', null, 'thinking');
+        }
+        return true;
+    }
+
     function setProcessingState(active, mode = currentMode || 'general') {
         document.body.classList.toggle('is-busy', active);
 
@@ -1666,37 +1735,6 @@
         if (messageInput) {
             messageInput.addEventListener('input', updateInputCounter);
         }
-    }
-
-    function closeLoadingState(mode) {
-        isConnected = false;
-        document.getElementById('loading').style.display = 'none';
-        setProcessingState(false, mode || currentMode);
-        clearStreamingEffects();
-
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = getGeneralSendButtonContent();
-
-        const sendTradingBtn = document.getElementById('sendTradingBtn');
-        sendTradingBtn.disabled = false;
-        sendTradingBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            开始金融分析
-        `;
-    }
-
-    function showLoadingState() {
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = `
-            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            发送中...
-        `;
-        document.getElementById('loading').style.display = 'block';
-        setProcessingState(true, 'general');
     }
 
     function getFriendlyErrorMessage(error) {
@@ -1855,6 +1893,7 @@
     }
 
     function createNewChat() {
+        cancelActiveRequest(false);
         const thinkingDiv = document.getElementById('thinkingMessages');
         const resultDiv = document.getElementById('resultMessages');
 
@@ -1941,9 +1980,8 @@
         loadSessionList(false);
     });
 
-    let currentMode = 'general';
-
     function switchMode(mode) {
+        if (mode !== currentMode) cancelActiveRequest(false);
         currentMode = mode;
         const tabGeneral = document.getElementById('tabGeneral');
         const tabTrading = document.getElementById('tabTrading');
@@ -1991,33 +2029,25 @@
         const selectedAnalysts = getSelectedAnalysts();
 
         if (!ticker) {
-            alert('请输入股票代码');
+            showToast('请输入股票代码', 'info');
             return;
         }
 
         if (selectedAnalysts.length === 0) {
-            alert('请至少选择一个分析师类型');
+            showToast('请至少选择一个分析师类型', 'info');
             return;
         }
 
-        if (isConnected) {
-            alert('正在处理中，请稍候...');
+        const request = requestLifecycle.start('trading');
+        if (!request) {
+            showToast('已有任务正在处理中', 'info');
             return;
         }
+        activeRequest = request;
 
         const tickerUpper = ticker.toUpperCase();
         const dateInfo = tradeDate ? `（${tradeDate}）` : '（今日）';
         addMessage(`分析股票: ${tickerUpper} ${dateInfo}`, 'user');
-
-        const sendBtn = document.getElementById('sendTradingBtn');
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = `
-            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            分析中...
-        `;
-
-        document.getElementById('loading').style.display = 'block';
-        setProcessingState(true, 'trading');
 
         const requestData = {
             ticker: tickerUpper,
@@ -2028,7 +2058,6 @@
             sessionId: sessionId
         };
 
-        isConnected = true;
         const streamState = createStreamState('trading');
 
         fetch(buildApiUrl('/api/v1/trading/analysis'), {
@@ -2037,7 +2066,8 @@
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: requestLifecycle.signal(request)
         })
         .then(async (response) => {
             const thinkingDiv = document.getElementById('thinkingMessages');
@@ -2055,13 +2085,22 @@
             }
         })
         .catch(error => {
-            console.error('请求错误:', error);
-            streamState.outcome = 'failed';
-            if (streamState.protocolErrors === 0) {
-                addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+            if (error.name !== 'AbortError' && requestLifecycle.isActive(request)) {
+                console.error('请求错误:', error);
+                streamState.outcome = 'failed';
+                if (streamState.protocolErrors === 0) {
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+                }
+                requestLifecycle.finish(request, 'failed');
             }
         })
-        .finally(() => closeLoadingState('trading'));
+        .finally(() => {
+            if (requestLifecycle.isActive(request)) {
+                requestLifecycle.finish(request,
+                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+            }
+            if (activeRequest && activeRequest.id === request.id) activeRequest = null;
+        });
     }
 
     async function syncMemory() {
@@ -2112,6 +2151,10 @@
             setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
+
+    document.getElementById('cancelRequestBtn').addEventListener('click', () => {
+        cancelActiveRequest(true);
+    });
 
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
