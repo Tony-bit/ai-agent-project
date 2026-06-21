@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Agent UI security smoke</title>
+<script src="../js/marked.min.js"></script>
+<script src="../js/purify.min.js"></script>
+<script src="../js/agent-ui-core.js"></script>
+<div id="sandbox"></div>
+<pre id="result">running</pre>
+<script>
+    const { sanitizeMarkdown } = window.AgentUiCore;
+    const sandbox = document.getElementById('sandbox');
+    const dirty = [
+        '<img src=x onerror="window.__xss=1">',
+        '<script>window.__xss=1<\/script>',
+        '<style>body{display:none}</style>',
+        '[bad](javascript:window.__xss=1)',
+        '<form><input autofocus onfocus="window.__xss=1"></form>'
+    ].join('\n\n');
+    window.__xss = 0;
+    sandbox.innerHTML = sanitizeMarkdown(window.marked, window.DOMPurify, dirty);
+    const forbidden = sandbox.querySelector('script,img,style,form,input,[onerror],[onfocus]');
+    const dangerousHref = Array.from(sandbox.querySelectorAll('[href]'))
+        .some((node) => /^javascript:/i.test(node.getAttribute('href') || ''));
+    if (window.__xss !== 0 || forbidden || dangerousHref) {
+        throw new Error('Unsafe Markdown survived sanitization');
+    }
+    document.getElementById('result').textContent = 'PASS';
+</script>

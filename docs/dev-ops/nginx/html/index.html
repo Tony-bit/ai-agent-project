@@ -8,6 +8,7 @@
     <script src="js/marked.min.js"></script>
     <script src="js/purify.min.js"></script>
     <script src="js/highlight.min.js"></script>
+    <script src="js/agent-ui-core.js"></script>
     <link rel="stylesheet" href="css/github.min.css">
     <link rel="stylesheet" href="css/css2.css">
     <script>
@@ -934,6 +935,19 @@
 </div>
 
 <script>
+    const {
+        createSseParser,
+        escapeHtml,
+        sanitizeMarkdown,
+        normalizeAgentEvent,
+        classifyAgentEvent,
+        validateSseResponse
+    } = window.AgentUiCore;
+
+    function renderMarkdown(content) {
+        return sanitizeMarkdown(window.marked, window.DOMPurify, content);
+    }
+
     function generateSessionId() {
         return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
@@ -1297,8 +1311,13 @@
                 const targetContainer = isFinalResult ? resultDiv : thinkingDiv;
 
                 const timeInfo = msg.createTime ? `<span class="text-[10px] text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
-                const modelInfo = msg.model ? `<span class="text-[10px] text-gray-400 ml-2">${msg.model}</span>` : '';
-                const latencyInfo = msg.latencyMs ? `<span class="text-[10px] text-gray-400 ml-2">${msg.latencyMs}ms</span>` : '';
+                const modelInfo = msg.model
+                    ? `<span class="text-[10px] text-gray-400 ml-2">${escapeHtml(String(msg.model))}</span>`
+                    : '';
+                const latencyInfo = Number.isFinite(Number(msg.latencyMs))
+                    ? `<span class="text-[10px] text-gray-400 ml-2">${Number(msg.latencyMs)}ms</span>`
+                    : '';
+                const historyContent = renderMarkdown(msg.content || '');
 
                 const aiHtml = `
                     <div class="flex items-start gap-3 history-message">
@@ -1309,7 +1328,7 @@
                             <div class="text-sm text-primary-800">
                                 <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}${modelInfo}${latencyInfo}
-                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                                <div class="markdown-content mt-2">${historyContent}</div>
                             </div>
                         </div>
                     </div>
@@ -1346,6 +1365,7 @@
                 resultDiv.insertAdjacentHTML('beforeend', userHtml);
             } else if (msg.role === 'assistant') {
                 const timeInfo = msg.createTime ? `<span class="text-[10px] text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
+                const historyContent = renderMarkdown(msg.content || '');
                 const aiHtml = `
                     <div class="flex items-start gap-3 history-message">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
@@ -1355,7 +1375,7 @@
                             <div class="text-sm text-primary-800">
                                 <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}
-                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                                <div class="markdown-content mt-2">${historyContent}</div>
                             </div>
                         </div>
                     </div>
@@ -1365,13 +1385,6 @@
         });
 
         resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-    }
-
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     function setupSessionListScroll() {
@@ -1690,20 +1703,21 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message';
 
-        const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
-        const subTypeName = subType ? subTypeMap[subType] || subType : '';
+        const stageInfo = stageTypeMap[type] || { name: '未知事件', icon: '📝', class: 'stage-analysis' };
+        const subTypeName = subType ? (subTypeMap[subType] || '未知阶段') : '';
+        const safeStep = Number.isInteger(step) ? String(step) : '';
 
         const isError = type === 'error' || subType === 'error';
 
-        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
+        let indicators = `<span class="stage-indicator ${stageInfo.class}">${escapeHtml(stageInfo.icon)} ${escapeHtml(stageInfo.name)}</span>`;
         if (subTypeName) {
-            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
+            indicators += `<span class="sub-type-indicator">${escapeHtml(subTypeName)}</span>`;
         }
-        if (step) {
-            indicators += `<span class="sub-type-indicator">第${step}步</span>`;
+        if (safeStep) {
+            indicators += `<span class="sub-type-indicator">第${escapeHtml(safeStep)}步</span>`;
         }
 
-        const renderedContent = marked.parse(content);
+        const renderedContent = renderMarkdown(content);
 
         const bubbleClass = isError ? 'bubble-error' : 'bubble-ai';
         const errorIndicator = isError ? `
@@ -1752,7 +1766,7 @@
     }
 
     function updateMessageContent(messageDiv, content) {
-        const renderedContent = marked.parse(content);
+        const renderedContent = renderMarkdown(content);
         const contentDiv = messageDiv.querySelector('.markdown-content');
         if (contentDiv) {
             contentDiv.innerHTML = renderedContent;
@@ -1764,6 +1778,7 @@
 
     function addMessage(content, type) {
         if (type === 'user') {
+            const safeContent = escapeHtml(content);
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
 
@@ -1777,7 +1792,7 @@
                     </div>
                     <div class="flex-1 bubble-user rounded-xl p-3 shadow-sm">
                         <div class="text-sm text-green-800">
-                            <strong class="font-semibold">您:</strong> ${content}
+                            <strong class="font-semibold">您:</strong> ${safeContent}
                         </div>
                     </div>
                 `;
