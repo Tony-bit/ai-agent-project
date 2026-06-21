@@ -1142,6 +1142,10 @@
         const title = truncateText(session.firstQuery, 25);
         const preview = truncateText(session.lastResponse, 35);
         const time = formatTime(session.createTime);
+        const messageCount = Number.isInteger(Number(session.messageCount))
+            && Number(session.messageCount) >= 0
+            ? Number(session.messageCount)
+            : null;
 
         li.innerHTML = `
             <div class="session-item-title">${escapeHtml(title)}</div>
@@ -1150,7 +1154,7 @@
             </div>
             <div class="flex items-center justify-between">
                 <span class="session-item-time">${time}</span>
-                ${session.messageCount ? `<span class="text-[9px] text-gray-400">${session.messageCount}条</span>` : ''}
+                ${messageCount !== null ? `<span class="text-[9px] text-gray-400">${messageCount}条</span>` : ''}
             </div>
         `;
 
@@ -1268,7 +1272,7 @@
                         </div>
                         <div class="flex-1 bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-3.5 border border-red-100/50 shadow-sm">
                             <div class="text-sm text-red-800">
-                                <strong class="font-semibold">错误:</strong> ${error.message}
+                                <strong class="font-semibold">错误:</strong> ${escapeHtml(error.message)}
                             </div>
                         </div>
                     </div>

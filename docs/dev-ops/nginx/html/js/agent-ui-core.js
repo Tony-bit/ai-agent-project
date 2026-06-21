@@ -117,7 +117,11 @@
     const PROTOCOL_TOKEN = /^[a-z][a-z0-9_-]{0,63}$/;
 
     function normalizeAgentEvent(input) {
-        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        const prototype = input && typeof input === 'object' ? Object.getPrototypeOf(input) : null;
+        const isPlainObject = prototype === null
+            || (prototype && Object.getPrototypeOf(prototype) === null);
+        if (!input || typeof input !== 'object' || Array.isArray(input)
+                || !isPlainObject) {
             throw new TypeError('Agent event must be a plain object');
         }
         if (!PROTOCOL_TOKEN.test(input.type || '')) {

@@ -32,6 +32,17 @@ test('createSseParser accepts CRLF and joins multiple data lines', () => {
     assert.deepEqual(events, [{ type: 'analysis', content: 'ok' }]);
 });
 
+test('createSseParser preserves a CRLF boundary split across chunks', () => {
+    const events = [];
+    const parser = createSseParser({ onEvent: events.push.bind(events), onError: assert.fail });
+
+    parser.push('data: {"type":"analysis"}\r');
+    parser.push('\n\r');
+    parser.push('\ndata: {"type":"complete"}\n\n');
+
+    assert.deepEqual(events, [{ type: 'analysis' }, { type: 'complete' }]);
+});
+
 test('createSseParser accepts CR-only boundaries and drains multiple events', () => {
     const events = [];
     const parser = createSseParser({ onEvent: (event) => events.push(event), onError: assert.fail });
@@ -131,8 +142,27 @@ test('normalizeAgentEvent validates shape and normalizes protocol metadata', () 
         type: 'future_event', subType: 'v2', step: 2, content: 'ok', completed: true
     });
     assert.throws(() => normalizeAgentEvent(null), /plain object/);
+    assert.throws(() => normalizeAgentEvent(new Date()), /plain object/);
     assert.throws(() => normalizeAgentEvent({ type: 'content', content: { unsafe: true } }), /content must be a string/);
     assert.throws(() => normalizeAgentEvent({ type: '<img>', content: 'x' }), /type is invalid/);
+});
+
+test('classifyAgentEvent covers the complete protocol matrix', () => {
+    const cases = [
+        [{ type: 'summary' }, 'result', false, null],
+        [{ type: 'final', subType: 'final_completed' }, 'result', false, null],
+        [{ type: 'complete' }, 'result', true, 'completed'],
+        [{ type: 'trading', subType: 'final_decision' }, 'result', false, null],
+        [{ type: 'analysis', subType: 'error' }, 'thinking', true, 'failed'],
+        [{ type: 'future_event' }, 'thinking', false, null]
+    ];
+
+    for (const [event, target, requestTerminal, outcome] of cases) {
+        const classification = classifyAgentEvent(event);
+        assert.equal(classification.target, target);
+        assert.equal(classification.requestTerminal, requestTerminal);
+        assert.equal(classification.outcome, outcome);
+    }
 });
 
 test('classifyAgentEvent separates message completion from request termination', () => {
