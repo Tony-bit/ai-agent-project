@@ -920,6 +920,8 @@
                 <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 rounded-full">
                     <span class="text-[10px] text-gray-500">会话ID:</span>
                     <span id="sessionId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
+                    <span class="text-[10px] text-gray-500">用户:</span>
+                    <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
                     <button id="syncMemoryBtn" onclick="syncMemory()"
                             class="ml-2 px-2.5 py-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-full text-[10px] font-semibold hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-sm flex items-center gap-1">
@@ -941,7 +943,9 @@
         sanitizeMarkdown,
         normalizeAgentEvent,
         classifyAgentEvent,
-        validateSseResponse
+        validateSseResponse,
+        resolveRuntimeConfig,
+        buildApiUrl: joinApiUrl
     } = window.AgentUiCore;
 
     function renderMarkdown(content) {
@@ -955,7 +959,18 @@
     let sessionId = generateSessionId();
     document.getElementById('sessionId').textContent = sessionId;
 
-    const currentUserId = 'test-user-f52b2ed0';
+    const runtimeConfig = resolveRuntimeConfig({
+        search: window.location.search,
+        storage: window.localStorage,
+        defaultUserId: 'test-user-f52b2ed1',
+        origin: window.location.origin
+    });
+    const currentUserId = runtimeConfig.userId;
+    document.getElementById('currentUserId').textContent = currentUserId;
+
+    function buildApiUrl(path) {
+        return joinApiUrl(runtimeConfig.apiBase, path);
+    }
 
     let isConnected = false;
     let eventSource = null;
@@ -1064,7 +1079,7 @@
         }
 
         try {
-            let url = `http://localhost:8090/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`;
+            let url = buildApiUrl(`/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`);
             if (sessionCursorTime && sessionCursorId && append) {
                 url += `&cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
             }
@@ -1218,7 +1233,7 @@
         }
 
         try {
-            let url = `http://localhost:8090/api/v1/session/${encodeURIComponent(targetSessionId)}/messages`;
+            let url = buildApiUrl(`/api/v1/session/${encodeURIComponent(targetSessionId)}/messages`);
             if (messageCursorIndex !== null) {
                 url += `?cursorIndex=${messageCursorIndex}`;
             }
@@ -1409,10 +1424,6 @@
                 }
             }
         });
-    }
-
-    function buildApiUrl(path) {
-        return `http://localhost:8090${path}`;
     }
 
     function createStreamState(mode) {
@@ -2068,7 +2079,7 @@
         `;
 
         try {
-            const response = await fetch(`http://localhost:8090/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`, {
+            const response = await fetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`), {
                 method: 'POST',
                 headers: { 'Accept': 'application/json' }
             });
