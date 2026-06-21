@@ -8,8 +8,68 @@ const {
     sanitizeMarkdown,
     normalizeAgentEvent,
     classifyAgentEvent,
-    validateSseResponse
+    validateSseResponse,
+    resolveRuntimeConfig,
+    buildApiUrl
 } = require('../js/agent-ui-core.js');
+
+function memoryStorage(initial = {}) {
+    const values = new Map(Object.entries(initial));
+    return {
+        getItem: (key) => values.has(key) ? values.get(key) : null,
+        setItem: (key, value) => values.set(key, String(value)),
+        snapshot: () => Object.fromEntries(values)
+    };
+}
+
+test('resolveRuntimeConfig prefers validated URL values and persists userId', () => {
+    const storage = memoryStorage({ 'agent.userId': 'stored-user' });
+    const config = resolveRuntimeConfig({
+        search: '?userId=demo-user_01&apiBase=http%3A%2F%2Flocalhost%3A8090%2F',
+        storage,
+        defaultUserId: 'default-user',
+        origin: 'http://localhost'
+    });
+
+    assert.deepEqual(config, {
+        apiBase: 'http://localhost:8090',
+        userId: 'demo-user_01'
+    });
+    assert.equal(storage.snapshot()['agent.userId'], 'demo-user_01');
+});
+
+test('resolveRuntimeConfig falls back from invalid URL userId to storage', () => {
+    const storage = memoryStorage({ 'agent.userId': 'stored-user' });
+    const config = resolveRuntimeConfig({
+        search: '?userId=%3Cscript%3E',
+        storage,
+        defaultUserId: 'default-user',
+        origin: 'http://localhost'
+    });
+
+    assert.equal(config.userId, 'stored-user');
+    assert.equal(config.apiBase, '');
+});
+
+test('resolveRuntimeConfig falls back when storage throws', () => {
+    const storage = {
+        getItem: () => { throw new Error('blocked'); },
+        setItem: () => { throw new Error('blocked'); }
+    };
+    const config = resolveRuntimeConfig({
+        search: '', storage, defaultUserId: 'default-user', origin: 'http://localhost'
+    });
+
+    assert.deepEqual(config, { apiBase: '', userId: 'default-user' });
+});
+
+test('buildApiUrl joins same-origin and configured base URLs', () => {
+    assert.equal(buildApiUrl('', '/api/v1/session/list'), '/api/v1/session/list');
+    assert.equal(
+        buildApiUrl('http://localhost:8090', '/api/v1/agent/auto_agent'),
+        'http://localhost:8090/api/v1/agent/auto_agent'
+    );
+});
 
 test('createSseParser joins a JSON event split across chunks', () => {
     const events = [];

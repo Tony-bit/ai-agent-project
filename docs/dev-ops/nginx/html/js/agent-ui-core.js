@@ -182,12 +182,69 @@
         return response;
     }
 
+    const USER_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
+
+    function safeStorageGet(storage, key) {
+        try {
+            return storage && storage.getItem ? storage.getItem(key) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function safeStorageSet(storage, key, value) {
+        try {
+            if (storage && storage.setItem) storage.setItem(key, value);
+        } catch (_) {
+            // 存储能力是可选的；内存中的配置仍然可用。
+        }
+    }
+
+    function normalizeApiBase(value, origin) {
+        if (!value) return '';
+        try {
+            const url = new URL(value, origin);
+            if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return '';
+            const path = url.pathname.replace(/\/$/, '');
+            return `${url.origin}${path === '' || path === '/' ? '' : path}`;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function resolveRuntimeConfig({ search, storage, defaultUserId, origin }) {
+        const params = new URLSearchParams(search || '');
+        const queryUserId = params.get('userId');
+        const storedUserId = safeStorageGet(storage, 'agent.userId');
+        const userId = [queryUserId, storedUserId, defaultUserId]
+            .find((value) => USER_ID_PATTERN.test(value || ''));
+        if (queryUserId && queryUserId === userId) {
+            safeStorageSet(storage, 'agent.userId', userId);
+        }
+
+        const queryApiBase = normalizeApiBase(params.get('apiBase'), origin);
+        const storedApiBase = normalizeApiBase(safeStorageGet(storage, 'agent.apiBase'), origin);
+        if (queryApiBase) safeStorageSet(storage, 'agent.apiBase', queryApiBase);
+
+        return {
+            apiBase: queryApiBase || storedApiBase || '',
+            userId: userId || defaultUserId
+        };
+    }
+
+    function buildApiUrl(apiBase, path) {
+        const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+        return `${apiBase || ''}${normalizedPath}`;
+    }
+
     return {
         createSseParser,
         escapeHtml,
         sanitizeMarkdown,
         normalizeAgentEvent,
         classifyAgentEvent,
-        validateSseResponse
+        validateSseResponse,
+        resolveRuntimeConfig,
+        buildApiUrl
     };
 }));
