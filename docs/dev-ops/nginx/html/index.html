@@ -950,7 +950,8 @@
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl: joinApiUrl,
-        createRequestLifecycle
+        createRequestLifecycle,
+        isNearBottom
     } = window.AgentUiCore;
 
     function renderMarkdown(content) {
@@ -982,6 +983,34 @@
     let currentStepMessages = new Map();
     let currentMode = 'general';
     let activeRequest = null;
+    const pendingStreamingRenders = new Map();
+    let streamingRenderFrame = null;
+
+    function panelWasPinned(container) {
+        return isNearBottom({
+            scrollTop: container.scrollTop,
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight
+        });
+    }
+
+    function flushStreamingRenders() {
+        pendingStreamingRenders.forEach((latestContent, targetDiv) => {
+            const contentDiv = targetDiv.querySelector('.markdown-content');
+            const container = targetDiv.parentElement;
+            const keepPinned = container ? panelWasPinned(container) : false;
+            if (contentDiv) contentDiv.textContent = latestContent;
+            if (container && keepPinned) container.scrollTop = container.scrollHeight;
+        });
+        pendingStreamingRenders.clear();
+        streamingRenderFrame = null;
+    }
+
+    function scheduleStreamingRender(messageDiv, content) {
+        pendingStreamingRenders.set(messageDiv, content);
+        if (streamingRenderFrame !== null) return;
+        streamingRenderFrame = window.requestAnimationFrame(flushStreamingRenders);
+    }
 
     const requestLifecycle = createRequestLifecycle({
         onChange: ({ status, mode }) => {
@@ -1382,7 +1411,7 @@
         thinkingDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
         resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
-        scrollToBottom();
+        scrollToBottom(null, true);
     }
 
     function appendMessagesToPanels(messages) {
@@ -1609,11 +1638,14 @@
         if (type === 'content' && completed === false) {
             let cached = streamState.streamingCache.get(cacheKey);
             if (!cached) {
-                cached = { div: addStageMessage(type, subType, content, step, 'thinking'), content: '' };
+                cached = {
+                    div: addStageMessage(type, subType, content, step, 'thinking', true),
+                    content: ''
+                };
                 streamState.streamingCache.set(cacheKey, cached);
             }
             cached.content += content;
-            updateMessageContent(cached.div, cached.content);
+            scheduleStreamingRender(cached.div, cached.content);
             cached.div.classList.add('streaming-message');
             return;
         }
@@ -1712,6 +1744,10 @@
     }
 
     function clearStreamingEffects() {
+        if (streamingRenderFrame !== null) {
+            window.cancelAnimationFrame(streamingRenderFrame);
+            flushStreamingRenders();
+        }
         document.querySelectorAll('.streaming-message').forEach(message => {
             message.classList.remove('streaming-message');
         });
@@ -1772,7 +1808,7 @@
         return '请求失败（' + msg.substring(0, 50) + '），请稍后重试';
     }
 
-    function addStageMessage(type, subType, content, step, explicitTarget) {
+    function addStageMessage(type, subType, content, step, explicitTarget, plainText = false) {
         const classification = classifyAgentEvent({ type, subType });
         const target = explicitTarget || classification.target;
         const targetContainer = document.getElementById(
@@ -1796,7 +1832,7 @@
             indicators += `<span class="sub-type-indicator">第${escapeHtml(safeStep)}步</span>`;
         }
 
-        const renderedContent = renderMarkdown(content);
+        const renderedContent = plainText ? '' : renderMarkdown(content);
 
         const bubbleClass = isError ? 'bubble-error' : 'bubble-ai';
         const errorIndicator = isError ? `
@@ -1824,7 +1860,13 @@
             </div>
         `;
 
+        const keepPinned = panelWasPinned(targetContainer);
         targetContainer.appendChild(messageDiv);
+        if (plainText) {
+            const contentDiv = messageDiv.querySelector('.markdown-content');
+            if (contentDiv) contentDiv.textContent = content;
+        }
+        if (keepPinned) targetContainer.scrollTop = targetContainer.scrollHeight;
 
         const targetPanel = targetContainer.closest('.dynamic-panel');
         if (targetPanel) {
@@ -1836,15 +1878,17 @@
             }, 1200);
         }
 
-        messageDiv.querySelectorAll('pre code').forEach((block) => {
-            hljs.highlightElement(block);
-        });
-
-        scrollToBottom(targetContainer);
+        if (!plainText) {
+            messageDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
         return messageDiv;
     }
 
     function updateMessageContent(messageDiv, content) {
+        const container = messageDiv.parentElement;
+        const keepPinned = container ? panelWasPinned(container) : false;
         const renderedContent = renderMarkdown(content);
         const contentDiv = messageDiv.querySelector('.markdown-content');
         if (contentDiv) {
@@ -1853,6 +1897,7 @@
                 hljs.highlightElement(block);
             });
         }
+        if (container && keepPinned) container.scrollTop = container.scrollHeight;
     }
 
     function addMessage(content, type) {
@@ -1876,18 +1921,20 @@
                     </div>
                 `;
                 container.appendChild(messageDiv);
-                scrollToBottom(container);
+                scrollToBottom(container, true);
             });
         }
     }
 
-    function scrollToBottom(container) {
+    function scrollToBottom(container, force = false) {
         if (!container) {
-            const thinkingDiv = document.getElementById('thinkingMessages');
-            const resultDiv = document.getElementById('resultMessages');
-            thinkingDiv.scrollTop = thinkingDiv.scrollHeight;
-            resultDiv.scrollTop = resultDiv.scrollHeight;
-        } else {
+            ['thinkingMessages', 'resultMessages'].forEach((id) => {
+                const panel = document.getElementById(id);
+                if (force || panelWasPinned(panel)) panel.scrollTop = panel.scrollHeight;
+            });
+            return;
+        }
+        if (force || panelWasPinned(container)) {
             container.scrollTop = container.scrollHeight;
         }
     }
