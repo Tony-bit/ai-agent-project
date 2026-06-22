@@ -723,14 +723,14 @@
     </div>
 
     <div class="flex items-center gap-2">
-        <button id="newChatBtn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
+        <button id="newChatBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             新建
         </button>
 
-        <button id="clearAllChatsBtn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-250">
+        <button id="clearAllChatsBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-250">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
@@ -752,7 +752,7 @@
                     </div>
                     对话历史
                 </h2>
-                <button id="refreshSessionListBtn" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all duration-200" title="刷新会话列表">
+                <button id="refreshSessionListBtn" type="button" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all duration-200" title="刷新会话列表">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
@@ -794,10 +794,10 @@
                     <h3 class="font-bold text-sm text-gray-800">AI 思考执行过程</h3>
                     <div class="ml-auto flex items-center gap-1.5">
                         <span id="thinkingStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                        <span id="thinkingStatusLabel" class="text-[10px] text-gray-500">待命</span>
+                        <span id="thinkingStatusLabel" class="text-[10px] text-gray-500" aria-live="polite">待命</span>
                     </div>
                 </div>
-                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" role="log" aria-live="polite" aria-relevant="additions text">
                     <div class="flex items-start gap-3 animate-fade-in">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
                             <span class="text-white font-bold text-xs">AI</span>
@@ -822,10 +822,10 @@
                     <h3 class="font-bold text-sm text-gray-800">最终执行结果</h3>
                     <div class="ml-auto flex items-center gap-1.5">
                         <span id="resultStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        <span id="resultStatusLabel" class="text-[10px] text-gray-500">就绪</span>
+                        <span id="resultStatusLabel" class="text-[10px] text-gray-500" aria-live="polite">就绪</span>
                     </div>
                 </div>
-                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" role="log" aria-live="polite" aria-relevant="additions text">
                     <div class="flex items-start gap-3 animate-fade-in">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
                             <span class="text-white font-bold text-xs">AI</span>
@@ -843,7 +843,7 @@
         <!-- 底部输入区域 - 紧凑化 -->
         <div class="input-dock border-t border-gray-200/50 bg-gradient-to-t from-white to-gray-50/50 p-4">
             <!-- 加载状态 -->
-            <div id="loading" class="hidden mb-3">
+            <div id="loading" class="hidden mb-3" role="status" aria-live="polite" aria-atomic="true">
                 <div class="flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg border border-primary-100">
                     <div class="w-4 h-4 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin"></div>
                     <span class="font-medium text-primary-700 text-xs">AI正在思考中，请稍候...</span>
@@ -891,17 +891,6 @@
                         </select>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <label for="exampleSelect" class="compact-label text-gray-700">案例</label>
-                        <select id="exampleSelect" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus compact-select min-w-[160px]">
-                            <option value="">请选择...</option>
-                            <option value="1+1">1+1</option>
-                            <option value="通过ES查询被限流的用户，给出被限流用户列表。">ES限流用户</option>
-                            <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。">Grafana分析</option>
-                            <option value="检索小傅哥的相关项目，列出一份学习计划">学习计划</option>
-                            <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">推荐入职</option>
-                        </select>
-                    </div>
                 </div>
 
                 <!-- 输入框和发送按钮 -->
@@ -913,7 +902,7 @@
                             <span id="inputCounter" class="input-counter">0</span>/1000
                         </div>
                     </div>
-                    <button id="sendBtn" onclick="sendMessage()"
+                    <button id="sendBtn" type="button" onclick="sendMessage()"
                             class="interactive-button px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 font-semibold flex items-center gap-2 shadow-lg shadow-primary-500/30 btn-glow text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -986,7 +975,7 @@
 
                 <!-- 发送按钮 -->
                 <div class="flex gap-2">
-                    <button id="sendTradingBtn" onclick="sendTradingAnalysis()"
+                    <button id="sendTradingBtn" type="button" onclick="sendTradingAnalysis()"
                             class="interactive-button flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/30 btn-glow-green text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1004,7 +993,7 @@
                     <span class="text-[10px] text-gray-500">用户:</span>
                     <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
-                    <button id="syncMemoryBtn" onclick="syncMemory()"
+                    <button id="syncMemoryBtn" type="button" onclick="syncMemory()"
                             class="ml-2 px-2.5 py-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-full text-[10px] font-semibold hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-sm flex items-center gap-1">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -1103,6 +1092,15 @@
             } else {
                 clearStreamingEffects();
                 restoreSendButtonContent();
+                const statusText = {
+                    completed: ['待命', '已完成'],
+                    failed: ['异常', '未完成'],
+                    cancelled: ['已取消', '已取消'],
+                    idle: ['待命', '就绪']
+                };
+                const [thinkingText, resultText] = statusText[status] || statusText.idle;
+                document.getElementById('thinkingStatusLabel').textContent = thinkingText;
+                document.getElementById('resultStatusLabel').textContent = resultText;
             }
         }
     });
@@ -1140,6 +1138,12 @@
         'final': { name: '最终决策', icon: '🎯', class: 'stage-summary' }
     };
 
+    Object.assign(stageTypeMap, {
+        content: { name: '流式回答', icon: '💬', class: 'stage-execution' },
+        progress: { name: '执行进度', icon: '⏳', class: 'stage-analysis' },
+        system: { name: '系统消息', icon: 'ℹ️', class: 'stage-analysis' }
+    });
+
     const subTypeMap = {
         'analysis_status': '任务状态',
         'analysis_history': '历史评估',
@@ -1174,6 +1178,13 @@
         'news_analysis': '新闻分析',
         'risk_debate': '风险辩论'
     };
+
+    Object.assign(subTypeMap, {
+        protocol_error: '协议异常',
+        stream_interrupted: '连接中断',
+        cancelled: '用户取消',
+        analyst_progress: '分析师进度'
+    });
 
     function formatTime(dateStr) {
         if (!dateStr) return '';
@@ -2086,15 +2097,6 @@
         }
     });
 
-    document.getElementById('exampleSelect').addEventListener('change', function() {
-        const selectedExample = this.value;
-        if (selectedExample) {
-            document.getElementById('messageInput').value = selectedExample;
-            this.value = '';
-            updateInputCounter();
-        }
-    });
-
     document.getElementById('newChatBtn').addEventListener('click', createNewChat);
     document.getElementById('clearAllChatsBtn').addEventListener('click', clearAllChats);
     document.getElementById('refreshSessionListBtn').addEventListener('click', () => {
@@ -2262,17 +2264,23 @@
         }
     }
 
-    function showToast(message, type) {
+    function showToast(message, type = 'info') {
+        const previous = document.getElementById('activeToast');
+        if (previous) previous.remove();
+
         const toast = document.createElement('div');
+        toast.id = 'activeToast';
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
         const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
         toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-slide-down text-sm font-medium`;
         toast.textContent = message;
         document.body.appendChild(toast);
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             toast.classList.remove('animate-slide-down');
             toast.classList.add('animate-fade-out');
-            setTimeout(() => toast.remove(), 300);
+            window.setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
 
