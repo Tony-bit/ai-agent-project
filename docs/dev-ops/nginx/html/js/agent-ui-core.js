@@ -294,6 +294,11 @@
         };
     }
 
+    function isNearBottom({ scrollTop, scrollHeight, clientHeight }, threshold = 80) {
+        if (scrollHeight <= clientHeight) return true;
+        return scrollHeight - scrollTop - clientHeight <= threshold;
+    }
+
     return {
         createSseParser,
         escapeHtml,
@@ -303,6 +308,7 @@
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl,
-        createRequestLifecycle
+        createRequestLifecycle,
+        isNearBottom
     };
 }));

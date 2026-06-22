@@ -11,7 +11,8 @@ const {
     validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl,
-    createRequestLifecycle
+    createRequestLifecycle,
+    isNearBottom
 } = require('../js/agent-ui-core.js');
 
 function memoryStorage(initial = {}) {
@@ -301,4 +302,20 @@ test('validateSseResponse rejects success responses that are not readable SSE', 
     assert.throws(() => validateSseResponse({ ...valid, headers: { get: () => 'application/json' } }), /Expected text\/event-stream/);
     assert.throws(() => validateSseResponse({ ...valid, body: null }), /readable response body/);
     assert.throws(() => validateSseResponse({ ...valid, ok: false, status: 503 }), /HTTP 503/);
+});
+
+test('isNearBottom keeps a reader pinned only inside the threshold', () => {
+    assert.equal(isNearBottom({ scrollTop: 700, scrollHeight: 1000, clientHeight: 250 }, 60), true);
+    assert.equal(isNearBottom({ scrollTop: 500, scrollHeight: 1000, clientHeight: 250 }, 60), false);
+});
+
+test('isNearBottom treats a non-scrollable panel as pinned', () => {
+    assert.equal(isNearBottom({ scrollTop: 0, scrollHeight: 200, clientHeight: 300 }), true);
+});
+
+test('classifyAgentEvent safely falls back for an unknown event', () => {
+    assert.deepEqual(classifyAgentEvent({ type: 'future_event', subType: 'v2' }), {
+        target: 'thinking', messageCompleted: false,
+        requestTerminal: false, outcome: null, error: false
+    });
 });
