@@ -116,3 +116,21 @@ Show:
 - If provider latency is high, switch from the unified stock prompt to `docs/demo/trading-analysis.json`.
 - If Langfuse is unavailable, leave `LANGFUSE_ENABLED=false`; the app still generates trace IDs and the demo can continue.
 - If online model calls are unavailable, use the retry unit-test command to prove the failure handling behavior.
+
+## 前端产品验证
+
+使用现有页面输入框；不要在前端源码中增加固定演示 Query。
+
+1. 确认页面显示的当前 `userId` 和会话 ID。
+2. 执行一次通用 Agent 请求，验证增量输出、唯一最终结果以及控件恢复。
+3. 执行一次交易分析，验证分析师进度和最终决策位置。
+4. 长请求运行期间向上滚动，确认页面不会强制将面板拉回底部。
+5. 取消一个运行中请求，并在不刷新页面的情况下立即启动另一个请求。
+6. 将已完成的对话同步到记忆，确认控件总能退出加载状态。
+7. 面试前在窄屏视口下重复关键流程。
+
+失败恢复：
+
+- 如果服务商不可用，等待页面回到失败状态后再发起新请求；不应要求刷新页面。
+- 如果流结束时没有收到业务完成事件，应将页面显示的“连接中断”视为真实协议失败，不能包装成成功。
+- 如果运行配置发生变化，通过页面 URL 传递 `apiBase` 和 `userId`，不要修改源码。
