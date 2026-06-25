@@ -4,7 +4,7 @@
 
 **目标：** 将现有 Agent 页面打磨成在桌面和窄屏上都稳定、易读的产品，并为全部现有能力交付可追踪的回归文档。
 
-**架构：** 保留现有页面结构，只增加小范围 CSS/ARIA 优化和一个经过测试的滚动决策工具。仅当读者原本就在底部附近时才自动滚动，以便在流式输出期间保留用户控制权；同时用文档覆盖正常、异常、边界和回归四类验证场景。
+**架构：** 保留现有页面结构，只增加小范围 CSS/ARIA 优化、一个经过测试的滚动决策工具和浏览器帧级流式渲染合并。仅当读者原本就在底部附近时才自动滚动，流式阶段按纯文本批量刷新并在完成后统一 Markdown 渲染，以便保留用户控制权并避免每个 chunk 重复解析完整 Markdown；同时用文档覆盖正常、异常、边界和回归四类验证场景。
 
 **技术栈：** 原生 JavaScript、静态 HTML/Tailwind CSS、Node.js `node:test`、Markdown 测试文档、Maven/JUnit 回归套件。
 
@@ -44,7 +44,8 @@ test('isNearBottom treats a non-scrollable panel as pinned', () => {
 
 test('classifyAgentEvent safely falls back for an unknown event', () => {
     assert.deepEqual(classifyAgentEvent({ type: 'future_event', subType: 'v2' }), {
-        target: 'thinking', terminal: false, error: false
+        target: 'thinking', messageCompleted: false,
+        requestTerminal: false, outcome: null, error: false
     });
 });
 ```
@@ -75,7 +76,9 @@ return {
     createSseParser,
     escapeHtml,
     sanitizeMarkdown,
+    normalizeAgentEvent,
     classifyAgentEvent,
+    validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl,
     createRequestLifecycle,
@@ -148,7 +151,50 @@ if (container && keepPinned) container.scrollTop = container.scrollHeight;
 
 删除这些函数末尾无条件调用的 `scrollToBottom(targetContainer)`。新提交用户消息和首次加载会话历史时，继续使用 `scrollToBottom(container, true)`。
 
-- [ ] **步骤 4：验证流式输出不再抢夺历史浏览位置**
+- [ ] **步骤 4：将逐 chunk Markdown 重绘改为帧级纯文本刷新**
+
+在页面状态区增加只保留最新值的浏览器帧调度器：
+
+```javascript
+const pendingStreamingRenders = new Map();
+let streamingRenderFrame = null;
+
+function flushStreamingRenders() {
+    pendingStreamingRenders.forEach((latestContent, targetDiv) => {
+        const contentDiv = targetDiv.querySelector('.markdown-content');
+        if (contentDiv) contentDiv.textContent = latestContent;
+    });
+    pendingStreamingRenders.clear();
+    streamingRenderFrame = null;
+}
+
+function scheduleStreamingRender(messageDiv, content) {
+    pendingStreamingRenders.set(messageDiv, content);
+    if (streamingRenderFrame !== null) return;
+    streamingRenderFrame = window.requestAnimationFrame(flushStreamingRenders);
+}
+```
+
+将第一批 `handleSSEMessage` 增量分支中的：
+
+```javascript
+updateMessageContent(cached.div, cached.content);
+```
+
+替换为：
+
+```javascript
+scheduleStreamingRender(cached.div, cached.content);
+```
+
+流式阶段不得调用 `marked.parse`、DOMPurify 或 highlight.js；收到 `content completed=true` 后，结果面板仍通过第一批 `addStageMessage('summary', ...)` 执行一次完整 Markdown 清洗和高亮。`clearStreamingEffects` 同时取消未执行帧并清空 `pendingStreamingRenders`：
+
+```javascript
+if (streamingRenderFrame !== null) window.cancelAnimationFrame(streamingRenderFrame);
+flushStreamingRenders();
+```
+
+- [ ] **步骤 5：验证流式输出不再抢夺历史浏览位置且不会逐 chunk 重解析 Markdown**
 
 手工检查：
 
@@ -157,12 +203,13 @@ if (container && keepPinned) container.scrollTop = container.scrollHeight;
 3. 确认面板停留在用户选择的历史位置。
 4. 滚动回距离底部 80px 以内。
 5. 确认后续 token 继续让面板吸附在底部。
+6. 在浏览器 Performance 面板中确认长响应期间每帧最多执行一次流式 DOM 刷新，`renderMarkdown` 只在消息完成或历史加载时调用。
 
-- [ ] **步骤 5：提交滚动行为修改**
+- [ ] **步骤 6：提交滚动与流式渲染修改**
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html
-git commit -m "fix: avoid stealing scroll during agent streaming"
+git commit -m "fix: preserve scroll and batch streaming renders"
 ```
 
 ### 任务 3：优化响应式布局和长内容渲染
@@ -343,11 +390,13 @@ Object.assign(subTypeMap, {
 
 ```javascript
 const stageInfo = stageTypeMap[type] || {
-    name: type || '未知事件',
+    name: '未知事件',
     icon: '📝',
     class: 'stage-analysis'
 };
 ```
+
+该兜底继承第一批安全契约：可以记录原始未知类型用于有限诊断，但不得将它写入 `innerHTML`。`subType` 的未知兜底同样固定显示“未知阶段”。
 
 - [ ] **步骤 4：让状态转换播报真实结果**
 
@@ -451,6 +500,8 @@ git commit -m "fix: clarify agent states and accessibility"
 
 ## 2. 测试策略
 
+### 2.1 测试分层
+
 | 测试层级 | 是否覆盖 | 说明 |
 |---|---|---|
 | 单元测试 | 是 | Node 内置测试覆盖纯函数 |
@@ -458,6 +509,15 @@ git commit -m "fix: clarify agent states and accessibility"
 | 接口测试 | 部分 | 沿用现有接口，不新增契约 |
 | 回归测试 | 是 | 覆盖现有五条能力线 |
 | 手工验证 | 是 | 布局、滚动、取消和可访问状态 |
+
+### 2.2 Mock 策略
+
+| 依赖项 | 是否 Mock | Mock 方式 | 说明 |
+|---|---|---|---|
+| SSE 文本流与 HTTP Response | 是 | Node Stub / 浏览器测试流 | 精确控制半包、非法 JSON、断流和响应类型 |
+| AbortController | 是 | 可记录 abort 次数的对象 Stub | 只验证本层 token 与状态转换 |
+| marked、DOMPurify | 单元测试 Stub，浏览器冒烟使用真实库 | 注入对象 / vendored browser scripts | 同时验证纯函数接线与真实 DOM 清洗 |
+| LLM、行情、Mem0 等外部服务 | 否，不纳入自动化断言 | 真实联调仅记录可用性 | 不把第三方 SLA 当作本次前端成败依据 |
 
 ## 3. 测试场景设计
 
@@ -477,9 +537,9 @@ git commit -m "fix: clarify agent states and accessibility"
 |---|---|---|---|---|---|
 | TC-101 | SSE 非法 JSON | 测试流返回非法事件 | 读取事件 | 显示协议异常、不执行脚本、后续状态可收口 | pending |
 | TC-102 | 网络中途断开 | 流未完成 | 停止后端连接 | 显示连接中断、按钮恢复 | pending |
-| TC-103 | HTTP 非 2xx | 后端返回错误码 | 提交请求 | 显示友好错误、无永久 Loading | pending |
+| TC-103 | HTTP 或响应协议异常 | 后端返回非 2xx、204、200 JSON 或空响应体 | 提交请求 | 只显示一个友好错误、无永久 Loading | pending |
 | TC-104 | localStorage 禁用 | 浏览器阻止存储 | 刷新并提交 | 使用默认配置、不阻断请求 | pending |
-| TC-105 | 恶意 HTML/Markdown | 输入含 script/onerror/javascript URL | 提交或加载历史 | 内容被清洗、没有代码执行 | pending |
+| TC-105 | 恶意正文与事件元数据 | 正文或 type/subType/step/model 含 script/onerror/javascript URL | 提交、注入测试流或加载历史 | 内容被清洗或按纯文本展示、没有代码执行 | pending |
 
 ### 3.3 边界场景
 
@@ -490,6 +550,9 @@ git commit -m "fix: clarify agent states and accessibility"
 | TC-203 | 超长 Markdown/代码块 | 返回长表格和长代码 | 查看结果 | 页面不横向撑开，局部可滚动 | pending |
 | TC-204 | 流中回看历史 | 长流持续输出 | 向上滚动 | 页面不抢滚动；回到底部后继续跟随 | pending |
 | TC-205 | 非法 userId | URL 含不合法 userId | 打开页面 | 使用已存储或默认 userId | pending |
+| TC-206 | 终止事件序列 | 测试流分别发送 content→complete、final→trading_complete、error→complete | 读取完整流 | 消息完成与请求终止语义正确，每条流只结束一次 | pending |
+| TC-207 | 取消后立即重试 | 请求 A 运行中 | 取消 A 并立即启动 B，等待 A 的 finally 晚到 | A 的回调不结束 B，B 可独立完成 | pending |
+| TC-208 | 长流渲染合并 | 返回长 Markdown/代码流 | 记录 Performance | 流式阶段帧级纯文本刷新，完成时只做一次 Markdown 清洗和高亮 | pending |
 
 ### 3.4 回归场景
 
@@ -501,17 +564,38 @@ git commit -m "fix: clarify agent states and accessibility"
 | TC-304 | 跨会话记忆 | 使用同一 userId 不同 session | 完成记忆同步后新建会话 | 原有 Persona/情景记忆能力不变 | pending |
 | TC-305 | 会话列表分页 | 历史数量超过一页 | 滚动侧栏和消息历史 | 不重复、不丢失、游标正常 | pending |
 
-## 4. 自动化映射
+## 4. 用例与代码映射
 
-| 用例 | 测试方法/验证位置 | 类型 |
-|---|---|---|
-| TC-101、TC-201 | `agent-ui-core.test.js` parser tests | 单元 |
-| TC-105 | `agent-ui-core.test.js` sanitizer tests | 单元 |
-| TC-202 | `createRequestLifecycle` duplicate-start test | 单元 |
-| TC-204 | `isNearBottom` threshold tests | 单元 |
-| 其余场景 | 本地浏览器与现有后端联调 | 手工/集成 |
+| 用例 | 测试方法/验证位置 | 目标组件/方法 | 类型 |
+|---|---|---|---|
+| TC-101、TC-201 | `createSseParser reports malformed JSON at end of stream`、分片与多事件测试 | `AgentUiCore#createSseParser` | 单元 |
+| TC-103 | `validateSseResponse rejects success responses that are not readable SSE` | `AgentUiCore#validateSseResponse` | 单元 |
+| TC-105 | `sanitizeMarkdown applies a narrow Markdown policy and falls back to escaped text` + `agent-ui-security-smoke.html` | `sanitizeMarkdown`、浏览器 DOM sinks | 单元/浏览器 |
+| TC-202、TC-207 | `request lifecycle rejects duplicate starts and finishes the matching token once`、`a cancelled request cannot finish a newer request` | `AgentUiCore#createRequestLifecycle` | 单元 |
+| TC-204 | `isNearBottom keeps a reader pinned only inside the threshold` | `AgentUiCore#isNearBottom` | 单元 |
+| TC-206 | `classifyAgentEvent separates message completion from request termination` | `AgentUiCore#classifyAgentEvent` | 单元 |
+| TC-208 | 浏览器 Performance 记录 | `scheduleStreamingRender` | 手工/集成 |
+| 其余场景 | 本地浏览器与现有后端联调 | `index.html` 和现有接口 | 手工/集成 |
 
-## 5. 执行计划
+## 5. 关键校验点
+
+### 5.1 数据正确性
+- 任意合法分片组合不改变事件数量、顺序和 `content`。
+- 历史消息与实时消息使用相同的正文清洗策略。
+
+### 5.2 状态流转正确性
+- 消息段完成不结束请求；显式 `complete/trading_complete/error` 才结束请求。
+- 请求 token 不匹配时，取消、失败和 `finally` 都不得改变当前活动请求。
+
+### 5.3 异常处理正确性
+- 非 SSE 响应、非法事件、缓冲超限、断流和取消都只产生一个最终状态。
+- 任何错误路径都必须恢复按钮和 Loading，不要求刷新页面。
+
+### 5.4 日志与诊断
+- 原始协议片段最多记录 200 字符，不记录完整模型响应和用户历史。
+- 未知事件允许记录类型用于诊断，但 UI 只显示固定安全兜底。
+
+## 6. 执行计划
 
 | 步骤 | 内容 | 预期结果 | status |
 |---|---|---|---|
@@ -520,7 +604,7 @@ git commit -m "fix: clarify agent states and accessibility"
 | 3 | 执行通用、交易、会话、记忆回归 | 既有能力不回归 | pending |
 | 4 | 运行 Maven 默认测试 | 无新增失败 | pending |
 
-## 6. 验收标准
+## 7. 验收标准
 
 | 编号 | 验收项 | 标准 | status |
 |---|---|---|---|
@@ -529,8 +613,18 @@ git commit -m "fix: clarify agent states and accessibility"
 | AC-003 | 生命周期 | 成功、失败、取消均可继续下一请求 | pending |
 | AC-004 | 响应式体验 | 1280×720 与 390×844 核心操作可用 | pending |
 | AC-005 | 核心回归 | 五条现有能力线无阻塞回归 | pending |
+| AC-006 | 竞态隔离 | 取消 A 后立即启动 B，A 的迟到回调不影响 B | pending |
+| AC-007 | 长流性能 | 流式阶段不逐 chunk 重解析完整 Markdown | pending |
 
-## 7. 执行结果记录
+## 8. 风险与说明
+
+| 风险点 | 影响 | 应对措施 |
+|---|---|---|
+| 外部模型或行情服务不可用 | 真实 E2E 无法完成 | 标记 blocked/not-run，不伪造通过；先执行 Stub 和本地异常恢复用例 |
+| 浏览器时序导致 ABA 竞态难复现 | 旧请求可能误结束新请求 | 单元测试固定调用顺序，浏览器再执行取消后立即重试 |
+| 超长 Markdown 引发设备差异 | 性能结果不稳定 | 记录视口、浏览器版本和样例长度，只验收是否逐 chunk 全量解析 |
+
+## 9. 执行结果记录
 
 | 项目 | 结果 |
 |---|---|
@@ -538,6 +632,16 @@ git commit -m "fix: clarify agent states and accessibility"
 | 浏览器手工验证 | not-run |
 | Maven 回归 | not-run |
 | 用户端到端演示 | not-run |
+
+### 9.1 问题记录
+
+| 编号 | 问题描述 | 影响范围 | 状态 |
+|---|---|---|---|
+| - | 暂无 | - | none |
+
+### 9.2 结论
+- 是否达到提测条件：否（待执行）。
+- 所有 TC/AC 有结果且不存在未关闭的阻塞问题后，才能改为“是”。
 ```
 
 - [ ] **步骤 2：检查测试文档结构和状态字段**
@@ -545,10 +649,10 @@ git commit -m "fix: clarify agent states and accessibility"
 运行：
 
 ```powershell
-rg -n "^### 3\.[1-4]|\| TC-|\| AC-|status|not-run" docs/superpowers/test/2026-06-21-frontend-product-polish-test.md
+rg -n "^### 2\.2|^### 3\.[1-4]|^## [5-9]\.|\| TC-|\| AC-|status|not-run|问题记录" docs/superpowers/test/2026-06-21-frontend-product-polish-test.md
 ```
 
-预期：包含四类场景章节、TC 行、AC 行和可执行的状态字段。
+预期：包含 Mock 策略、四类场景、代码映射、关键校验点、风险、执行结果、问题记录、TC/AC 行和可执行的状态字段。
 
 - [ ] **步骤 3：提交回归文档**
 

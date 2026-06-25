@@ -4,7 +4,7 @@
 
 **目标：** 为通用对话、交易分析、会话历史和记忆同步提供统一运行配置，以及可取消、幂等的请求生命周期。
 
-**架构：** 在第一批已经测试的 UMD 核心中增加纯配置与生命周期工具。页面启动时只解析一次配置，通过同一工具构造全部 API URL，并使用一个由 `AbortController` 支撑的生命周期对象驱动两类流式请求 UI。
+**架构：** 在第一批已经测试的 UMD 核心中增加纯配置与带请求 token 的生命周期工具。页面启动时只解析一次配置，通过同一工具构造全部 API URL，并使用一个由 `AbortController` 支撑的生命周期对象驱动两类流式请求 UI；所有结束、失败和取消操作必须携带启动时返回的 token，旧请求回调不得收口新请求。
 
 **技术栈：** 原生 JavaScript、Fetch、AbortController、URLSearchParams、localStorage、Node.js `node:test`、静态 HTML/Tailwind CSS。
 
@@ -171,7 +171,9 @@ return {
     createSseParser,
     escapeHtml,
     sanitizeMarkdown,
+    normalizeAgentEvent,
     classifyAgentEvent,
+    validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl
 };
@@ -208,7 +210,9 @@ const {
     createSseParser,
     escapeHtml,
     sanitizeMarkdown,
+    normalizeAgentEvent,
     classifyAgentEvent,
+    validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl: joinApiUrl
 } = window.AgentUiCore;
@@ -284,7 +288,7 @@ git commit -m "fix: support same-origin and configurable frontend runtime"
 ```javascript
 const { createRequestLifecycle } = require('../js/agent-ui-core.js');
 
-test('request lifecycle rejects duplicate starts and finishes once', () => {
+test('request lifecycle rejects duplicate starts and finishes the matching token once', () => {
     const states = [];
     const controller = { signal: {}, abortCalled: 0, abort() { this.abortCalled += 1; } };
     const lifecycle = createRequestLifecycle({
@@ -292,10 +296,11 @@ test('request lifecycle rejects duplicate starts and finishes once', () => {
         controllerFactory: () => controller
     });
 
-    assert.equal(lifecycle.start('general'), true);
-    assert.equal(lifecycle.start('trading'), false);
-    assert.equal(lifecycle.finish('completed'), true);
-    assert.equal(lifecycle.finish('completed'), false);
+    const request = lifecycle.start('general');
+    assert.deepEqual(request, { id: 1, mode: 'general' });
+    assert.equal(lifecycle.start('trading'), null);
+    assert.equal(lifecycle.finish(request, 'completed'), true);
+    assert.equal(lifecycle.finish(request, 'completed'), false);
     assert.deepEqual(states, ['running', 'completed']);
 });
 
@@ -307,12 +312,26 @@ test('request lifecycle aborts an active request as cancelled', () => {
         controllerFactory: () => controller
     });
 
-    lifecycle.start('trading');
-    assert.deepEqual(lifecycle.signal(), { id: 'signal' });
-    assert.equal(lifecycle.cancel(), true);
+    const request = lifecycle.start('trading');
+    assert.deepEqual(lifecycle.signal(request), { id: 'signal' });
+    assert.equal(lifecycle.cancel(request), true);
     assert.equal(controller.abortCalled, 1);
     assert.equal(states.at(-1).status, 'cancelled');
     assert.equal(lifecycle.isRunning(), false);
+});
+
+test('a cancelled request cannot finish a newer request', () => {
+    const lifecycle = createRequestLifecycle({
+        onChange: () => {},
+        controllerFactory: () => ({ signal: {}, abort() {} })
+    });
+    const oldRequest = lifecycle.start('general');
+    assert.equal(lifecycle.cancel(oldRequest), true);
+    const newRequest = lifecycle.start('trading');
+
+    assert.equal(lifecycle.finish(oldRequest, 'failed'), false);
+    assert.equal(lifecycle.isActive(newRequest), true);
+    assert.equal(lifecycle.finish(newRequest, 'completed'), true);
 });
 ```
 
@@ -330,43 +349,53 @@ node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 
 ```javascript
 function createRequestLifecycle({ onChange, controllerFactory }) {
-    let state = { status: 'idle', mode: null };
-    let controller = null;
+    let sequence = 0;
+    let active = null;
     const makeController = controllerFactory || (() => new AbortController());
 
-    function transition(status, mode) {
-        state = { status, mode: mode == null ? state.mode : mode };
-        onChange({ ...state });
+    function matches(request) {
+        return Boolean(active && request && active.id === request.id);
+    }
+
+    function transition(status, request) {
+        onChange({ status, mode: request ? request.mode : null, requestId: request ? request.id : null });
     }
 
     return {
         start(mode) {
-            if (state.status === 'running') return false;
-            controller = makeController();
-            transition('running', mode);
+            if (active) return null;
+            active = { id: ++sequence, mode, controller: makeController() };
+            const request = Object.freeze({ id: active.id, mode: active.mode });
+            transition('running', request);
+            return request;
+        },
+        finish(request, status) {
+            if (!matches(request)) return false;
+            const finished = { id: active.id, mode: active.mode };
+            active = null;
+            transition(status, finished);
             return true;
         },
-        finish(status) {
-            if (state.status !== 'running') return false;
-            transition(status, state.mode);
-            controller = null;
+        cancel(request) {
+            if (!matches(request)) return false;
+            const cancelled = { id: active.id, mode: active.mode };
+            active.controller.abort();
+            active = null;
+            transition('cancelled', cancelled);
             return true;
         },
-        cancel() {
-            if (state.status !== 'running' || !controller) return false;
-            controller.abort();
-            transition('cancelled', state.mode);
-            controller = null;
-            return true;
-        },
-        signal() {
-            return controller ? controller.signal : undefined;
+        signal(request) {
+            return matches(request) ? active.controller.signal : undefined;
         },
         isRunning() {
-            return state.status === 'running';
+            return active !== null;
+        },
+        isActive(request) {
+            return matches(request);
         },
         snapshot() {
-            return { ...state };
+            return active ? { status: 'running', id: active.id, mode: active.mode }
+                : { status: 'idle', id: null, mode: null };
         }
     };
 }
@@ -423,6 +452,7 @@ const requestLifecycle = window.AgentUiCore.createRequestLifecycle({
         }
     }
 });
+let activeRequest = null;
 
 function restoreSendButtonContent() {
     document.getElementById('sendBtn').innerHTML = getGeneralSendButtonContent();
@@ -436,7 +466,9 @@ function restoreSendButtonContent() {
 
 ```javascript
 document.getElementById('cancelRequestBtn').addEventListener('click', () => {
-    if (requestLifecycle.cancel()) {
+    const request = activeRequest;
+    if (request && requestLifecycle.cancel(request)) {
+        if (activeRequest && activeRequest.id === request.id) activeRequest = null;
         showToast('任务已取消', 'info');
         addStageMessage('error', 'cancelled', '用户已取消本次任务', null, 'thinking');
     }
@@ -445,48 +477,55 @@ document.getElementById('cancelRequestBtn').addEventListener('click', () => {
 
 - [ ] **步骤 4：保证通用请求只启动和结束一次**
 
-At the top of `sendMessage`, replace the `isConnected` branch with:
+在 `sendMessage` 完成输入校验后，用以下代码替换第一批的 `isConnected` 分支和手工赋值：
 
 ```javascript
-if (!requestLifecycle.start('general')) {
+const request = requestLifecycle.start('general');
+if (!request) {
     showToast('已有任务正在处理中', 'info');
     return;
 }
+activeRequest = request;
 ```
 
 Pass the signal to Fetch:
 
 ```javascript
-signal: requestLifecycle.signal()
+signal: requestLifecycle.signal(request)
 ```
 
 使用以下终止处理逻辑：
 
 ```javascript
 .catch((error) => {
-    if (error.name !== 'AbortError') {
+    if (error.name !== 'AbortError' && requestLifecycle.isActive(request)) {
         addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
-        requestLifecycle.finish('failed');
+        streamState.outcome = 'failed';
+        requestLifecycle.finish(request, 'failed');
     }
 })
 .finally(() => {
-    if (requestLifecycle.isRunning()) {
-        requestLifecycle.finish(terminalEventReceived ? 'completed' : 'failed');
+    if (requestLifecycle.isActive(request)) {
+        requestLifecycle.finish(request, streamState.outcome === 'completed' ? 'completed' : 'failed');
     }
+    if (activeRequest && activeRequest.id === request.id) activeRequest = null;
 });
 ```
 
+`request` 和第一批创建的 `streamState` 都是当前发送函数的局部常量。旧请求的 `.catch/.finally` 只能携带自己的 token 调用生命周期，因此在取消 A 后启动 B 时，A 的回调不会结束 B。
+
 - [ ] **步骤 5：将相同生命周期应用到交易请求**
 
-使用 `requestLifecycle.start('trading')`、相同的 `signal`、AbortError 处理和幂等 `.finally(...)`。删除独立的交易按钮禁用与恢复代码。
+使用 `const request = requestLifecycle.start('trading')`、`requestLifecycle.signal(request)`、相同的 AbortError 处理和带 token 的幂等 `.finally(...)`。删除独立的交易按钮禁用与恢复代码。
 
 - [ ] **步骤 6：在破坏性 UI 切换前取消当前请求**
 
 At the beginning of `createNewChat`, session selection, and mode switching:
 
 ```javascript
-if (requestLifecycle.isRunning()) {
-    requestLifecycle.cancel();
+if (activeRequest && requestLifecycle.isActive(activeRequest)) {
+    requestLifecycle.cancel(activeRequest);
+    activeRequest = null;
 }
 ```
 
