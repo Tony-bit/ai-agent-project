@@ -37,21 +37,30 @@ public class AiErrorCodeExtractor {
             return AiErrorCodes.UNKNOWN;
         }
 
-        String msg = e.getMessage() != null ? e.getMessage() : "";
+        String fallback = null;
+        Throwable current = e;
+        int depth = 0;
+        while (current != null && depth < 8) {
+            String msg = current.getMessage() != null ? current.getMessage() : "";
 
-        String zhipuCode = extractZhipuCode(msg);
-        if (zhipuCode != null) return zhipuCode;
+            String zhipuCode = extractZhipuCode(msg);
+            if (zhipuCode != null) return zhipuCode;
 
-        String openaiCode = extractOpenAICode(msg);
-        if (openaiCode != null) return openaiCode;
+            String openaiCode = extractOpenAICode(msg);
+            if (openaiCode != null) return openaiCode;
 
-        String classNameCode = extractFromClassName(e);
-        if (classNameCode != null) return classNameCode;
+            String classNameCode = extractFromClassName(current);
+            if (classNameCode != null) return classNameCode;
 
-        String httpCode = extractHttpCode(msg);
-        if (httpCode != null) return httpCode;
+            String httpCode = extractHttpCode(msg);
+            if (httpCode != null) return httpCode;
 
-        String fallback = extractFallbackCode(msg);
+            if (fallback == null) {
+                fallback = extractFallbackCode(msg);
+            }
+            current = current.getCause();
+            depth++;
+        }
         return fallback != null ? fallback : AiErrorCodes.UNKNOWN;
     }
 
@@ -65,7 +74,7 @@ public class AiErrorCodeExtractor {
         return m.find() ? m.group(1).toLowerCase() : null;
     }
 
-    private String extractFromClassName(Exception e) {
+    private String extractFromClassName(Throwable e) {
         String cn = e.getClass().getSimpleName();
         if (cn == null || cn.isEmpty()) cn = e.getClass().getName();
         cn = cn.toLowerCase();

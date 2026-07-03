@@ -194,9 +194,9 @@ chat:
 
 logging:
   level:
-    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService: DEBUG
-    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode: DEBUG
-    denny.ai.agent.domain.service.intent.IntentFewshotService: DEBUG
+    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService: INFO
+    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode: INFO
+    denny.ai.agent.domain.service.intent.IntentFewshotService: INFO
 #    denny:
 #      ai:
 #        agent:

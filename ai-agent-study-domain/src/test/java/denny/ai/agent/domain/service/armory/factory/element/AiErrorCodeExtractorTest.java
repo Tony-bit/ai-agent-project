@@ -313,6 +313,16 @@ public class AiErrorCodeExtractorTest {
         assertEquals("unknown", extractor.extract(null));
     }
 
+    @Test
+    public void testExtractNestedSocketTimeoutCause() {
+        Exception e = new Exception(
+                "Error while extracting response for type [org.springframework.ai.openai.api.OpenAiApi$ChatCompletion]",
+                new java.net.SocketTimeoutException("Read timed out")
+        );
+
+        assertEquals("timeout", extractor.extract(e));
+    }
+
     // ========== 测试用异常类 ==========
 
     private static class RateLimitException extends Exception {

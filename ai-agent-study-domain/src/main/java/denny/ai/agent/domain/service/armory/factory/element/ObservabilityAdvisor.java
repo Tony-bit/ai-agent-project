@@ -151,7 +151,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         return streamAdvisorChain.nextStream(advisedRequest)
                 .doOnNext(chatClientResponse -> {
                     lastResponseRef.set(chatClientResponse);
-                    String chunk = extractOutputText(chatClientResponse);
+                    String chunk = extractOutputText(chatClientResponse, false);
                     if (StringUtils.isNotBlank(chunk)) {
                         aggregatedOutput.append(chunk);
                     }
@@ -196,8 +196,14 @@ public class ObservabilityAdvisor implements BaseAdvisor {
     }
 
     private String extractOutputText(ChatClientResponse response) {
+        return extractOutputText(response, true);
+    }
+
+    private String extractOutputText(ChatClientResponse response, boolean logFailure) {
         if (response == null || response.chatResponse() == null) {
-            log.debug("extractOutputText: response or chatResponse is null");
+            if (logFailure) {
+                log.debug("extractOutputText: response or chatResponse is null");
+            }
             return "";
         }
 
@@ -216,7 +222,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             outputText = tryExtractFromMessageContent(chatResponse);
         }
 
-        if (StringUtils.isBlank(outputText)) {
+        if (StringUtils.isBlank(outputText) && logFailure) {
             logOutputExtractionFailure(chatResponse);
         }
 

@@ -77,6 +77,7 @@ public class TradingStateContext {
 
         String friendlyMessage = getFriendlyErrorMessage(msg);
         sendSseResult("trading", "error", friendlyMessage, true);
+        countDownTaskLatch();
     }
 
     /**
@@ -170,8 +171,12 @@ public class TradingStateContext {
     public void countDownTaskLatch() {
         CountDownLatch latch = dynamicContext.getValue("taskLatch");
         if (latch != null) {
-            latch.countDown();
-            log.info("任务流程全部完成，taskLatch 倒计时");
+            if (latch.getCount() > 0) {
+                latch.countDown();
+                log.info("任务流程全部完成，taskLatch 倒计时");
+            } else {
+                log.debug("taskLatch 已经倒计时完成，跳过重复 countDown");
+            }
         } else {
             log.warn("taskLatch 不存在，可能已倒计时");
         }

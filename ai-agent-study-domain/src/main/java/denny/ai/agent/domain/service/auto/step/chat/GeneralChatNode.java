@@ -206,6 +206,9 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
                 .subscribe(
                         // onNext: 每收到一块立即发送
                         chunk -> {
+                            if (!StringUtils.hasText(chunk)) {
+                                return;
+                            }
                             fullContent.append(chunk);
                             sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                                     .type("content")
@@ -232,7 +235,7 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
                             sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                                     .type("content")
                                     .subType(subType)
-                                    .content("")
+                                    .content(fullContent.toString())
                                     .completed(true)
                                     .timestamp(System.currentTimeMillis())
                                     .build());

@@ -36,10 +36,23 @@ public final class RetryableExceptionTypes {
         if (e == null) {
             return false;
         }
+
+        Throwable current = e;
+        int depth = 0;
+        while (current != null && depth < 8) {
+            if (isRetryableSingle(current)) {
+                return true;
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return false;
+    }
+
+    private static boolean isRetryableSingle(Throwable e) {
         if (e instanceof ResponseValidationException) {
             return true;
         }
-
         String className = e.getClass().getName();
         if (className.contains(TRANSIENT_AI_EXCEPTION)) {
             return true;
