@@ -1,10 +1,13 @@
 package denny.ai.agent.domain.service.auto.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.MemoryProperties;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.persona.IUserPersonaCacheService;
+import denny.ai.agent.domain.service.sse.SseEventSink;
+import denny.ai.agent.domain.service.sse.SseSessionState;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -193,6 +196,36 @@ public class AbstractExecuteSupportTest {
         assertNull("cacheService 为 null 时，persona 应为 null", dynamicContext.getValue("persona"));
     }
 
+    @Test
+    public void testSendSseResult_UsesSinkWhenPresent() {
+        RecordingSink sink = new RecordingSink(true);
+        dynamicContext.setValue("sseEventSink", sink);
+
+        support.callParentSendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                .type("progress")
+                .subType("analysis_start")
+                .content("开始分析")
+                .build());
+
+        assertEquals(1, sink.businessCount);
+        assertEquals("progress", sink.lastEventName);
+        assertTrue(sink.lastPayload instanceof AutoAgentExecuteResultEntity);
+    }
+
+    @Test
+    public void testSendSseResult_SkipsWhenSinkClosed() {
+        RecordingSink sink = new RecordingSink(false);
+        dynamicContext.setValue("sseEventSink", sink);
+
+        support.callParentSendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                .type("progress")
+                .subType("analysis_start")
+                .content("开始分析")
+                .build());
+
+        assertEquals(0, sink.businessCount);
+    }
+
     /**
      * 测试用子类，暴露父类 protected 方法供测试调用
      */
@@ -228,6 +261,59 @@ public class AbstractExecuteSupportTest {
             } catch (Exception e) {
                 throw new RuntimeException("Failed to invoke parent method", e);
             }
+        }
+
+        public void callParentSendSseResult(
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                AutoAgentExecuteResultEntity result) {
+            sendSseResult(dynamicContext, result);
+        }
+    }
+
+    private static class RecordingSink implements SseEventSink {
+        private final boolean shouldContinue;
+        private int businessCount;
+        private String lastEventName;
+        private Object lastPayload;
+
+        private RecordingSink(boolean shouldContinue) {
+            this.shouldContinue = shouldContinue;
+        }
+
+        @Override
+        public boolean sendBusiness(String eventName, Object payload) {
+            businessCount++;
+            lastEventName = eventName;
+            lastPayload = payload;
+            return true;
+        }
+
+        @Override
+        public boolean trySendHeartbeat() {
+            return false;
+        }
+
+        @Override
+        public void complete() {
+        }
+
+        @Override
+        public void markDisconnected(Throwable cause) {
+        }
+
+        @Override
+        public boolean isDisconnected() {
+            return !shouldContinue;
+        }
+
+        @Override
+        public boolean shouldContinue() {
+            return shouldContinue;
+        }
+
+        @Override
+        public SseSessionState state() {
+            return shouldContinue ? SseSessionState.OPEN : SseSessionState.DISCONNECTED;
         }
     }
 }

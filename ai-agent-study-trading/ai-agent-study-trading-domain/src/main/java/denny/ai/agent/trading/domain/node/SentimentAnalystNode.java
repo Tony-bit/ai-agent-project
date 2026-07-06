@@ -102,6 +102,10 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("情绪分析师调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过情绪分析师LLM调用");
+            return parseReport("", sentimentData);
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

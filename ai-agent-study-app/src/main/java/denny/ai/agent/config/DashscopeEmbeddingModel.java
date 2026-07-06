@@ -24,7 +24,7 @@ import java.util.List;
 @Slf4j
 public class DashscopeEmbeddingModel implements EmbeddingModel {
 
-    private static final String DEFAULT_OUTPUT_TYPE = "dense";
+    private static final String DEFAULT_ENCODING_FORMAT = "float";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -54,17 +54,11 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
         try {
             DashscopeEmbeddingRequest req = new DashscopeEmbeddingRequest();
             req.setModel(model);
-
-            DashscopeEmbeddingRequest.Input input = new DashscopeEmbeddingRequest.Input();
-            input.setTexts(new ArrayList<>(instructions));
-            req.setInput(input);
-
-            DashscopeEmbeddingRequest.Parameters parameters = new DashscopeEmbeddingRequest.Parameters();
+            req.setInput(new ArrayList<>(instructions));
             if (dimension != null && dimension > 0) {
-                parameters.setDimension(dimension);
+                req.setDimensions(dimension);
             }
-            parameters.setOutputType(DEFAULT_OUTPUT_TYPE);
-            req.setParameters(parameters);
+            req.setEncodingFormat(DEFAULT_ENCODING_FORMAT);
 
             String body = objectMapper.writeValueAsString(req);
 
@@ -84,12 +78,12 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
             }
 
             DashscopeEmbeddingResponse embeddingResponse = objectMapper.readValue(response.body(), DashscopeEmbeddingResponse.class);
-            if (embeddingResponse == null || embeddingResponse.getOutput() == null || embeddingResponse.getOutput().getEmbeddings() == null) {
-                throw new IllegalStateException("DashScope embedding 响应缺少 output.embeddings");
+            if (embeddingResponse == null || embeddingResponse.getData() == null) {
+                throw new IllegalStateException("DashScope embedding 响应缺少 data");
             }
 
             List<Embedding> results = new ArrayList<>();
-            for (DashscopeEmbeddingResponse.EmbeddingItem item : embeddingResponse.getOutput().getEmbeddings()) {
+            for (DashscopeEmbeddingResponse.EmbeddingItem item : embeddingResponse.getData()) {
                 if (item == null || item.getEmbedding() == null || item.getEmbedding().isEmpty()) {
                     continue;
                 }
@@ -98,7 +92,7 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
                 for (int i = 0; i < item.getEmbedding().size(); i++) {
                     vector[i] = item.getEmbedding().get(i).floatValue();
                 }
-                results.add(new Embedding(vector, item.getTextIndex()));
+                results.add(new Embedding(vector, item.getIndex()));
             }
 
             if (results.isEmpty()) {
@@ -123,39 +117,22 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
     @Data
     private static class DashscopeEmbeddingRequest {
         private String model;
-        private Input input;
-        private Parameters parameters;
+        private List<String> input;
+        private Integer dimensions;
 
-        @Data
-        private static class Input {
-            private List<String> texts;
-        }
-
-        @Data
-        private static class Parameters {
-            private Integer dimension;
-
-            @JsonProperty("output_type")
-            private String outputType;
-        }
+        @JsonProperty("encoding_format")
+        private String encodingFormat;
     }
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class DashscopeEmbeddingResponse {
-        private Output output;
-
-        @Data
-        @JsonIgnoreProperties(ignoreUnknown = true)
-        private static class Output {
-            private List<EmbeddingItem> embeddings;
-        }
+        private List<EmbeddingItem> data;
 
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         private static class EmbeddingItem {
-            @JsonProperty("text_index")
-            private Integer textIndex;
+            private Integer index;
 
             private List<Double> embedding;
         }

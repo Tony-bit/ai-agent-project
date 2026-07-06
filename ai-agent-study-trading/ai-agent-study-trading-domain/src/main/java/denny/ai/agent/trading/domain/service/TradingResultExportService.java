@@ -26,7 +26,7 @@ public class TradingResultExportService {
 
     private static final String OUTPUT_DIR = "docs/trading-agent";
 
-    @Async("tradingTaskExecutor")
+    @Async("tradingExportExecutor")
     public void export(TradingResultVO result) {
         try {
             String markdown = renderMarkdown(result);
@@ -140,6 +140,37 @@ public class TradingResultExportService {
             sb.append("\n");
         }
 
+        if (r.getRiskDebate() != null) {
+            TradingResultVO.RiskDebateSummary risk = r.getRiskDebate();
+            sb.append("## 风控辩论\n\n");
+            sb.append("| 项目 | 值 |\n|--------|------|\n");
+            sb.append("| 风险等级 | ").append(nullSafe(risk.getRiskLevel())).append(" |\n");
+            sb.append("| 风险评分 | ").append(risk.getRiskScore() != null ? risk.getRiskScore() : "N/A").append(" |\n");
+            if (risk.getRiskItems() != null && !risk.getRiskItems().isEmpty()) {
+                sb.append("| 风险项 | ").append(join(risk.getRiskItems(), "；")).append(" |\n");
+            }
+            if (risk.getMitigations() != null && !risk.getMitigations().isEmpty()) {
+                sb.append("| 缓解措施 | ").append(join(risk.getMitigations(), "；")).append(" |\n");
+            }
+            sb.append("\n");
+            appendOpinionSection(sb, "### 激进风控观点", risk.getAggressiveHistory());
+            appendOpinionSection(sb, "### 保守风控观点", risk.getConservativeHistory());
+            appendOpinionSection(sb, "### 中性风控观点", risk.getNeutralHistory());
+        }
+
+        if (r.getFinalDecision() != null) {
+            TradingResultVO.FinalDecisionSummary d = r.getFinalDecision();
+            sb.append("## 最终决策\n\n");
+            sb.append("| 项目 | 值 |\n|--------|------|\n");
+            sb.append("| 决策 | **").append(nullSafe(d.getDecision())).append("** |\n");
+            sb.append("| 置信度 | ").append(nullSafe(d.getConfidence())).append(" |\n");
+            sb.append("| 综合评分 | ").append(d.getOverallRating() != null ? d.getOverallRating() : "N/A").append(" |\n");
+            if (d.getWarnings() != null && !d.getWarnings().isEmpty()) {
+                sb.append("| 警告 | ").append(join(d.getWarnings(), "；")).append(" |\n");
+            }
+            sb.append("\n").append(nullSafe(d.getReasoning())).append("\n\n");
+        }
+
         return sb.toString();
     }
 
@@ -161,6 +192,17 @@ public class TradingResultExportService {
             first = false;
         }
         return sb.toString();
+    }
+
+    private void appendOpinionSection(StringBuilder sb, String title, List<String> opinions) {
+        if (opinions == null || opinions.isEmpty()) {
+            return;
+        }
+        sb.append(title).append("\n\n");
+        for (int i = 0; i < opinions.size(); i++) {
+            sb.append(i + 1).append(". ").append(opinions.get(i)).append("\n");
+        }
+        sb.append("\n");
     }
 
     private String sanitizeFileName(String name) {

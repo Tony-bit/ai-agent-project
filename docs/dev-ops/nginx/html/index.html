@@ -946,6 +946,7 @@
     let isConnected = false;
     let eventSource = null;
     let currentStepMessages = new Map();
+    let streamTerminalEventReceived = false;
 
     // 流式消息累积缓存：key = "type-subType-step", value = { div, content }
     const streamingMessageCache = new Map();
@@ -1029,6 +1030,22 @@
         'final_completed',
         'trading_complete'
     ]);
+
+    const hiddenLifecycleSubTypes = new Set([
+        'general_chat_response_start',
+        'multimodal_response_start'
+    ]);
+
+    function isHiddenLifecycleMessage(type, subType) {
+        return type === 'system' && hiddenLifecycleSubTypes.has(subType);
+    }
+
+    function isTerminalSSEEvent(type, subType) {
+        return type === 'complete'
+            || type === 'final'
+            || type === 'error'
+            || (type === 'trading' && (subType === 'error' || subType === 'trading_complete'));
+    }
 
     function isResultPanelMessage(type, subType) {
         if (type === 'complete' || type === 'summary') {
@@ -1468,6 +1485,7 @@
             const sseParser = createSSEParser(handleSSEMessage);
 
             currentStepMessages.clear();
+            streamTerminalEventReceived = false;
 
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
@@ -1485,7 +1503,9 @@
                     if (done) {
                         sseParser.flush();
                         closeLoadingState('general');
-                        addStageMessage('complete', null, '任务执行完成', null);
+                        if (!streamTerminalEventReceived) {
+                            addStageMessage('complete', null, '任务执行完成', null);
+                        }
                         return;
                     }
 
@@ -1550,10 +1570,17 @@
         const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
 
         const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
+        if (isTerminalSSEEvent(type, subType)) {
+            streamTerminalEventReceived = true;
+        }
         if (!content || content.trim() === '') {
             if (completed && type === 'content') {
                 streamingMessageCache.delete(cacheKey);
             }
+            return;
+        }
+
+        if (isHiddenLifecycleMessage(type, subType)) {
             return;
         }
 
@@ -2046,6 +2073,7 @@
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             const sseParser = createSSEParser(handleSSEMessage);
+            streamTerminalEventReceived = false;
 
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
@@ -2061,7 +2089,9 @@
                     if (done) {
                         sseParser.flush();
                         closeLoadingState('trading');
-                        addStageMessage('complete', null, '金融分析完成', null);
+                        if (!streamTerminalEventReceived) {
+                            addStageMessage('complete', null, '金融分析完成', null);
+                        }
                         return;
                     }
 

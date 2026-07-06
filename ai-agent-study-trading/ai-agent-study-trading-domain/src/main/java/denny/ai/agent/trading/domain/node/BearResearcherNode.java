@@ -95,6 +95,10 @@ public class BearResearcherNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("空头研究员调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过空头研究员LLM调用");
+            return "";
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

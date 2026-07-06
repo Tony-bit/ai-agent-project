@@ -7,6 +7,7 @@ import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStarter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
@@ -15,6 +16,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 股票分析独立 HTTP 端点。
@@ -35,9 +38,22 @@ import java.util.concurrent.CompletableFuture;
 public class TradingAnalysisController {
 
     private final TradingStarter tradingStarter;
+    private final ExecutorService tradingOrchestrationExecutor;
+    private final ExecutorService tradingSseWriterExecutor;
+    private final ScheduledExecutorService tradingSseHeartbeatExecutor;
+    private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
 
-    public TradingAnalysisController(TradingStarter tradingStarter) {
+    public TradingAnalysisController(TradingStarter tradingStarter,
+                                     @Qualifier("tradingOrchestrationExecutor")
+                                     ExecutorService tradingOrchestrationExecutor,
+                                     @Qualifier("tradingSseWriterExecutor")
+                                     ExecutorService tradingSseWriterExecutor,
+                                     @Qualifier("tradingSseHeartbeatExecutor")
+                                     ScheduledExecutorService tradingSseHeartbeatExecutor) {
         this.tradingStarter = tradingStarter;
+        this.tradingOrchestrationExecutor = tradingOrchestrationExecutor;
+        this.tradingSseWriterExecutor = tradingSseWriterExecutor;
+        this.tradingSseHeartbeatExecutor = tradingSseHeartbeatExecutor;
     }
 
     /**
@@ -63,7 +79,7 @@ public class TradingAnalysisController {
         try {
             response.setContentType("text/event-stream");
             response.setCharacterEncoding("UTF-8");
-            response.setHeader("Cache-Control", "no-cache");
+            response.setHeader("Cache-Control", "no-cache, no-transform");
             response.setHeader("Connection", "keep-alive");
             response.setHeader("X-Accel-Buffering", "no");
         } catch (Exception e) {
@@ -71,46 +87,61 @@ public class TradingAnalysisController {
         }
 
         ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
+        String sessionId = request.getSessionId() != null ? request.getSessionId() : UUID.randomUUID().toString();
+        TradingSseSession sseSession = new TradingSseSession(
+                emitter,
+                UUID.randomUUID().toString(),
+                sessionId,
+                request.getTicker().toUpperCase().trim()
+        );
+        emitter.onCompletion(() -> {
+            sseSession.markDisconnected(null);
+            log.info("交易分析SSE连接完成: ticker={}", request.getTicker());
+        });
+        emitter.onTimeout(() -> {
+            sseSession.markDisconnected(new IllegalStateException("SSE response timeout"));
+            log.warn("交易分析SSE连接超时: ticker={}", request.getTicker());
+        });
+        emitter.onError(error -> {
+            sseSession.markDisconnected(error);
+            log.warn("交易分析SSE连接异常: ticker={}, error={}", request.getTicker(), error.getMessage());
+        });
+        try {
+            sseSession.startWriter(tradingSseWriterExecutor);
+            sseSession.startHeartbeat(tradingSseHeartbeatExecutor);
+        } catch (Exception e) {
+            log.error("交易分析SSE session 启动失败: ticker={}, error={}", request.getTicker(), e.getMessage(), e);
+            return buildErrorEmitter(response, "SSE连接初始化失败，请稍后重试");
+        }
 
         CompletableFuture.runAsync(() -> {
             try {
                 // 发送开始任务标记给前端，展示给用户
-                sendStartEvent(emitter, request);
+                sendStartEvent(sseSession, request);
 
                 // 开始执行整个分析流程
-                executeAnalysis(request, emitter);
-
-                try {
-                    emitter.complete();
-                } catch (IllegalStateException e) {
-                    log.info("emitter 已在 TradingStarter 中关闭，跳过: {}", e.getMessage());
-                } catch (Exception e) {
-                    log.warn("emitter 关闭异常: {}", e.getMessage());
-                }
+                executeAnalysis(request, sseSession, sessionId);
             } catch (Exception e) {
                 log.error("股票分析执行异常: {}", e.getMessage(), e);
-                try {
-                    emitter.send("event: error\ndata: " + JSON.toJSONString(
-                            AutoAgentExecuteResultEntity.builder()
-                                    .type("error")
-                                    .subType("system_error")
-                                    .content("分析执行失败: " + e.getMessage())
-                                    .timestamp(System.currentTimeMillis())
-                                    .build()
-                    ) + "\n\n");
-                    emitter.complete();
-                } catch (Exception ex) {
-                    log.error("发送错误事件失败: {}", ex.getMessage());
+                if (sseSession.shouldContinue()) {
+                    sseSession.sendBusiness("error", AutoAgentExecuteResultEntity.builder()
+                            .type("error")
+                            .subType("system_error")
+                            .content("分析执行失败: " + e.getMessage())
+                            .timestamp(System.currentTimeMillis())
+                            .build());
+                    sseSession.complete();
                 }
             }
-        });
+        }, tradingOrchestrationExecutor);
 
         return emitter;
     }
 
-    private void executeAnalysis(TradingAnalysisRequestDTO request, ResponseBodyEmitter emitter) {
+    private void executeAnalysis(TradingAnalysisRequestDTO request,
+                                 TradingSseSession sseSession,
+                                 String sessionId) {
         String ticker = request.getTicker().toUpperCase().trim();
-        String sessionId = request.getSessionId() != null ? request.getSessionId() : UUID.randomUUID().toString();
 
         StockAnalysisRequestVO tradingRequest = StockAnalysisRequestVO.builder()
                 .ticker(ticker)
@@ -128,44 +159,46 @@ public class TradingAnalysisController {
         try {
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
-            dynamicContext.setValue("emitter", emitter);
             dynamicContext.setValue("step", 1);
+            dynamicContext.setValue("sessionId", sessionId);
+            dynamicContext.setValue(SSE_EVENT_SINK_KEY, sseSession);
 
-            BiConsumerSseSender sseSender = new BiConsumerSseSender(emitter, dynamicContext);
-
+            java.util.function.BiConsumer<String, Object> sseSender = (type, event) -> {
+                if (event instanceof AutoAgentExecuteResultEntity entity) {
+                    entity.setStep(dynamicContext.getValue("step") != null ? (Integer) dynamicContext.getValue("step") : 0);
+                }
+                sseSession.sendBusiness(type, event);
+            };
             tradingStarter.start(tradingRequest, dynamicContext, sseSender);
         } catch (Exception e) {
             log.error("交易分析执行异常: ticker={}, error={}", ticker, e.getMessage(), e);
-            sendEvent(emitter, "error", "分析失败: " + e.getMessage());
+            sendEvent(sseSession, "error", "分析失败: " + e.getMessage());
+            sseSession.complete();
         }
     }
 
-    private void sendStartEvent(ResponseBodyEmitter emitter, TradingAnalysisRequestDTO request) {
-        try {
-            String eventData = JSON.toJSONString(AutoAgentExecuteResultEntity.builder()
-                    .type("progress")
-                    .subType("analysis_start")
-                    .content("开始分析股票: " + request.getTicker())
-                    .timestamp(System.currentTimeMillis())
-                    .build());
-            emitter.send("event: progress\ndata: " + eventData + "\n\n");
-        } catch (Exception e) {
-            log.error("发送开始事件失败: {}", e.getMessage());
+    private void sendStartEvent(TradingSseSession sseSession, TradingAnalysisRequestDTO request) {
+        if (!sseSession.shouldContinue()) {
+            return;
         }
+        sseSession.sendBusiness("progress", AutoAgentExecuteResultEntity.builder()
+                .type("progress")
+                .subType("analysis_start")
+                .content("开始分析股票: " + request.getTicker())
+                .timestamp(System.currentTimeMillis())
+                .build());
     }
 
-    private void sendEvent(ResponseBodyEmitter emitter, String eventType, String content) {
-        try {
-            String eventData = JSON.toJSONString(AutoAgentExecuteResultEntity.builder()
-                    .type(eventType)
-                    .subType(eventType)
-                    .content(content)
-                    .timestamp(System.currentTimeMillis())
-                    .build());
-            emitter.send("event: " + eventType + "\ndata: " + eventData + "\n\n");
-        } catch (Exception e) {
-            log.error("发送SSE事件失败: {}", e.getMessage());
+    private void sendEvent(TradingSseSession sseSession, String eventType, String content) {
+        if (!sseSession.shouldContinue()) {
+            return;
         }
+        sseSession.sendBusiness(eventType, AutoAgentExecuteResultEntity.builder()
+                .type(eventType)
+                .subType(eventType)
+                .content(content)
+                .timestamp(System.currentTimeMillis())
+                .build());
     }
 
     private ResponseBodyEmitter buildErrorEmitter(HttpServletResponse response, String message) {
@@ -178,35 +211,6 @@ public class TradingAnalysisController {
             return errorEmitter;
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    /**
-     * SSE 发送器适配器，将 BiConsumer 转换为 SSE 格式发送
-     */
-    private static class BiConsumerSseSender implements java.util.function.BiConsumer<String, Object> {
-        private final ResponseBodyEmitter emitter;
-        private final DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext;
-
-        BiConsumerSseSender(ResponseBodyEmitter emitter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-            this.emitter = emitter;
-            this.dynamicContext = dynamicContext;
-        }
-
-        @Override
-        public void accept(String type, Object event) {
-            try {
-                String eventData;
-                if (event instanceof AutoAgentExecuteResultEntity entity) {
-                    entity.setStep(dynamicContext.getValue("step") != null ? (Integer) dynamicContext.getValue("step") : 0);
-                    eventData = JSON.toJSONString(entity);
-                } else {
-                    eventData = JSON.toJSONString(event);
-                }
-                emitter.send("event: " + type + "\ndata: " + eventData + "\n\n");
-            } catch (Exception e) {
-                log.warn("SSE 发送失败，断连或客户端异常: {}", e.getMessage());
-            }
         }
     }
 }

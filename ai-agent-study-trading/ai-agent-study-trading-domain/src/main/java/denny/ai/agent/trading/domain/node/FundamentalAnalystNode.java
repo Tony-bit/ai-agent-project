@@ -106,6 +106,10 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("基本面分析师调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过基本面分析师LLM调用");
+            return parseReport("", data);
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

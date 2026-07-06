@@ -1,17 +1,22 @@
 package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext;
+import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
+import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
+import denny.ai.agent.trading.domain.pipeline.TradingPipelineException;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.locks.Lock;
 import java.util.function.BiConsumer;
 
 /**
@@ -29,11 +34,20 @@ import java.util.function.BiConsumer;
 @Service
 public class TradingStarter {
 
+    private static final String SSE_SEND_LOCK_KEY = "sseSendLock";
+    private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
+
     @Resource
     private IStockDataProvider dataProvider;
 
     @Resource
     private TradingDispatcher tradingDispatcher;
+
+    @Resource
+    private TradingPipeline tradingPipeline;
+
+    @Value("${spring.ai.trading.sync-pipeline-enabled:true}")
+    private boolean syncPipelineEnabled = true;
 
     /**
      * 开始交易分析流程。
@@ -50,35 +64,59 @@ public class TradingStarter {
         // 1. 创建请求级上下文
         TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, sseSender);
 
-        // 2. 创建 Driver（Dispatcher 注入自 Spring）
-        TradingDispatcher dispatcher = this.tradingDispatcher;
-        TradingDriver driver = new TradingDriver(stateContext, dispatcher);
+        if (!syncPipelineEnabled) {
+            runLegacyAsyncDispatcherWithLatch(stateContext, dynamicContext);
+            return;
+        }
 
-        // 3. 填充股票信息
+        try {
+            // 2. 填充股票信息
+            populateStockInfo(stateContext);
+
+            // 3. 将 tradingContext 存入 DynamicContext，供节点读取
+            dynamicContext.setValue("trading_context", stateContext.getTradingContext());
+
+            // 4. 同步 pipeline 路径不设置真实 Driver，避免旧 Dispatcher 重入。
+            TradingDriver.clear();
+            stateContext.transitionTo(TradingPhase.INIT);
+            tradingPipeline.execute(stateContext);
+            if (stateContext.getCurrentPhase() == TradingPhase.ERROR) {
+                stateContext.sendTerminalErrorOnce(stateContext.getErrorMessage());
+            } else {
+                stateContext.sendTerminalCompleteOnce();
+            }
+        } catch (Exception e) {
+            log.error("交易分析执行异常: ticker={}, error={}",
+                    request != null ? request.getTicker() : null, e.getMessage(), e);
+            stateContext.sendTerminalErrorOnce("交易分析执行异常: " + e.getMessage());
+        } finally {
+            TradingDriver.clear();
+            completeEmitterSafely(dynamicContext);
+        }
+    }
+
+    private void runLegacyAsyncDispatcherWithLatch(TradingStateContext stateContext, DynamicContext dynamicContext) {
+        TradingDriver driver = new TradingDriver(stateContext, tradingDispatcher);
+
         try {
             populateStockInfo(stateContext);
         } catch (Exception e) {
-            log.error("获取股票信息失败: ticker={}", request.getTicker(), e);
+            log.error("获取股票信息失败: ticker={}", stateContext.getRequest().getTicker(), e);
             stateContext.sendError("无法获取股票信息: " + e.getMessage());
             return;
         }
 
-        // 4. 将 tradingContext 存入 DynamicContext，供节点读取
         dynamicContext.setValue("trading_context", stateContext.getTradingContext());
 
-        // ★ 5. 创建 CountDownLatch，供并行分析师流程完成后 countdown
         CountDownLatch taskLatch = new CountDownLatch(1);
         dynamicContext.setValue("taskLatch", taskLatch);
 
-        // 6. 设置 ThreadLocal Driver，启动状态机
-        //    onEvent() 同步返回，异步任务在后台线程池运行
         try {
             TradingDriver.setCurrent(driver);
             stateContext.transitionTo(TradingPhase.INIT);
-            dispatcher.onEvent(TradingEvent.START_TRADING, stateContext);
+            tradingDispatcher.onEvent(TradingEvent.START_TRADING, stateContext);
         } finally {
             TradingDriver.clear();
-            // 等所有异步任务完成（LATCH 被 countDown 后才继续）
             try {
                 taskLatch.await();
             } catch (InterruptedException e) {
@@ -87,7 +125,6 @@ public class TradingStarter {
             }
             taskLatch.countDown();
             log.info("taskLatch 已倒计时，异步任务全部完成");
-            // 发送最终 SSE 并关闭 emitter
             finishAndCloseSse(stateContext, dynamicContext);
         }
     }
@@ -99,16 +136,47 @@ public class TradingStarter {
     private void finishAndCloseSse(TradingStateContext stateContext, DynamicContext dynamicContext) {
         try {
             if (stateContext.getCurrentPhase() == TradingPhase.FINAL_REPORT) {
-                stateContext.sendSseResult("trading", "trading_complete", "交易分析完成", true);
+                stateContext.sendTerminalCompleteOnce();
             }
         } catch (Exception e) {
             log.warn("发送完成事件异常，不影响 emitter 关闭: {}", e.getMessage());
         }
 
+        completeEmitterSafely(dynamicContext);
+    }
+
+    private void completeEmitterSafely(DynamicContext dynamicContext) {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            sink.complete();
+            log.info("SSE sink 关闭请求已提交: state={}", sink.state());
+            return;
+        }
+
         ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
         if (emitter != null) {
-            emitter.complete();
-            log.info("emitter 关闭完成");
+            try {
+                Object sendLock = dynamicContext.getValue(SSE_SEND_LOCK_KEY);
+                if (sendLock == null) {
+                    emitter.complete();
+                } else if (sendLock instanceof Lock lock) {
+                    lock.lock();
+                    try {
+                        emitter.complete();
+                    } finally {
+                        lock.unlock();
+                    }
+                } else {
+                    synchronized (sendLock) {
+                        emitter.complete();
+                    }
+                }
+                log.info("emitter 关闭完成");
+            } catch (IllegalStateException e) {
+                log.info("emitter 已关闭，跳过重复关闭: {}", e.getMessage());
+            } catch (Exception e) {
+                log.warn("emitter 关闭异常: {}", e.getMessage());
+            }
         }
     }
 
@@ -161,6 +229,10 @@ public class TradingStarter {
 
         TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, noOpSseSender);
 
+        if (!syncPipelineEnabled) {
+            return startForSubTaskLegacy(dynamicContext, stateContext);
+        }
+
         try {
             populateStockInfo(stateContext);
         } catch (Exception e) {
@@ -170,7 +242,40 @@ public class TradingStarter {
 
         dynamicContext.setValue("trading_context", stateContext.getTradingContext());
 
-        // ★ 为子任务创建独立的 latch，确保等待异步任务完成
+        try {
+            TradingDriver.clear();
+            stateContext.transitionTo(TradingPhase.INIT);
+            tradingPipeline.execute(stateContext);
+            if (stateContext.getCurrentPhase() == TradingPhase.ERROR) {
+                return "交易分析执行异常: " + stateContext.getErrorMessage();
+            }
+        } catch (TradingPipelineException e) {
+            log.error("交易分析执行异常: {}", e.getMessage(), e);
+            return "交易分析执行异常: " + e.getMessage();
+        } catch (Exception e) {
+            log.error("交易分析执行异常: {}", e.getMessage(), e);
+            return "交易分析执行异常: " + e.getMessage();
+        } finally {
+            TradingDriver.clear();
+        }
+
+        String result = buildResultFromContext(stateContext);
+        if (result == null || result.isBlank()) {
+            return "交易分析完成（无详细结果）";
+        }
+        return result;
+    }
+
+    private String startForSubTaskLegacy(DynamicContext dynamicContext, TradingStateContext stateContext) {
+        try {
+            populateStockInfo(stateContext);
+        } catch (Exception e) {
+            log.error("获取股票信息失败: ticker={}", stateContext.getRequest().getTicker(), e);
+            return "无法获取股票信息: " + e.getMessage();
+        }
+
+        dynamicContext.setValue("trading_context", stateContext.getTradingContext());
+
         CountDownLatch taskLatch = new CountDownLatch(1);
         dynamicContext.setValue("taskLatch", taskLatch);
 
@@ -184,7 +289,6 @@ public class TradingStarter {
             return "交易分析执行异常: " + e.getMessage();
         } finally {
             TradingDriver.clear();
-            // ★ 等待异步任务完成后再返回
             try {
                 taskLatch.await();
             } catch (InterruptedException e) {
