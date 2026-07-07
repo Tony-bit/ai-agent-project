@@ -1,7 +1,6 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
@@ -11,7 +10,7 @@ import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +30,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     @Resource
     private IntentRoutingService intentRoutingService;
     @Resource
-    private ChatMemoryPersistenceService chatMemoryPersistenceService;
+    private ConversationContextProvider conversationContextProvider;
     @Resource
     private TaskGraphValidator taskGraphValidator;
     @Resource
@@ -89,10 +88,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
     private List<String> getRecentHistoryMessages(String sessionId) {
         try {
-            return chatMemoryPersistenceService.getConversationHistory(sessionId).stream()
-                    .filter(message -> message.getRole() != null && message.getContent() != null)
-                    .map(message -> message.getRole() + ": " + message.getContent())
-                    .toList();
+            return conversationContextProvider.getRoutingContext(sessionId).getHistoryMessages();
         } catch (Exception e) {
             log.warn("Failed to load conversation history: sessionId={}, error={}", sessionId, e.getMessage());
             return List.of();

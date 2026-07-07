@@ -51,7 +51,7 @@ INSERT INTO ai_agent_flow_config (id, agent_id, client_id, client_name, client_t
 -- ============================================================
 DELETE FROM ai_client_advisor;
 INSERT INTO ai_client_advisor (id, advisor_id, advisor_name, advisor_type, order_num, ext_param, status, create_time, update_time) VALUES
-    (1, '4001', '记忆', 'ChatMemory', 1, '{"maxMessages": 200}', 1, '2025-06-14 12:35:06', '2025-06-14 12:35:44'),
+    (1, '4001', '记忆', 'ChatMemory', 1, '{"maxMessages": 20}', 1, '2025-06-14 12:35:06', '2025-06-14 12:35:44'),
     (2, '4002', '访问文章提示词知识库', 'RagAnswer', 1, '{"topK": "4", "filterExpression": "knowledge == ''知识库名称''"}', 1, '2025-06-14 12:35:06', '2025-06-14 12:35:44'),
     (3, '4003', 'langfuse日志上传打点', 'Observability', 1, '{}', 1, '2026-03-22 11:38:02', '2026-03-22 11:38:02'),
     (4, '4004', 'skills加载', 'TradingSkill', 1, '{}', 1, '2026-05-25 16:15:14', '2026-05-25 16:15:24');

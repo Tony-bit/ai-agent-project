@@ -8,7 +8,7 @@ import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,7 @@ public class QueryDecompositionNode extends AbstractExecuteSupport {
     @Resource
     private TaskGraphValidator taskGraphValidator;
     @Resource
-    private ChatMemoryPersistenceService chatMemoryPersistenceService;
+    private ConversationContextProvider conversationContextProvider;
     @Resource
     private TaskRoutingSlotNode taskRoutingSlotNode;
 
@@ -83,10 +83,7 @@ public class QueryDecompositionNode extends AbstractExecuteSupport {
 
     private List<String> history(String sessionId) {
         try {
-            return chatMemoryPersistenceService.getConversationHistory(sessionId).stream()
-                    .filter(message -> message.getRole() != null && message.getContent() != null)
-                    .map(message -> message.getRole() + ": " + message.getContent())
-                    .toList();
+            return conversationContextProvider.getDecompositionContext(sessionId).getHistoryMessages();
         } catch (Exception e) {
             log.warn("Failed to load conversation history: sessionId={}, error={}", sessionId, e.getMessage());
             return List.of();

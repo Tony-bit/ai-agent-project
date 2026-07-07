@@ -12,8 +12,9 @@ import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.model.entity.RoutingConversationContext;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -33,6 +34,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
@@ -42,7 +44,7 @@ import static org.mockito.Mockito.when;
 public class TaskRoutingSlotNodeTest {
     @Mock private IntentRoutingService intentRoutingService;
     @Mock private RoutingResultHandler routingResultHandler;
-    @Mock private ChatMemoryPersistenceService chatMemoryPersistenceService;
+    @Mock private ConversationContextProvider conversationContextProvider;
 
     private TaskRoutingSlotNode node;
     private DefaultAutoAgentExecuteStrategyFactory.DynamicContext context;
@@ -53,7 +55,7 @@ public class TaskRoutingSlotNodeTest {
         set(node, "intentRoutingService", intentRoutingService);
         set(node, "taskGraphValidator", new TaskGraphValidator());
         set(node, "routingResultHandler", routingResultHandler);
-        set(node, "chatMemoryPersistenceService", chatMemoryPersistenceService);
+        set(node, "conversationContextProvider", conversationContextProvider);
         context = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         HashMap<String, AiAgentClientFlowConfigVO> configs = new HashMap<>();
         configs.put(AiClientTypeEnumVO.INTENT_ROUTING.getCode(),
@@ -65,6 +67,8 @@ public class TaskRoutingSlotNodeTest {
                         RoutingStageMetric.builder().stageName("query-decomposition").callIndex(0).build())))
                 .build());
         context.setValue(QueryDecompositionNode.ROUTING_STARTED_AT_KEY, System.currentTimeMillis());
+        when(conversationContextProvider.getSlotContext(anyString()))
+                .thenReturn(RoutingConversationContext.builder().historyMessages(List.of()).build());
     }
 
     @Test
@@ -76,7 +80,6 @@ public class TaskRoutingSlotNodeTest {
         context.setValue(QueryDecompositionNode.DECOMPOSITION_RESULT_KEY, decomposition);
         IntentRoutingResult routing = IntentRoutingResult.builder()
                 .intent(IntentTypeEnum.GENERAL_CHAT).confidence(ConfidenceEnum.HIGH).intentSpecificSlots(Map.of()).build();
-        when(chatMemoryPersistenceService.getConversationHistory(any())).thenReturn(List.of());
         when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
                 .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
                         RoutingStageMetric.builder().stageName("task-routing-slot")
@@ -116,7 +119,6 @@ public class TaskRoutingSlotNodeTest {
                 .confidence(ConfidenceEnum.HIGH)
                 .intentSpecificSlots(Map.of())
                 .build();
-        when(chatMemoryPersistenceService.getConversationHistory(any())).thenReturn(List.of());
         when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
                 .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
                         RoutingStageMetric.builder()

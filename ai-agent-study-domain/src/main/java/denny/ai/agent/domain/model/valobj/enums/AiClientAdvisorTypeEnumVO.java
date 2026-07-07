@@ -6,14 +6,15 @@ import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.service.armory.factory.element.ObservabilityAdvisor;
 import denny.ai.agent.domain.service.armory.factory.element.RagAnswerAdvisor;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextAdvisor;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
+import denny.ai.agent.domain.service.chatmemory.SpringAiConversationMemoryRepository;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 
@@ -38,13 +39,13 @@ public enum AiClientAdvisorTypeEnumVO {
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
                                      ObservabilityService observabilityService,
-                                     SkillRegistry skillRegistry) {
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             AiClientAdvisorVO.ChatMemory chatMemory = aiClientAdvisorVO.getChatMemory();
-            return MessageChatMemoryAdvisor.builder(
-                    MessageWindowChatMemory.builder()
-                            .maxMessages(chatMemory.getMaxMessages())
-                            .build()
-            ).build();
+            int maxMessages = chatMemory == null ? 20 : chatMemory.getMaxMessages();
+            return new ConversationContextAdvisor(conversationContextProvider,
+                    springAiConversationMemoryRepository, maxMessages);
         }
     },
 
@@ -54,7 +55,9 @@ public enum AiClientAdvisorTypeEnumVO {
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
                                      ObservabilityService observabilityService,
-                                     SkillRegistry skillRegistry) {
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             AiClientAdvisorVO.RagAnswer ragAnswer = aiClientAdvisorVO.getRagAnswer();
             return new RagAnswerAdvisor(ragKnowledgeRepository, SearchRequest.builder()
                     .topK(ragAnswer.getTopK())
@@ -69,7 +72,9 @@ public enum AiClientAdvisorTypeEnumVO {
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
                                      ObservabilityService observabilityService,
-                                     SkillRegistry skillRegistry) {
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             return new ObservabilityAdvisor(observabilityService);
         }
     },
@@ -80,7 +85,9 @@ public enum AiClientAdvisorTypeEnumVO {
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
                                      ObservabilityService observabilityService,
-                                     SkillRegistry skillRegistry) {
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             log.info("创建交易技能 Advisor: {}", this.name());
             return SpringAiSkillAdvisor.builder()
                     .skillRegistry(skillRegistry)
@@ -106,7 +113,9 @@ public enum AiClientAdvisorTypeEnumVO {
                                           VectorStore vectorStore,
                                           IRagKnowledgeRepository ragKnowledgeRepository,
                                           ObservabilityService observabilityService,
-                                          SkillRegistry skillRegistry);
+                                          SkillRegistry skillRegistry,
+                                          ConversationContextProvider conversationContextProvider,
+                                          SpringAiConversationMemoryRepository springAiConversationMemoryRepository);
 
     public static AiClientAdvisorTypeEnumVO getByCode(String code) {
         AiClientAdvisorTypeEnumVO enumVO = CODE_MAP.get(code);

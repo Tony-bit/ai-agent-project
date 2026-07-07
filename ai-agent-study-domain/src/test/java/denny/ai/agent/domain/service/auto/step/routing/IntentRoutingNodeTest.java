@@ -10,11 +10,12 @@ import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.model.entity.RoutingConversationContext;
 import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -32,6 +33,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,7 +49,7 @@ public class IntentRoutingNodeTest {
     private IntentRoutingService intentRoutingService;
 
     @Mock
-    private ChatMemoryPersistenceService chatMemoryPersistenceService;
+    private ConversationContextProvider conversationContextProvider;
 
     @Mock
     private Step1AnalyzerNode step1AnalyzerNode;
@@ -77,7 +79,7 @@ public class IntentRoutingNodeTest {
     public void setUp() throws Exception {
         intentRoutingNode = new IntentRoutingNode();
         setField(intentRoutingNode, "intentRoutingService", intentRoutingService);
-        setField(intentRoutingNode, "chatMemoryPersistenceService", chatMemoryPersistenceService);
+        setField(intentRoutingNode, "conversationContextProvider", conversationContextProvider);
         setField(intentRoutingNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(intentRoutingNode, "intelligentInspection", intelligentInspection);
         setField(intentRoutingNode, "generalChatNode", generalChatNode);
@@ -100,11 +102,12 @@ public class IntentRoutingNodeTest {
                 .sessionId("test-session-123")
                 .message("测试消息")
                 .build();
+        lenient().when(conversationContextProvider.getRoutingContext(anyString()))
+                .thenReturn(RoutingConversationContext.builder().historyMessages(List.of()).build());
     }
 
     @Test
     public void testDoApplyUsesUnifiedRoutingService() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
@@ -116,7 +119,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testMultiTaskWritesTaskList() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(MultiIntentRoutingResult.builder()
                         .multiTask(true)
@@ -137,7 +139,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testNeedsClarificationReturnsPrompt() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(MultiIntentRoutingResult.builder()
                         .multiTask(false)
@@ -156,7 +157,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testSingleTaskPERetrievalRouting() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
@@ -169,7 +169,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testSingleTaskGeneralChatRouting() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.GENERAL_CHAT, "generalChatNode"));
 
@@ -182,7 +181,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testStockSlotStoredInContext() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
 
@@ -205,7 +203,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_route_to_trading_node_when_intent_is_stock_analysis() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
         when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingIntentRoutingNode);
@@ -219,7 +216,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_keep_single_task_context_mapping_compatible_after_unified_routing() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
@@ -233,7 +229,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_keep_downstream_node_selection_unchanged_after_mainline_switch() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_REASONING, "step1AnalyzerNode"));
 
@@ -246,7 +241,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_fallback_to_general_chat_when_trading_node_is_missing() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
         when(applicationContext.getBean("tradingIntentRoutingNode")).thenThrow(new RuntimeException("missing bean"));
@@ -260,7 +254,6 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_pass_intent_routing_config_to_service_when_unified_routing_is_called() throws Exception {
-        when(chatMemoryPersistenceService.getConversationHistory(anyString())).thenReturn(List.of());
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 

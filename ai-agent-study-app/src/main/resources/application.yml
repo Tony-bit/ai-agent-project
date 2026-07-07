@@ -191,6 +191,11 @@ chat:
     enabled: true
     redis-ttl-hours: 24
     max-cache-size: 20
+    runtime-window-size: 20
+    redis-cache-size: 20
+    compression-trigger-size: 20
+    local-cache-ttl-minutes: 60
+    local-cache-max-sessions: 10000
 
 logging:
   level:

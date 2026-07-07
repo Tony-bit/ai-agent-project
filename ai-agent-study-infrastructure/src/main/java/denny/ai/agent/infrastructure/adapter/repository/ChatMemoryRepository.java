@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.adapter.repository.IChatMemoryRepository;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ChatSessionEntity;
+import denny.ai.agent.domain.model.entity.ConversationRuntimeWindow;
 import denny.ai.agent.infrastructure.dao.IChatMessageDao;
 import denny.ai.agent.infrastructure.dao.IChatSessionDao;
 import denny.ai.agent.infrastructure.dao.po.ChatMessagePO;
@@ -78,19 +79,36 @@ public class ChatMemoryRepository implements IChatMemoryRepository {
 
     @Override
     public void cacheMessagesToRedis(String sessionId, List<ChatMessageEntity> messages, int maxSize) {
+        ConversationRuntimeWindow window = ConversationRuntimeWindow.builder()
+                .sessionId(sessionId)
+                .runtimeVersion(resolveVersion(messages))
+                .durableVersion(resolveVersion(messages))
+                .source(ConversationRuntimeWindow.SOURCE_DURABLE_REBUILD)
+                .durable(true)
+                .recentMessages(limitMessages(messages, maxSize))
+                .updatedAt(LocalDateTime.now())
+                .build();
+        cacheRuntimeWindowToRedis(sessionId, window, maxSize);
+    }
+
+    @Override
+    public void cacheRuntimeWindowToRedis(String sessionId, ConversationRuntimeWindow window, int maxSize) {
         if (stringRedisTemplate == null) {
             log.warn("StringRedisTemplate 未配置，跳过 Redis 缓存: sessionId={}", sessionId);
             return;
         }
         try {
-            List<ChatMessageEntity> limited = messages.size() > maxSize
-                    ? messages.subList(messages.size() - maxSize, messages.size())
-                    : messages;
-
+            window.setSessionId(sessionId);
+            window.setRecentMessages(limitMessages(window.getRecentMessages(), maxSize));
+            if (window.getUpdatedAt() == null) {
+                window.setUpdatedAt(LocalDateTime.now());
+            }
             String key = REDIS_KEY_PREFIX + sessionId;
-            String json = JSON.toJSONString(limited);
+            String json = JSON.toJSONString(window);
             stringRedisTemplate.opsForValue().set(key, json, redisTtlHours, TimeUnit.HOURS);
-            log.info("会话 {} 缓存到 Redis，消息条数={}, TTL={}h", sessionId, limited.size(), redisTtlHours);
+            log.info("会话 {} 缓存到 Redis，消息条数={}, durable={}, TTL={}h", sessionId,
+                    window.getRecentMessages() != null ? window.getRecentMessages().size() : 0,
+                    window.isDurable(), redisTtlHours);
         } catch (Exception e) {
             log.error("缓存消息到 Redis 失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
         }
@@ -98,20 +116,40 @@ public class ChatMemoryRepository implements IChatMemoryRepository {
 
     @Override
     public List<ChatMessageEntity> getCachedMessagesFromRedis(String sessionId) {
+        ConversationRuntimeWindow window = getCachedRuntimeWindowFromRedis(sessionId);
+        return window == null || window.getRecentMessages() == null
+                ? Collections.emptyList()
+                : window.getRecentMessages();
+    }
+
+    @Override
+    public ConversationRuntimeWindow getCachedRuntimeWindowFromRedis(String sessionId) {
         if (stringRedisTemplate == null) {
             log.warn("StringRedisTemplate 未配置，跳过 Redis 读取: sessionId={}", sessionId);
-            return Collections.emptyList();
+            return null;
         }
         try {
             String key = REDIS_KEY_PREFIX + sessionId;
             String json = stringRedisTemplate.opsForValue().get(key);
             if (json == null || json.isEmpty()) {
-                return Collections.emptyList();
+                return null;
             }
-            return JSON.parseArray(json, ChatMessageEntity.class);
+            if (json.trim().startsWith("[")) {
+                List<ChatMessageEntity> messages = JSON.parseArray(json, ChatMessageEntity.class);
+                return ConversationRuntimeWindow.builder()
+                        .sessionId(sessionId)
+                        .runtimeVersion(resolveVersion(messages))
+                        .durableVersion(resolveVersion(messages))
+                        .source(ConversationRuntimeWindow.SOURCE_DURABLE_REBUILD)
+                        .durable(true)
+                        .recentMessages(messages)
+                        .updatedAt(LocalDateTime.now())
+                        .build();
+            }
+            return JSON.parseObject(json, ConversationRuntimeWindow.class);
         } catch (Exception e) {
             log.error("从 Redis 读取缓存消息失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
-            return Collections.emptyList();
+            return null;
         }
     }
 
@@ -184,5 +222,28 @@ public class ChatMemoryRepository implements IChatMemoryRepository {
                 .traceId(po.getTraceId())
                 .createTime(po.getCreateTime())
                 .build();
+    }
+
+    private List<ChatMessageEntity> limitMessages(List<ChatMessageEntity> messages, int maxSize) {
+        if (messages == null || messages.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int effectiveMaxSize = maxSize > 0 ? maxSize : maxCacheSize;
+        if (messages.size() <= effectiveMaxSize) {
+            return List.copyOf(messages);
+        }
+        return List.copyOf(messages.subList(messages.size() - effectiveMaxSize, messages.size()));
+    }
+
+    private long resolveVersion(List<ChatMessageEntity> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        return messages.stream()
+                .map(ChatMessageEntity::getMessageIndex)
+                .filter(index -> index != null)
+                .mapToLong(Integer::longValue)
+                .max()
+                .orElse(messages.size());
     }
 }

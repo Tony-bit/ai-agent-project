@@ -7,8 +7,9 @@ import denny.ai.agent.domain.model.valobj.QueryDecompositionResult;
 import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.RoutingStageMetric;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
+import denny.ai.agent.domain.model.entity.RoutingConversationContext;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -25,13 +26,14 @@ import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class QueryDecompositionNodeTest {
     @Mock private IntentRoutingService intentRoutingService;
-    @Mock private ChatMemoryPersistenceService chatMemoryPersistenceService;
+    @Mock private ConversationContextProvider conversationContextProvider;
     @Mock private TaskRoutingSlotNode taskRoutingSlotNode;
 
     private QueryDecompositionNode node;
@@ -42,13 +44,15 @@ public class QueryDecompositionNodeTest {
         node = new QueryDecompositionNode();
         set(node, "intentRoutingService", intentRoutingService);
         set(node, "taskGraphValidator", new TaskGraphValidator());
-        set(node, "chatMemoryPersistenceService", chatMemoryPersistenceService);
+        set(node, "conversationContextProvider", conversationContextProvider);
         set(node, "taskRoutingSlotNode", taskRoutingSlotNode);
         context = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         HashMap<String, AiAgentClientFlowConfigVO> configs = new HashMap<>();
         configs.put(AiClientTypeEnumVO.INTENT_ROUTING.getCode(),
                 AiAgentClientFlowConfigVO.builder().clientId("routing").build());
         context.setAiAgentClientFlowConfigVOMap(configs);
+        when(conversationContextProvider.getDecompositionContext(anyString()))
+                .thenReturn(RoutingConversationContext.builder().historyMessages(List.of()).build());
     }
 
     @Test
@@ -62,7 +66,6 @@ public class QueryDecompositionNodeTest {
         RoutingStageMetric metric = RoutingStageMetric.builder()
                 .stageName("query-decomposition").callIndex(0).promptTokens(1)
                 .completionTokens(1).totalTokens(2).estimatedTokens(true).success(true).build();
-        when(chatMemoryPersistenceService.getConversationHistory(any())).thenReturn(List.of());
         when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
 
@@ -114,7 +117,6 @@ public class QueryDecompositionNodeTest {
                 .estimatedTokens(false)
                 .success(true)
                 .build();
-        when(chatMemoryPersistenceService.getConversationHistory(any())).thenReturn(List.of());
         when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(invalid, metric));
         when(intentRoutingService.fallbackDecomposition(eq("task"), contains("Task graph validation failed")))
