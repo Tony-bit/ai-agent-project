@@ -30,6 +30,8 @@ class DashscopeEmbeddingModelTest {
             String apiUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/compatible-mode/v1/embeddings";
             DashscopeEmbeddingModel model = new DashscopeEmbeddingModel(apiUrl, "test-key", "text-embedding-v3", 768);
 
+            assertEquals(768, model.dimensions());
+
             float[] vector = model.embed("hello");
 
             assertArrayEquals(new float[]{0.1f, 0.2f, 0.3f}, vector);

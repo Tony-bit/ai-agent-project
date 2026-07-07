@@ -31,17 +31,18 @@ public class AiAgentConfig {
             @Value("${rag.embedding.config.base-url}") String apiUrl,
             @Value("${rag.embedding.config.api-key}") String apiKey,
             @Value("${rag.embedding.config.model:text-embedding-v3}") String model,
-            @Value("${rag.embedding.config.dimension:768}") Integer dimension) {
-        Integer actualDimension = (dimension == null || dimension <= 0) ? null : dimension;
-        return new DashscopeEmbeddingModel(apiUrl, apiKey, model, actualDimension);
+            @Value("${rag.embedding.config.dimension}") Integer dimension) {
+        return new DashscopeEmbeddingModel(apiUrl, apiKey, model, resolveEmbeddingDimension(dimension));
     }
 
     @Bean
     @Primary
     public PgVectorStore pgVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
-                                      @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
+                                      @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel,
+                                      @Value("${rag.embedding.config.dimension}") Integer dimension) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
                 .vectorTableName("store_openai")
+                .dimensions(resolveEmbeddingDimension(dimension))
                 .build();
     }
 
@@ -58,14 +59,23 @@ public class AiAgentConfig {
      */
     @Bean
     public PgVectorStore intentFewshotVectorStore(@Qualifier("pgVectorJdbcTemplate") JdbcTemplate jdbcTemplate,
-                                                 @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel) {
+                                                 @Qualifier("customDashscopeEmbeddingModel") EmbeddingModel embeddingModel,
+                                                 @Value("${rag.embedding.config.dimension}") Integer dimension) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
                 .vectorTableName("intent_fewshot_vector_store")
+                .dimensions(resolveEmbeddingDimension(dimension))
                 .build();
     }
 
     @Bean
     public TokenTextSplitter tokenTextSplitter() {
         return new TokenTextSplitter();
+    }
+
+    private int resolveEmbeddingDimension(Integer dimension) {
+        if (dimension == null || dimension <= 0) {
+            throw new IllegalArgumentException("rag.embedding.config.dimension must be configured with a positive value");
+        }
+        return dimension;
     }
 }

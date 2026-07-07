@@ -107,6 +107,14 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
     }
 
     @Override
+    public int dimensions() {
+        if (dimension != null && dimension > 0) {
+            return dimension;
+        }
+        return EmbeddingModel.super.dimensions();
+    }
+
+    @Override
     public float[] embed(Document document) {
         if (document == null || document.getText() == null) {
             return new float[0];
