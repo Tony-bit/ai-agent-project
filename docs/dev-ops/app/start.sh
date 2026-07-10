@@ -1,20 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONTAINER_NAME=ai-agent-study
-IMAGE_NAME=system/ai-agent-study:1.0
-PORT=8091
 
-echo "容器部署开始 ${CONTAINER_NAME}"
+cd "${DEPLOY_DIR}"
 
-# 停止容器
-docker stop ${CONTAINER_NAME}
+if [ ! -f .env ]; then
+  echo "缺少 ${DEPLOY_DIR}/.env，请先复制 .env.example 并填入云端容器地址和密钥。"
+  exit 1
+fi
 
-# 删除容器
-docker rm ${CONTAINER_NAME}
+echo "应用容器部署开始 ${CONTAINER_NAME}"
 
-# 启动容器
-docker run --name ${CONTAINER_NAME} \
--p ${PORT}:${PORT} \
--d ${IMAGE_NAME}
+docker compose -f docker-compose-app.yml up -d
 
-echo "容器部署成功 ${CONTAINER_NAME}"
-
+echo "应用容器部署成功 ${CONTAINER_NAME}"
 docker logs -f ${CONTAINER_NAME}

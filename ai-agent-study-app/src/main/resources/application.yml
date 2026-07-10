@@ -47,7 +47,7 @@ spring:
               port: ${POSTGRES_PORT:15432}
               dbname: ${POSTGRES_DB:ai-rag-knowledge}
               user: ${POSTGRES_USER:postgres}
-              password: ${POSTGRES_PASSWORD:123}
+              password: ${POSTGRES_PASSWORD:postgres}
               collection-name: ${POSTGRES_COLLECTION_NAME:memories}
 #          graph-store:
 #            provider: neo4j
@@ -83,9 +83,9 @@ spring:
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
-      username: postgres
-      password: postgres
-      url: jdbc:postgresql://localhost:15432/ai-rag-knowledge
+      username: ${PGVECTOR_USER:${POSTGRES_USER:postgres}}
+      password: ${PGVECTOR_PASSWORD:${POSTGRES_PASSWORD:postgres}}
+      url: ${PGVECTOR_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:15432}/${POSTGRES_DB:ai-rag-knowledge}}
       type: com.zaxxer.hikari.HikariDataSource
       # hikari连接池配置
       hikari:
@@ -167,8 +167,9 @@ mybatis:
 redis:
   sdk:
     config:
-      host: localhost
+      host: 111.228.9.124
       port: 16379
+      password: ${REDIS_PASSWORD:po4563}
       pool-size: 10
       min-idle-size: 5
       idle-timeout: 30000
