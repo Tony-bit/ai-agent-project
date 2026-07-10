@@ -1,17 +1,20 @@
 package denny.ai.agent.domain.model.valobj.enums;
 
+import com.alibaba.cloud.ai.graph.skills.SpringAiSkillAdvisor;
+import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.service.armory.factory.element.ObservabilityAdvisor;
 import denny.ai.agent.domain.service.armory.factory.element.RagAnswerAdvisor;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextAdvisor;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
+import denny.ai.agent.domain.service.chatmemory.SpringAiConversationMemoryRepository;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
-import com.alibaba.cloud.ai.memory.mem0.advisor.Mem0ChatMemoryAdvisor;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 
@@ -27,6 +30,7 @@ import java.util.Map;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
+@Slf4j
 public enum AiClientAdvisorTypeEnumVO {
 
     CHAT_MEMORY("ChatMemory", "上下文记忆（内存模式）") {
@@ -34,23 +38,14 @@ public enum AiClientAdvisorTypeEnumVO {
         public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
-                                     ObservabilityService observabilityService) {
+                                     ObservabilityService observabilityService,
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             AiClientAdvisorVO.ChatMemory chatMemory = aiClientAdvisorVO.getChatMemory();
-            return MessageChatMemoryAdvisor.builder(
-                    MessageWindowChatMemory.builder()
-                            .maxMessages(chatMemory.getMaxMessages())
-                            .build()
-            ).build();
-        }
-    },
-
-    MEM0_MEMORY("Mem0Memory", "Mem0 长期记忆") {
-        @Override
-        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
-                                     VectorStore vectorStore,
-                                     IRagKnowledgeRepository ragKnowledgeRepository,
-                                     ObservabilityService observabilityService) {
-            return Mem0ChatMemoryAdvisor.builder(vectorStore).build();
+            int maxMessages = chatMemory == null ? 20 : chatMemory.getMaxMessages();
+            return new ConversationContextAdvisor(conversationContextProvider,
+                    springAiConversationMemoryRepository, maxMessages);
         }
     },
 
@@ -59,7 +54,10 @@ public enum AiClientAdvisorTypeEnumVO {
         public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
-                                     ObservabilityService observabilityService) {
+                                     ObservabilityService observabilityService,
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             AiClientAdvisorVO.RagAnswer ragAnswer = aiClientAdvisorVO.getRagAnswer();
             return new RagAnswerAdvisor(ragKnowledgeRepository, SearchRequest.builder()
                     .topK(ragAnswer.getTopK())
@@ -73,8 +71,28 @@ public enum AiClientAdvisorTypeEnumVO {
         public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
                                      VectorStore vectorStore,
                                      IRagKnowledgeRepository ragKnowledgeRepository,
-                                     ObservabilityService observabilityService) {
+                                     ObservabilityService observabilityService,
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
             return new ObservabilityAdvisor(observabilityService);
+        }
+    },
+
+    TRADING_SKILL("TradingSkill", "交易技能（渐进式披露）") {
+        @Override
+        public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
+                                     VectorStore vectorStore,
+                                     IRagKnowledgeRepository ragKnowledgeRepository,
+                                     ObservabilityService observabilityService,
+                                     SkillRegistry skillRegistry,
+                                     ConversationContextProvider conversationContextProvider,
+                                     SpringAiConversationMemoryRepository springAiConversationMemoryRepository) {
+            log.info("创建交易技能 Advisor: {}", this.name());
+            return SpringAiSkillAdvisor.builder()
+                    .skillRegistry(skillRegistry)
+                    .lazyLoad(true)
+                    .build();
         }
     }
 
@@ -83,32 +101,22 @@ public enum AiClientAdvisorTypeEnumVO {
     private String code;
     private String info;
 
-    // 静态Map缓存，用于快速查找
     private static final Map<String, AiClientAdvisorTypeEnumVO> CODE_MAP = new HashMap<>();
 
-    // 静态初始化块，在类加载时初始化Map
     static {
         for (AiClientAdvisorTypeEnumVO enumVO : values()) {
             CODE_MAP.put(enumVO.getCode(), enumVO);
         }
     }
 
-    /**
-     * 策略方法：创建顾问对象
-     * @param aiClientAdvisorVO 顾问配置对象
-     * @param vectorStore 向量存储
-     * @return 顾问对象
-     */
     public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO,
                                           VectorStore vectorStore,
                                           IRagKnowledgeRepository ragKnowledgeRepository,
-                                          ObservabilityService observabilityService);
+                                          ObservabilityService observabilityService,
+                                          SkillRegistry skillRegistry,
+                                          ConversationContextProvider conversationContextProvider,
+                                          SpringAiConversationMemoryRepository springAiConversationMemoryRepository);
 
-    /**
-     * 根据code获取枚举
-     * @param code 编码
-     * @return 枚举对象
-     */
     public static AiClientAdvisorTypeEnumVO getByCode(String code) {
         AiClientAdvisorTypeEnumVO enumVO = CODE_MAP.get(code);
         if (enumVO == null) {

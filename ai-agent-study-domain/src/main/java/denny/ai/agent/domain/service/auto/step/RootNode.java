@@ -6,6 +6,9 @@ import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
+import denny.ai.agent.domain.service.auto.step.routing.QueryDecompositionNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +29,12 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Resource
     private IntentRoutingNode intentRoutingNode;
+
+    @Resource
+    private QueryDecompositionNode queryDecompositionNode;
+
+    @Resource
+    private IntentRoutingProperties intentRoutingProperties = new IntentRoutingProperties();
 
     @Resource
     private Step1AnalyzerNode step1AnalyzerNode;
@@ -52,13 +61,17 @@ public class RootNode extends AbstractExecuteSupport {
         // 当前任务信息
         dynamicContext.setCurrentTask(requestParameter.getMessage());
         // 最大任务步骤
-        dynamicContext.setMaxStep(requestParameter.getMaxStep());
+        Integer maxStep = requestParameter.getMaxStep();
+        dynamicContext.setMaxStep(maxStep != null ? maxStep : 1);
 
         log.debug(">>> [RootNode.doApply] router前检查 - currentTask={}, dataObjects={}",
                 dynamicContext.getCurrentTask(),
                 dynamicContext.getDataObjects().keySet());
 
         long startAt = System.currentTimeMillis();
+        // 统一注入用户画像（幂等：子节点已注入则跳过）
+        injectPersonaContext(dynamicContext, requestParameter);
+
         String result = router(requestParameter, dynamicContext);
         long latencyMs = System.currentTimeMillis() - startAt;
 
@@ -80,7 +93,8 @@ public class RootNode extends AbstractExecuteSupport {
             Map<String, AiAgentClientFlowConfigVO> intentRoutingConfigMap =
                     repository.queryAllFlowConfigForIntentRouting();
             dynamicContext.setAiAgentClientFlowConfigVOMap(intentRoutingConfigMap);
-            return intentRoutingNode;
+            return intentRoutingProperties.getMode() == IntentRoutingMode.SPLIT
+                    ? queryDecompositionNode : intentRoutingNode;
         }
 
         // 巡检 Agent（aiAgentId = "5"）走独立流程
@@ -125,6 +139,13 @@ public class RootNode extends AbstractExecuteSupport {
         // 通用对话流：generalChatResponse
         if (output == null) {
             output = dynamicContext.getValue("generalChatResponse");
+        }
+        // Clarification flows: persist the question so the next turn can use it as history.
+        if (output == null) {
+            output = dynamicContext.getValue("clarificationPrompt");
+        }
+        if (output == null) {
+            output = dynamicContext.getValue("clarification_question");
         }
         String clientId = "RESPONSE_ASSISTANT";
 

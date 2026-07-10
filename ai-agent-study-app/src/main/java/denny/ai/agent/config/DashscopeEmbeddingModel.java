@@ -20,10 +20,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 public class DashscopeEmbeddingModel implements EmbeddingModel {
+
+    private static final String DEFAULT_ENCODING_FORMAT = "float";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -53,21 +54,11 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
         try {
             DashscopeEmbeddingRequest req = new DashscopeEmbeddingRequest();
             req.setModel(model);
-
-            DashscopeEmbeddingRequest.Input input = new DashscopeEmbeddingRequest.Input();
-            List<DashscopeEmbeddingRequest.ContentItem> contents = instructions.stream().map(text -> {
-                DashscopeEmbeddingRequest.ContentItem item = new DashscopeEmbeddingRequest.ContentItem();
-                item.setText(text);
-                return item;
-            }).collect(Collectors.toList());
-            input.setContents(contents);
-            req.setInput(input);
-
-            DashscopeEmbeddingRequest.Parameters parameters = new DashscopeEmbeddingRequest.Parameters();
+            req.setInput(new ArrayList<>(instructions));
             if (dimension != null && dimension > 0) {
-                parameters.setDimension(dimension);
+                req.setDimensions(dimension);
             }
-            req.setParameters(parameters);
+            req.setEncodingFormat(DEFAULT_ENCODING_FORMAT);
 
             String body = objectMapper.writeValueAsString(req);
 
@@ -87,19 +78,16 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
             }
 
             DashscopeEmbeddingResponse embeddingResponse = objectMapper.readValue(response.body(), DashscopeEmbeddingResponse.class);
-            if (embeddingResponse == null || embeddingResponse.getOutput() == null || embeddingResponse.getOutput().getEmbeddings() == null) {
-                throw new IllegalStateException("DashScope embedding 响应缺少 output.embeddings");
+            if (embeddingResponse == null || embeddingResponse.getData() == null) {
+                throw new IllegalStateException("DashScope embedding 响应缺少 data");
             }
 
             List<Embedding> results = new ArrayList<>();
-            for (DashscopeEmbeddingResponse.EmbeddingItem item : embeddingResponse.getOutput().getEmbeddings()) {
+            for (DashscopeEmbeddingResponse.EmbeddingItem item : embeddingResponse.getData()) {
                 if (item == null || item.getEmbedding() == null || item.getEmbedding().isEmpty()) {
                     continue;
                 }
-                String type = item.getType();
-                if (type != null && !("text".equalsIgnoreCase(type) || "vl".equalsIgnoreCase(type))) {
-                    continue;
-                }
+
                 float[] vector = new float[item.getEmbedding().size()];
                 for (int i = 0; i < item.getEmbedding().size(); i++) {
                     vector[i] = item.getEmbedding().get(i).floatValue();
@@ -108,7 +96,7 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
             }
 
             if (results.isEmpty()) {
-                throw new IllegalStateException("DashScope embedding 响应中无可用 text 向量");
+                throw new IllegalStateException("DashScope embedding 响应中无可用向量");
             }
 
             return new EmbeddingResponse(results);
@@ -116,6 +104,14 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
             log.error("DashScope embedding 调用异常, url={}, model={}, dimension={}", apiUrl, model, dimension, e);
             throw new RuntimeException("DashScope embedding 调用异常, url=" + apiUrl + ", model=" + model + ", dimension=" + dimension, e);
         }
+    }
+
+    @Override
+    public int dimensions() {
+        if (dimension != null && dimension > 0) {
+            return dimension;
+        }
+        return EmbeddingModel.super.dimensions();
     }
 
     @Override
@@ -129,43 +125,24 @@ public class DashscopeEmbeddingModel implements EmbeddingModel {
     @Data
     private static class DashscopeEmbeddingRequest {
         private String model;
-        private Input input;
-        private Parameters parameters;
+        private List<String> input;
+        private Integer dimensions;
 
-        @Data
-        private static class Input {
-            @JsonProperty("contents")
-            private List<ContentItem> contents;
-        }
-
-        @Data
-        private static class ContentItem {
-            private String text;
-        }
-
-        @Data
-        private static class Parameters {
-            private Integer dimension;
-        }
+        @JsonProperty("encoding_format")
+        private String encodingFormat;
     }
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class DashscopeEmbeddingResponse {
-        private Output output;
-
-        @Data
-        @JsonIgnoreProperties(ignoreUnknown = true)
-        private static class Output {
-            private List<EmbeddingItem> embeddings;
-        }
+        private List<EmbeddingItem> data;
 
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         private static class EmbeddingItem {
             private Integer index;
+
             private List<Double> embedding;
-            private String type;
         }
     }
 }

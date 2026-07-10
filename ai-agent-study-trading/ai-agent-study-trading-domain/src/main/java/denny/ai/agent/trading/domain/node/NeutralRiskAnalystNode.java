@@ -87,6 +87,10 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("中性风控分析师调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过中性风控分析师LLM调用");
+            return "";
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

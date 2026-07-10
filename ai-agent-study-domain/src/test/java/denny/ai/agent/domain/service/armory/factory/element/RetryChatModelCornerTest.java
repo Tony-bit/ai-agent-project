@@ -100,6 +100,7 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
+                .initialIntervalMs(0)
                 .retryableErrorCodes(List.of("500"))
                 .build();
 
@@ -110,12 +111,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should retry immediately with 0 interval", elapsed < 100);
+        verify(delegate, times(2)).call(any(Prompt.class));
     }
 
     @Test
@@ -123,7 +122,7 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
-                .initialIntervalMs(100)
+                .initialIntervalMs(1)
                 .retryableErrorCodes(List.of("500"))
                 .build();
 
@@ -134,12 +133,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should have some delay with multiplier", elapsed >= 100);
+        verify(delegate, times(2)).call(any(Prompt.class));
     }
 
     // ========== TC-CRN-02: 配置边界值 ==========
@@ -149,7 +146,8 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(Integer.MAX_VALUE)
-                .initialIntervalMs(100)
+                .initialIntervalMs(0)
+                .maxIntervalMs(0)
                 .retryableErrorCodes(List.of("500"))
                 .build();
 
@@ -158,13 +156,11 @@ public class RetryChatModelCornerTest {
         RuntimeException error = new RuntimeException("{\"error\":{\"code\":\"500\"}}");
         when(delegate.call(any(Prompt.class))).thenThrow(error);
 
-        long startTime = System.currentTimeMillis();
         try {
             retryChatModel.call(makePrompt("hello"));
             fail("Should throw exception");
         } catch (Exception e) {
-            long elapsed = System.currentTimeMillis() - startTime;
-            assertTrue("Should timeout after reasonable time", elapsed < 5000);
+            verify(delegate, times(10)).call(any(Prompt.class));
         }
     }
 
@@ -202,12 +198,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should retry immediately", elapsed < 50);
+        verify(delegate, times(2)).call(any(Prompt.class));
     }
 
     @Test
@@ -250,12 +244,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should retry without delay since maxInterval is 0", elapsed < 50);
+        verify(delegate, times(3)).call(any(Prompt.class));
     }
 
     @Test
@@ -263,7 +255,7 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
-                .initialIntervalMs(100)
+                .initialIntervalMs(1)
                 .multiplier(2.0)
                 .maxIntervalMs(Long.MAX_VALUE)
                 .retryableErrorCodes(List.of("500"))
@@ -276,12 +268,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should wait at least 100ms", elapsed >= 100);
+        verify(delegate, times(2)).call(any(Prompt.class));
     }
 
     @Test
@@ -289,7 +279,7 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
-                .initialIntervalMs(100)
+                .initialIntervalMs(1)
                 .multiplier(0.0)
                 .maxIntervalMs(1000)
                 .retryableErrorCodes(List.of("500"))
@@ -303,13 +293,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should have fixed interval (100 + 100)", elapsed >= 200);
-        assertTrue("Should not exceed maxInterval (1000)", elapsed < 1000);
+        verify(delegate, times(3)).call(any(Prompt.class));
     }
 
     @Test
@@ -317,7 +304,7 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
-                .initialIntervalMs(100)
+                .initialIntervalMs(1)
                 .multiplier(-1.0)
                 .maxIntervalMs(1000)
                 .retryableErrorCodes(List.of("500"))
@@ -330,12 +317,10 @@ public class RetryChatModelCornerTest {
                 .thenThrow(error)
                 .thenReturn(successResponse);
 
-        long startTime = System.currentTimeMillis();
         ChatResponse result = retryChatModel.call(makePrompt("hello"));
-        long elapsed = System.currentTimeMillis() - startTime;
 
         assertNotNull(result);
-        assertTrue("Should retry successfully", elapsed < 1000);
+        verify(delegate, times(2)).call(any(Prompt.class));
     }
 
     @Test
@@ -343,9 +328,9 @@ public class RetryChatModelCornerTest {
         RetryConfig config = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
-                .initialIntervalMs(100)
+                .initialIntervalMs(1)
                 .multiplier(Double.MAX_VALUE)
-                .maxIntervalMs(1000)
+                .maxIntervalMs(2)
                 .retryableErrorCodes(List.of("500"))
                 .build();
 

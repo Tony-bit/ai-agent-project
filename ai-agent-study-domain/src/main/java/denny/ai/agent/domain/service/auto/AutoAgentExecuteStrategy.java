@@ -38,6 +38,8 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         dynamicContext.setExecutionHistory(new StringBuilder());
         dynamicContext.setCurrentTask(executeCommandEntity.getMessage());
         dynamicContext.setValue("emitter", emitter);
+        dynamicContext.setValue("sessionId", executeCommandEntity.getSessionId());
+        dynamicContext.setValue("userId", executeCommandEntity.getUserId());
 
         log.info(">>> [AutoAgentExecuteStrategy.execute] dynamicContext创建, hashCode={}, dataObjects={}",
                 System.identityHashCode(dynamicContext), dynamicContext.getDataObjects().keySet());
@@ -57,21 +59,34 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
 
         log.info("开始执行处理器链，agentType={}, aiAgentId={}", executeCommandEntity.getAgentType(), executeCommandEntity.getAiAgentId());
 
-        String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
-        log.info("测试结果:{}", apply);
+        try {
+            String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
+            log.info("测试结果:{}", apply);
+        } catch (Exception e) {
+            log.error("节点链执行异常: {}", e.getMessage(), e);
+            safeComplete(emitter, "执行异常：" + e.getMessage());
+            return;
+        }
 
-        // 关闭 SSE 流（完成标识已在内部节点发送，此处不再重复发送）
-        ResponseBodyEmitter emitter2 = dynamicContext.getValue("emitter");
-        if (emitter2 == null) {
-            log.error("【SSE致命错误】execute方法中的emitter为空！");
-        } else {
-            try {
-                log.info(">>> [AutoAgentStrategy] 准备关闭SSE流");
-                emitter2.complete();
-                log.info("<<< [AutoAgentStrategy] SSE流已关闭");
-            } catch (Exception e) {
-                log.error("【SSE致命错误】关闭SSE流失败：{}", e.getMessage(), e);
+        // 关闭 SSE 流
+        safeComplete(emitter, null);
+    }
+
+    /**
+     * 安全关闭 SSE 流
+     */
+    private void safeComplete(ResponseBodyEmitter emitter, String errorMessage) {
+        if (emitter == null) {
+            return;
+        }
+        try {
+            if (errorMessage != null && !errorMessage.isEmpty()) {
+                String sseData = "data: {\"type\":\"error\",\"content\":\"" + errorMessage + "\"}\n\n";
+                emitter.send(sseData);
             }
+            emitter.complete();
+        } catch (Exception e) {
+            log.warn("SSE 流关闭异常: error={}, msg={}", e.getMessage(), errorMessage);
         }
     }
 

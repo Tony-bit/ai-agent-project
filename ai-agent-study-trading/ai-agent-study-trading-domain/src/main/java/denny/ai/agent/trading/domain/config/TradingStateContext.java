@@ -2,6 +2,7 @@ package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext;
+import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
 /**
@@ -24,6 +26,8 @@ public class TradingStateContext {
     private static final List<AnalystTypeEnum> DEFAULT_ANALYST_LIST = List.of(
             AnalystTypeEnum.FUNDAMENTAL, AnalystTypeEnum.TECHNICAL,
             AnalystTypeEnum.SENTIMENT, AnalystTypeEnum.NEWS);
+    private static final String SSE_DISCONNECTED_KEY = "sseDisconnected";
+    private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
 
     private final StockAnalysisRequestVO request;
     private final DynamicContext dynamicContext;
@@ -38,6 +42,7 @@ public class TradingStateContext {
     private String latestDebateSpeaker;
     private String latestRiskSpeaker;
     private String errorMessage;
+    private final AtomicBoolean terminal = new AtomicBoolean(false);
 
     public TradingStateContext(StockAnalysisRequestVO request,
                                DynamicContext dynamicContext,
@@ -71,12 +76,36 @@ public class TradingStateContext {
      * 设置 ERROR 状态，发送 completed=true SSE
      */
     public void sendError(String msg) {
+        sendTerminalErrorOnce(msg);
+        countDownTaskLatch();
+    }
+
+    public boolean isTerminal() {
+        return terminal.get();
+    }
+
+    public boolean sendTerminalCompleteOnce() {
+        if (!terminal.compareAndSet(false, true)) {
+            log.debug("终态完成事件已发送，跳过重复发送");
+            return false;
+        }
+        sendSseResultBypassTerminalGuard("trading", "trading_complete", "交易分析完成", true);
+        return true;
+    }
+
+    public boolean sendTerminalErrorOnce(String msg) {
         this.errorMessage = msg;
         this.currentPhase = TradingPhase.ERROR;
         log.error("交易流程进入 ERROR 状态: {}", msg);
 
+        if (!terminal.compareAndSet(false, true)) {
+            log.debug("终态错误事件已发送，跳过重复发送: {}", msg);
+            return false;
+        }
+
         String friendlyMessage = getFriendlyErrorMessage(msg);
-        sendSseResult("trading", "error", friendlyMessage, true);
+        sendSseResultBypassTerminalGuard("trading", "error", friendlyMessage, true);
+        return true;
     }
 
     /**
@@ -144,9 +173,21 @@ public class TradingStateContext {
      * 发送 SSE 结果，含异常捕获
      */
     public void sendSseResult(String type, String subType, String content, boolean completed) {
+        if (terminal.get()) {
+            log.debug("交易流程已终态，丢弃 late SSE: type={}, subType={}", type, subType);
+            return;
+        }
+        sendSseResultBypassTerminalGuard(type, subType, content, completed);
+    }
+
+    private void sendSseResultBypassTerminalGuard(String type, String subType, String content, boolean completed) {
         try {
             if (sseSender == null || dynamicContext == null) {
                 log.warn("SSE sender 或 dynamicContext 为空，跳过发送");
+                return;
+            }
+            if (isSseDisconnected()) {
+                log.debug("SSE连接已断开，跳过发送: type={}, subType={}", type, subType);
                 return;
             }
             AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
@@ -159,21 +200,52 @@ public class TradingStateContext {
                     .build();
             sseSender.accept(type, event);
         } catch (Exception e) {
+            markSseDisconnected();
             log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
                     type, subType, e.getMessage());
+        }
+    }
+
+    private boolean isSseDisconnected() {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            return !sink.shouldContinue();
+        }
+        Object disconnected = dynamicContext.getValue(SSE_DISCONNECTED_KEY);
+        if (disconnected instanceof AtomicBoolean flag) {
+            return flag.get();
+        }
+        return Boolean.TRUE.equals(disconnected);
+    }
+
+    private void markSseDisconnected() {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            sink.markDisconnected(null);
+            return;
+        }
+        Object disconnected = dynamicContext.getValue(SSE_DISCONNECTED_KEY);
+        if (disconnected instanceof AtomicBoolean flag) {
+            flag.set(true);
+        } else {
+            dynamicContext.setValue(SSE_DISCONNECTED_KEY, true);
         }
     }
 
     /**
      * 通知交易流程结束，使 TradingStarter 的 latch countDown
      */
-    public void countDownTradingLatch() {
-        CountDownLatch latch = dynamicContext.getValue("tradingLatch");
+    public void countDownTaskLatch() {
+        CountDownLatch latch = dynamicContext.getValue("taskLatch");
         if (latch != null) {
-            latch.countDown();
-            log.info("交易流程全部完成，latch 倒计时");
+            if (latch.getCount() > 0) {
+                latch.countDown();
+                log.info("任务流程全部完成，taskLatch 倒计时");
+            } else {
+                log.debug("taskLatch 已经倒计时完成，跳过重复 countDown");
+            }
         } else {
-            log.warn("tradingLatch 不存在，可能已倒计时");
+            log.warn("taskLatch 不存在，可能已倒计时");
         }
     }
 

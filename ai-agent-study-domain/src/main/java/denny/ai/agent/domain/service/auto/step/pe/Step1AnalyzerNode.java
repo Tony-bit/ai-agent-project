@@ -4,13 +4,12 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
-import denny.ai.agent.domain.model.valobj.CrossSessionMemoryProperties;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import denny.ai.agent.domain.service.crossmemory.ICrossSessionMemoryCacheService;
+import denny.ai.agent.domain.service.auto.step.routing.ExecutorAdapter;
 import lombok.extern.slf4j.Slf4j;
-import jakarta.annotation.Resource;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,13 +24,35 @@ import org.springframework.stereotype.Service;
  */
 @Slf4j
 @Service
-public class Step1AnalyzerNode extends AbstractExecuteSupport {
+public class Step1AnalyzerNode extends AbstractExecuteSupport implements ExecutorAdapter {
 
-    @Resource
-    private ICrossSessionMemoryCacheService crossSessionMemoryCacheService;
+    @Override
+    public String executeSubTask(SubTask subTask,
+                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        log.info("Step1AnalyzerNode 执行子任务: taskId={}, content={}", subTask.getTaskId(), subTask.getContent());
 
-    @Resource
-    private CrossSessionMemoryProperties crossSessionMemoryProperties;
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .message(subTask.getContent())
+                .sessionId(dynamicContext.getValue("sessionId") != null
+                        ? dynamicContext.getValue("sessionId").toString() : null)
+                .userId(dynamicContext.getValue("userId") != null
+                        ? dynamicContext.getValue("userId").toString() : null)
+                .aiAgentId(dynamicContext.getValue("aiAgentId") != null
+                        ? dynamicContext.getValue("aiAgentId").toString() : null)
+                .build();
+
+        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap()
+                .get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
+        if (aiAgentClientFlowConfigVO == null) {
+            throw new IllegalStateException("未找到任务分析客户端配置，请确认智能体流程配置中已添加 TASK_ANALYZER_CLIENT 类型的节点");
+        }
+
+        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
+        String prompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
+                request.getMessage(), 1, 1, "[子任务执行]", dynamicContext.getValue("persona"));
+
+        return chatClient.prompt(prompt).call().content();
+    }
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -46,20 +67,6 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
             String traceId = observabilityService.startTrace(requestParameter.getSessionId(), requestParameter.getMessage(), metadata);
             dynamicContext.setTraceId(traceId);
             log.info("📡 Langfuse trace initialized, traceId={}", traceId);
-        }
-
-        // 跨会话情景记忆注入
-        if (crossSessionMemoryProperties.isInjectCrossSessionMemory()) {
-            try {
-                String formattedMemories = crossSessionMemoryCacheService.getCrossSessionMemories(requestParameter.getUserId());
-                dynamicContext.setValue("crossSessionMemories", formattedMemories);
-                log.info("已注入跨会话记忆到上下文, userId={}, hasMemory={}",
-                        requestParameter.getUserId(), !formattedMemories.isEmpty());
-            } catch (Exception e) {
-                log.warn("跨会话记忆检索失败，降级处理: userId={}, error={}",
-                        requestParameter.getUserId(), e.getMessage());
-                dynamicContext.setValue("crossSessionMemories", "");
-            }
         }
 
         // 获取配置信息
@@ -87,7 +94,7 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                     dynamicContext.getMaxStep(),
                     !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
                     dynamicContext.getCurrentTask(),
-                    dynamicContext.getValue("crossSessionMemories")
+                    dynamicContext.getValue("persona")
             );
 
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);

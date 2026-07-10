@@ -25,8 +25,8 @@
 -- 示例3: 意图识别 Few-Shot 样本数据
 -- INSERT INTO public.intent_fewshot_sample (query_text, intent_code, example_json, dimension, embedding, status)
 -- VALUES
---     ('帮我优化这段代码', 'CODE_OPTIMIZE', '{"intent": "CODE_OPTIMIZE", "confidence": 0.95}', 1536, '[0.1, 0.2, ...]::vector', 1),
---     ('今天天气怎么样', 'WEATHER_QUERY', '{"intent": "WEATHER_QUERY", "confidence": 0.98}', 1536, '[0.3, 0.4, ...]::vector', 1);
+--     ('帮我优化这段代码', 'CODE_OPTIMIZE', '{"intent": "CODE_OPTIMIZE", "confidence": 0.95}', 768, '[0.1, 0.2, ...]::vector', 1),
+--     ('今天天气怎么样', 'WEATHER_QUERY', '{"intent": "WEATHER_QUERY", "confidence": 0.98}', 768, '[0.3, 0.4, ...]::vector', 1);
 
 
 -- ===============================================================

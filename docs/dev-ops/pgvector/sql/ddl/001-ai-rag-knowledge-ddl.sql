@@ -22,7 +22,7 @@ CREATE TABLE public.store_openai (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     content     TEXT        NOT NULL,
     metadata    JSONB,
-    embedding   VECTOR(1536)
+    embedding   VECTOR(768)
 );
 
 -- 创建索引
@@ -39,7 +39,7 @@ CREATE TABLE public.vector_store_openai (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     content     TEXT        NOT NULL,
     metadata    JSONB,
-    embedding   VECTOR(1536)
+    embedding   VECTOR(768)
 );
 
 -- 创建索引
@@ -47,25 +47,20 @@ CREATE INDEX IF NOT EXISTS idx_vector_store_openai_embedding ON public.vector_st
 
 
 -- ===============================================================
--- 表3: intent_fewshot_sample - 意图识别 Few-Shot 样本表 (PG存储)
+-- 表3: intent_fewshot_vector_store - 意图识别 Few-Shot 向量索引表 (PgVectorStore)
 -- ===============================================================
 
-DROP TABLE IF EXISTS public.intent_fewshot_sample;
+DROP TABLE IF EXISTS public.intent_fewshot_vector_store;
 
-CREATE TABLE public.intent_fewshot_sample (
-    id              BIGSERIAL   PRIMARY KEY,
-    query_text      VARCHAR(1024)    NOT NULL,
-    intent_code     VARCHAR(64)       NOT NULL,
-    example_json    TEXT             NOT NULL,
-    dimension       INTEGER,
-    embedding       VECTOR(1536),
-    status          INTEGER          DEFAULT 1,
-    create_time     TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP        DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.intent_fewshot_vector_store (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content     TEXT        NOT NULL,
+    metadata    JSONB,
+    embedding   VECTOR(768)
 );
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_intent_code ON public.intent_fewshot_sample USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_intent_fewshot_vector_store_embedding ON public.intent_fewshot_vector_store USING ivfflat (embedding vector_cosine_ops);
 
 
 -- ===============================================================
@@ -112,9 +107,9 @@ CREATE TRIGGER update_memories_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_intent_fewshot_sample_updated_at ON public.intent_fewshot_sample;
-CREATE TRIGGER update_intent_fewshot_sample_updated_at
-    BEFORE UPDATE ON public.intent_fewshot_sample
+DROP TRIGGER IF EXISTS update_intent_fewshot_vector_store_updated_at ON public.intent_fewshot_vector_store;
+CREATE TRIGGER update_intent_fewshot_vector_store_updated_at
+    BEFORE UPDATE ON public.intent_fewshot_vector_store
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -124,8 +119,9 @@ CREATE TRIGGER update_intent_fewshot_sample_updated_at
 -- ===============================================================
 
 COMMENT ON TABLE public.store_openai IS '通用向量存储表';
-COMMENT ON COLUMN public.store_openai.embedding IS '向量维度: 1536';
+COMMENT ON COLUMN public.store_openai.embedding IS '向量维度: 768';
 COMMENT ON TABLE public.vector_store_openai IS '向量存储表（兼容旧版本）';
-COMMENT ON TABLE public.intent_fewshot_sample IS '意图识别 Few-Shot 样本表';
+COMMENT ON TABLE public.intent_fewshot_vector_store IS '意图识别 Few-Shot 向量索引表（PgVectorStore 专用）';
+COMMENT ON COLUMN public.intent_fewshot_vector_store.embedding IS '向量维度: 768';
 COMMENT ON TABLE public.memories IS 'Mem0 记忆存储表';
 

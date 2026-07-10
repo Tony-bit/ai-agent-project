@@ -1,0 +1,319 @@
+package denny.ai.agent.domain.service.auto.step;
+
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
+import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.model.valobj.MemoryProperties;
+import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.persona.IUserPersonaCacheService;
+import denny.ai.agent.domain.service.sse.SseEventSink;
+import denny.ai.agent.domain.service.sse.SseSessionState;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
+
+import java.lang.reflect.Field;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * AbstractExecuteSupport 单元测试
+ * <p>
+ * 测试覆盖：
+ * 1. TC-Support-001: 正常注入，写入 persona 到 context
+ * 2. TC-Support-002: 幂等检查，persona 已存在时跳过
+ * 3. TC-Support-003: 配置关闭时不注入
+ * 4. TC-Support-004: 缓存未命中时查 Mem0 并回填
+ * 5. TC-Support-005: Mem0 查询异常时降级为空字符串
+ * 6. TC-Support-006: 缓存服务为 null 时直接查 Mem0
+ * 7. TC-Support-007: injectPersonaContext 幂等跳过
+ * 8. TC-Support-008: properties 为 null 时跳过注入
+ * </p>
+ *
+ * @author denny
+ */
+@RunWith(MockitoJUnitRunner.class)
+public class AbstractExecuteSupportTest {
+
+    @Mock
+    private IUserPersonaCacheService userPersonaCacheService;
+
+    private MemoryProperties memoryProperties;
+
+    private TestableExecuteSupport support;
+
+    private DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext;
+
+    private ExecuteCommandEntity request;
+
+    @Before
+    public void setUp() throws Exception {
+        support = new TestableExecuteSupport();
+
+        memoryProperties = new MemoryProperties();
+        memoryProperties.setInjectPersona(true);
+
+        // 通过反射注入父类私有依赖
+        setSuperField(support, "userPersonaCacheService", userPersonaCacheService);
+        setSuperField(support, "memoryProperties", memoryProperties);
+
+        dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        request = ExecuteCommandEntity.builder()
+                .userId("test-user-001")
+                .sessionId("test-session")
+                .build();
+    }
+
+    private void setSuperField(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getSuperclass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    /**
+     * TC-Support-001: 正常注入，persona 写入 context
+     */
+    @Test
+    public void testInjectPersona_NormalInjection() {
+        String cachedPersona = "用户画像: 咖啡爱好者";
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
+                .thenReturn(cachedPersona);
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        assertNotNull("persona 不应为 null", dynamicContext.getValue("persona"));
+        assertEquals(cachedPersona, dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-002: 幂等检查，persona 已存在时跳过注入
+     */
+    @Test
+    public void testInjectPersona_IdempotentWhenAlreadyExists() {
+        String existingPersona = "已存在的画像";
+        dynamicContext.setValue("persona", existingPersona);
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        // cacheService 不应被调用
+        verify(userPersonaCacheService, never()).getUserPersona(anyString());
+        assertEquals(existingPersona, dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-003: 配置关闭时不注入
+     */
+    @Test
+    public void testInjectPersona_SkippedWhenDisabled() {
+        memoryProperties.setInjectPersona(false);
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        verify(userPersonaCacheService, never()).getUserPersona(anyString());
+        assertNull("注入关闭时，persona 应为 null", dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-004: 缓存未命中时查 Mem0 并回填
+     */
+    @Test
+    public void testInjectPersona_CacheMissFallsBackToMem0() {
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
+                .thenReturn("\n\n[用户画像]\n工作狂");
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        assertNotNull(dynamicContext.getValue("persona"));
+        assertTrue(((String) dynamicContext.getValue("persona")).contains("工作狂"));
+    }
+
+    /**
+     * TC-Support-005: Mem0 查询异常时降级为空字符串
+     */
+    @Test
+    public void testInjectPersona_ExceptionFallsBackToEmpty() {
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
+                .thenThrow(new RuntimeException("Redis 连接失败"));
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        assertEquals("", dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-006: properties 为 null 时跳过注入
+     * <p>
+     * 当 Spring 未能注入 MemoryProperties 时，
+     * injectPersonaContext 应直接返回，不抛出 NPE。
+     * </p>
+     */
+    @Test
+    public void testInjectPersona_SkippedWhenPropertiesNull() throws Exception {
+        // 将 properties 设置为 null，模拟未注入的场景
+        setSuperField(support, "memoryProperties", null);
+
+        // 执行时不应抛异常
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        // persona 应保持为 null
+        assertNull("properties 为 null 时，persona 应为 null", dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-007: injectPersonaContext 幂等跳过
+     */
+    @Test
+    public void testPreContextInjection_CallsInjectPersonaContext() {
+        String cachedPersona = "用户画像: 测试用户";
+        when(userPersonaCacheService.getUserPersona("test-user-001"))
+                .thenReturn(cachedPersona);
+
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        assertEquals(cachedPersona, dynamicContext.getValue("persona"));
+    }
+
+    /**
+     * TC-Support-008: cacheService 为 null 时跳过注入
+     * <p>
+     * 当 Spring 未能注入 IUserPersonaCacheService 时，
+     * injectPersonaContext 应直接返回，不抛出 NPE。
+     * </p>
+     */
+    @Test
+    public void testInjectPersona_SkippedWhenCacheServiceNull() throws Exception {
+        // 将 cacheService 设置为 null，模拟未注入的场景
+        setSuperField(support, "userPersonaCacheService", null);
+
+        // 执行时不应抛异常
+        support.callParentInjectPersonaContext(dynamicContext, request);
+
+        // persona 应保持为 null
+        assertNull("cacheService 为 null 时，persona 应为 null", dynamicContext.getValue("persona"));
+    }
+
+    @Test
+    public void testSendSseResult_UsesSinkWhenPresent() {
+        RecordingSink sink = new RecordingSink(true);
+        dynamicContext.setValue("sseEventSink", sink);
+
+        support.callParentSendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                .type("progress")
+                .subType("analysis_start")
+                .content("开始分析")
+                .build());
+
+        assertEquals(1, sink.businessCount);
+        assertEquals("progress", sink.lastEventName);
+        assertTrue(sink.lastPayload instanceof AutoAgentExecuteResultEntity);
+    }
+
+    @Test
+    public void testSendSseResult_SkipsWhenSinkClosed() {
+        RecordingSink sink = new RecordingSink(false);
+        dynamicContext.setValue("sseEventSink", sink);
+
+        support.callParentSendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                .type("progress")
+                .subType("analysis_start")
+                .content("开始分析")
+                .build());
+
+        assertEquals(0, sink.businessCount);
+    }
+
+    /**
+     * 测试用子类，暴露父类 protected 方法供测试调用
+     */
+    private static class TestableExecuteSupport extends AbstractExecuteSupport {
+        @Override
+        protected String doApply(
+                ExecuteCommandEntity requestParameter,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+            return null;
+        }
+
+        @Override
+        public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(
+                ExecuteCommandEntity requestParameter,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+            return null;
+        }
+
+        /**
+         * 通过反射调用父类的 injectPersonaContext 方法
+         * 避免子类的覆盖方法遮蔽父类方法导致的递归问题
+         */
+        public void callParentInjectPersonaContext(
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                ExecuteCommandEntity requestParameter) {
+            try {
+                java.lang.reflect.Method parentMethod = AbstractExecuteSupport.class
+                        .getDeclaredMethod("injectPersonaContext",
+                                DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class,
+                                ExecuteCommandEntity.class);
+                parentMethod.setAccessible(true);
+                parentMethod.invoke(this, dynamicContext, requestParameter);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to invoke parent method", e);
+            }
+        }
+
+        public void callParentSendSseResult(
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                AutoAgentExecuteResultEntity result) {
+            sendSseResult(dynamicContext, result);
+        }
+    }
+
+    private static class RecordingSink implements SseEventSink {
+        private final boolean shouldContinue;
+        private int businessCount;
+        private String lastEventName;
+        private Object lastPayload;
+
+        private RecordingSink(boolean shouldContinue) {
+            this.shouldContinue = shouldContinue;
+        }
+
+        @Override
+        public boolean sendBusiness(String eventName, Object payload) {
+            businessCount++;
+            lastEventName = eventName;
+            lastPayload = payload;
+            return true;
+        }
+
+        @Override
+        public boolean trySendHeartbeat() {
+            return false;
+        }
+
+        @Override
+        public void complete() {
+        }
+
+        @Override
+        public void markDisconnected(Throwable cause) {
+        }
+
+        @Override
+        public boolean isDisconnected() {
+            return !shouldContinue;
+        }
+
+        @Override
+        public boolean shouldContinue() {
+            return shouldContinue;
+        }
+
+        @Override
+        public SseSessionState state() {
+            return shouldContinue ? SseSessionState.OPEN : SseSessionState.DISCONNECTED;
+        }
+    }
+}

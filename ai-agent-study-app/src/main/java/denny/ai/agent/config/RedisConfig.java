@@ -30,6 +30,9 @@ public class RedisConfig {
     @Value("${redis.sdk.config.port:16379}")
     private int port;
 
+    @Value("${redis.sdk.config.password:}")
+    private String password;
+
     @Value("${redis.sdk.config.pool-size:10}")
     private int poolSize;
 
@@ -45,11 +48,15 @@ public class RedisConfig {
     @Value("${redis.sdk.config.ping-interval:60000}")
     private long pingInterval;
 
+    @SuppressWarnings("unchecked")
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
         config.setHostName(host);
         config.setPort(port);
+        if (password != null && !password.isBlank()) {
+            config.setPassword(password);
+        }
 
         GenericObjectPoolConfig<?> pool = new GenericObjectPoolConfig<>();
         pool.setMaxTotal(poolSize);
@@ -61,7 +68,7 @@ public class RedisConfig {
 
         LettucePoolingClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder()
                 .commandTimeout(Duration.ofMillis(connectTimeout))
-                .poolConfig(pool)
+                .poolConfig((GenericObjectPoolConfig) pool)
                 .build();
 
         return new LettuceConnectionFactory(config, clientConfig);

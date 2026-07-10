@@ -1,0 +1,12 @@
+{
+  "ticker": "000001.SZ",
+  "selectedAnalysts": [
+    "FUNDAMENTAL",
+    "TECHNICAL",
+    "SENTIMENT",
+    "NEWS"
+  ],
+  "maxDebateRounds": 1,
+  "maxRiskRounds": 1,
+  "sessionId": "demo-trading-analysis"
+}

@@ -12,6 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -35,8 +36,8 @@ public class RetryChatModel implements ChatModel {
 
     public RetryChatModel(ChatModel delegate, RetryConfig retryConfig,
                         AiErrorCodeExtractor errorCodeExtractor) {
-        this.delegate = delegate;
-        this.retryConfig = retryConfig;
+        this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
+        this.retryConfig = Objects.requireNonNull(retryConfig, "retryConfig must not be null");
         this.errorCodeExtractor = errorCodeExtractor != null ? errorCodeExtractor : new AiErrorCodeExtractor();
     }
 
@@ -66,11 +67,13 @@ public class RetryChatModel implements ChatModel {
             return delegate.stream(prompt);
         }
 
+        int maxAttempts = Math.min(retryConfig.getMaxAttempts(), 10);
         int attempt = 0;
-        long interval = retryConfig.getInitialIntervalMs();
+        long maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
+        long interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
         RuntimeException lastException = null;
 
-        while (attempt < retryConfig.getMaxAttempts()) {
+        while (attempt < maxAttempts) {
             attempt++;
             try {
                 return delegate.stream(prompt);
@@ -88,15 +91,15 @@ public class RetryChatModel implements ChatModel {
                     return Flux.error(lastException);
                 }
                 if (retryableErrorCodes().contains(errorCode) || RetryableExceptionTypes.isRetryable(e)) {
-                    if (attempt >= retryConfig.getMaxAttempts()) {
+                    if (attempt >= maxAttempts) {
                         log.error("[RetryStream] Max attempts {} reached, giving up, attempt={}, errorCode={}, ex={}",
-                                retryConfig.getMaxAttempts(), attempt, errorCode, e.getMessage());
+                                maxAttempts, attempt, errorCode, e.getMessage());
                         return Flux.error(lastException);
                     }
                     log.warn("[RetryStream] attempt {}/{} failed, retry after {}ms, errorCode={}, ex={}",
-                            attempt, retryConfig.getMaxAttempts(), interval, errorCode, e.getMessage());
+                            attempt, maxAttempts, interval, errorCode, e.getMessage());
                     sleep(interval);
-                    interval = Math.min((long) (interval * retryConfig.getMultiplier()), retryConfig.getMaxIntervalMs());
+                    interval = nextInterval(interval, maxInterval);
                 } else {
                     log.warn("[RetryStream] Non-retryable exception, rethrow directly, errorCode={}, attempt={}, ex={}",
                             errorCode, attempt, e.getMessage());
@@ -181,6 +184,12 @@ public class RetryChatModel implements ChatModel {
         }
     }
 
+    private long nextInterval(long interval, long maxInterval) {
+        double multiplier = retryConfig.getMultiplier() <= 0 ? 1.0 : retryConfig.getMultiplier();
+        double next = interval * multiplier;
+        return (long) Math.min(maxInterval, Math.max(0, next));
+    }
+
     // ===== CallRetryStrategy =====
     private class CallRetryStrategy extends RetryStrategy<ChatResponse> {
 
@@ -192,7 +201,12 @@ public class RetryChatModel implements ChatModel {
 
         @Override
         protected ChatResponse doExecute(Prompt prompt) {
-            return delegate.call(prompt);
+            ChatResponse response = delegate.call(prompt);
+            ChatResponseValidator validator = ResponseValidationContext.currentValidator();
+            if (validator != null) {
+                validator.validate(response);
+            }
+            return response;
         }
 
         @Override

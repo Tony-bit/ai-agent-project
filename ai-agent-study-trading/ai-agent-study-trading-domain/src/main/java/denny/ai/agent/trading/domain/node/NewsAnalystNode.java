@@ -96,6 +96,10 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("新闻分析师调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过新闻分析师LLM调用");
+            return structuredProcessor.parseReport("", newsItems);
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

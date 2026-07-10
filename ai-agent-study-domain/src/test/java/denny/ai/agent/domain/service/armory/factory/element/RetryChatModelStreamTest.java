@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.util.TokenCountUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -96,7 +97,7 @@ public class RetryChatModelStreamTest {
     public void testStreamDegradeToCall() throws Exception {
         CompressionConfig compressionConfig = CompressionConfig.builder()
                 .enabled(true)
-                .proactiveThresholdTokens(100)
+                .proactiveThresholdTokens(0)
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
@@ -127,7 +128,7 @@ public class RetryChatModelStreamTest {
     public void testStreamDegradeToCallWithCompressionEnabled() throws Exception {
         CompressionConfig compressionConfig = CompressionConfig.builder()
                 .enabled(true)
-                .proactiveThresholdTokens(100)
+                .proactiveThresholdTokens(0)
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
@@ -156,7 +157,7 @@ public class RetryChatModelStreamTest {
     public void testStreamDegradeThenSuccess() throws Exception {
         CompressionConfig compressionConfig = CompressionConfig.builder()
                 .enabled(true)
-                .proactiveThresholdTokens(100)
+                .proactiveThresholdTokens(0)
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
@@ -239,6 +240,8 @@ public class RetryChatModelStreamTest {
         retryConfig = RetryConfig.builder()
                 .enabled(true)
                 .maxAttempts(3)
+                .initialIntervalMs(1)
+                .maxIntervalMs(2)
                 .retryableErrorCodes(List.of("500"))
                 .build();
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
@@ -265,19 +268,20 @@ public class RetryChatModelStreamTest {
 
     @Test
     public void testThresholdBoundaryEqual_noDegrade() throws Exception {
+        Prompt prompt = makePrompt("boundary");
+        int tokenCount = TokenCountUtils.estimate(prompt.toString());
         CompressionConfig compressionConfig = CompressionConfig.builder()
                 .enabled(true)
-                .proactiveThresholdTokens(100)
+                .proactiveThresholdTokens(tokenCount)
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
         retryChatModel.setCompressionConfig(compressionConfig);
 
-        String exactThresholdText = "a".repeat(100);
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.stream(any(Prompt.class))).thenReturn(Flux.just(response));
 
-        Flux<ChatResponse> result = retryChatModel.stream(makePrompt(exactThresholdText));
+        Flux<ChatResponse> result = retryChatModel.stream(prompt);
 
         List<ChatResponse> collected = new ArrayList<>();
         CountDownLatch latch = new CountDownLatch(1);
@@ -294,19 +298,20 @@ public class RetryChatModelStreamTest {
 
     @Test
     public void testThresholdBoundaryExceed_degrade() throws Exception {
+        Prompt prompt = makePrompt("boundary");
+        int tokenCount = TokenCountUtils.estimate(prompt.toString());
         CompressionConfig compressionConfig = CompressionConfig.builder()
                 .enabled(true)
-                .proactiveThresholdTokens(100)
+                .proactiveThresholdTokens(tokenCount - 1)
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
         retryChatModel.setCompressionConfig(compressionConfig);
 
-        String exceedThresholdText = "a".repeat(101);
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.call(any(Prompt.class))).thenReturn(response);
 
-        Flux<ChatResponse> result = retryChatModel.stream(makePrompt(exceedThresholdText));
+        Flux<ChatResponse> result = retryChatModel.stream(prompt);
 
         List<ChatResponse> collected = new ArrayList<>();
         CountDownLatch latch = new CountDownLatch(1);
@@ -413,8 +418,6 @@ public class RetryChatModelStreamTest {
 
         RuntimeException authError = new RuntimeException("{\"error\":{\"code\":\"401\",\"message\":\"auth failed\"}}");
         when(delegate.call(any(Prompt.class))).thenThrow(authError);
-        when(delegate.stream(any(Prompt.class))).thenThrow(authError);
-
         RuntimeException callThrown = assertThrows(RuntimeException.class,
                 () -> retryChatModel.call(makePrompt("hello")));
         assertTrue(callThrown.getMessage().contains("401"));

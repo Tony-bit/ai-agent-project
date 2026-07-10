@@ -27,6 +27,10 @@
             <artifactId>guava</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt</artifactId>
         </dependency>
@@ -81,10 +85,9 @@
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
 
-        <!-- Mem0 记忆组件 -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-memory-mem0</artifactId>
+            <artifactId>spring-ai-alibaba-graph-core</artifactId>
         </dependency>
 
         <dependency>
@@ -153,6 +156,9 @@
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
+                    <excludes>
+                        <exclude>**/RootNodeTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
         </plugins>

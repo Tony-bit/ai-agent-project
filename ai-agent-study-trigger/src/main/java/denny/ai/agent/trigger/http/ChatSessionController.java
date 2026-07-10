@@ -3,6 +3,7 @@ package denny.ai.agent.trigger.http;
 import denny.ai.agent.api.response.Response;
 import denny.ai.agent.api.vo.MessageListResult;
 import denny.ai.agent.api.vo.SessionListResult;
+import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
 import denny.ai.agent.infrastructure.service.ChatSessionQueryService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,9 @@ public class ChatSessionController {
 
     @Resource
     private ChatSessionQueryService chatSessionQueryService;
+
+    @Resource
+    private ISessionMemoryPersistenceService sessionMemoryPersistenceService;
 
     /**
      * 获取用户会话列表（支持游标分页）
@@ -50,9 +54,25 @@ public class ChatSessionController {
     @GetMapping("/{sessionId}/messages")
     public Response<MessageListResult> getSessionMessages(
             @PathVariable(name = "sessionId") String sessionId,
-            @RequestParam(required = false) Integer cursorIndex) {
+            @RequestParam(name = "cursorIndex", required = false) Integer cursorIndex) {
         log.info("获取会话消息: sessionId={}, cursorIndex={}", sessionId, cursorIndex);
         MessageListResult result = chatSessionQueryService.getSessionMessages(sessionId, cursorIndex);
         return Response.ok(result);
+    }
+
+    /**
+     * 同步会话记忆到 Mem0 长期记忆
+     *
+     * @param sessionId 会话ID
+     * @param userId   用户ID
+     * @return 同步结果
+     */
+    @PostMapping("/{sessionId}/sync-memory")
+    public Response<Void> syncSessionMemory(
+            @PathVariable("sessionId") String sessionId,
+            @RequestParam("userId") String userId) {
+        log.info("同步会话记忆: sessionId={}, userId={}", sessionId, userId);
+        sessionMemoryPersistenceService.syncSessionToMemory(userId, sessionId);
+        return Response.ok();
     }
 }

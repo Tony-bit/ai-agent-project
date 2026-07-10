@@ -1,0 +1,52 @@
+services:
+  mem0:
+    build:
+      context: ./mem0
+      dockerfile: Dockerfile
+    container_name: mem0
+    restart: always
+    env_file:
+      - ./mem0/.env
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      AI_DASHSCOPE_API_KEY: ${AI_DASHSCOPE_API_KEY}
+      POSTGRES_HOST: vector_db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ai-rag-knowledge
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_COLLECTION_NAME: memories
+      HISTORY_DB_PATH: /app/history/history.db
+    volumes:
+      - ./mem0/history:/app/history
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+    ports:
+      - "8000:8000"
+    depends_on:
+      vector_db:
+        condition: service_healthy
+    networks:
+      - ai_internal
+
+  vector_db:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/pgvector:v0.5.0
+    container_name: vector_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ai-rag-knowledge
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./pgvector/data:/var/lib/postgresql/data
+    healthcheck:
+      test: "pg_isready -U postgres -d ai-rag-knowledge"
+      interval: 5s
+      timeout: 20s
+      retries: 10
+    networks:
+      - ai_internal
+
+networks:
+  ai_internal:
+    driver: bridge

@@ -37,6 +37,22 @@ public final class RetryableExceptionTypes {
             return false;
         }
 
+        Throwable current = e;
+        int depth = 0;
+        while (current != null && depth < 8) {
+            if (isRetryableSingle(current)) {
+                return true;
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return false;
+    }
+
+    private static boolean isRetryableSingle(Throwable e) {
+        if (e instanceof ResponseValidationException) {
+            return true;
+        }
         String className = e.getClass().getName();
         if (className.contains(TRANSIENT_AI_EXCEPTION)) {
             return true;
@@ -51,8 +67,12 @@ public final class RetryableExceptionTypes {
     }
 
     private static boolean matchesAnyPrefix(String className, Set<String> prefixes) {
+        String simpleName = className.contains(".") ? className.substring(className.lastIndexOf(".") + 1) : className;
         for (String prefix : prefixes) {
-            if (className.contains(prefix)) {
+            if (simpleName.equals(prefix)) {
+                return true;
+            }
+            if (!"TimeoutException".equals(prefix) && simpleName.endsWith(prefix)) {
                 return true;
             }
         }

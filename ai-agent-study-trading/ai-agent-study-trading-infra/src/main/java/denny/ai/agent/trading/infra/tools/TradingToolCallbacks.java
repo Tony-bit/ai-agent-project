@@ -51,7 +51,7 @@ public class TradingToolCallbacks {
 
     public ToolCallback getHistoricalBarsCallback() {
         return new AbstractToolCallback("get_historical_bars",
-                "获取A股股票的历史K线数据（OHLCV），包含每日开盘价、最高价、最低价、收盘价、成交量。适用场景：需要分析股票历史走势、技术分析时调用。",
+                "获取A股股票的历史K线数据（OHLCV），包含每日开盘价、最高价、最低价、收盘价、成交量、成交额、涨跌额、涨跌幅。适用场景：需要分析股票历史走势、价格波动、成交活跃度、技术分析时调用。",
                 buildInputSchema(
                         "ticker", "股票代码，6位数字，如 000001、600000",
                         "startDate", "开始日期，格式 yyyy-MM-dd，如 2024-01-01",
@@ -251,17 +251,20 @@ public class TradingToolCallbacks {
         if (bars == null || bars.isEmpty()) return "未找到K线数据";
         StringBuilder sb = new StringBuilder();
         sb.append("# 历史K线数据（共 ").append(bars.size()).append(" 条）\n\n");
-        sb.append(String.format("%-12s %10s %10s %10s %10s %15s%n",
-                "日期", "开盘价", "最高价", "最低价", "收盘价", "成交量"));
-        sb.append("-------------------------------------------------------------\n");
+        sb.append(String.format("%-12s %10s %10s %10s %10s %15s %15s %12s %12s%n",
+                "日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "成交额", "涨跌额", "涨跌幅"));
+        sb.append("--------------------------------------------------------------------------------------------------------------\n");
         for (OHLCVBarVO bar : bars) {
-            sb.append(String.format("%-12s %10s %10s %10s %10s %15s%n",
+            sb.append(String.format("%-12s %10s %10s %10s %10s %15s %15s %12s %12s%n",
                     nvl(bar.getDate()),
                     bar.getOpen() != null ? bar.getOpen().toString() : "N/A",
                     bar.getHigh() != null ? bar.getHigh().toString() : "N/A",
                     bar.getLow() != null ? bar.getLow().toString() : "N/A",
                     bar.getClose() != null ? bar.getClose().toString() : "N/A",
-                    bar.getVolume() != null ? formatVolume(bar.getVolume()) : "N/A"));
+                    bar.getVolume() != null ? formatVolume(bar.getVolume()) : "N/A",
+                    bar.getAmount() != null ? bar.getAmount().toPlainString() : "N/A",
+                    bar.getChange() != null ? bar.getChange().toPlainString() : "N/A",
+                    bar.getPctChg() != null ? String.format("%.2f%%", bar.getPctChg()) : "N/A"));
         }
         return sb.toString();
     }

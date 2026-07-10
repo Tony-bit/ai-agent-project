@@ -186,7 +186,7 @@ public class TradingDispatcher {
                     return null;
                 },
                 stateContext,
-                () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                null
             );
         } else {
             log.warn("RECOMMENDATION_DECISION 阶段收到意外事件: {}", event);
@@ -207,7 +207,7 @@ public class TradingDispatcher {
                             return null;
                         },
                         stateContext,
-                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                        null
                     );
                 }
                 case "CONSERVATIVE" -> {
@@ -218,7 +218,7 @@ public class TradingDispatcher {
                             return null;
                         },
                         stateContext,
-                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                        null
                     );
                 }
                 case "NEUTRAL" -> {
@@ -244,7 +244,7 @@ public class TradingDispatcher {
                                 return null;
                             },
                             stateContext,
-                            () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                            null
                         );
                     }
                 }
@@ -256,7 +256,7 @@ public class TradingDispatcher {
                             return null;
                         },
                         stateContext,
-                        () -> TradingDispatcher.this.onEvent(TradingEvent.RISK_DEBATE_COMPLETE, stateContext)
+                        null
                     );
                 }
             }
@@ -266,7 +266,7 @@ public class TradingDispatcher {
     private void handleFinalReport(TradingEvent event, TradingStateContext stateContext) {
         log.info("handleFinalReport 收到事件: {}", event);
         if (event == TradingEvent.PORTFOLIO_COMPLETE) {
-            stateContext.countDownTradingLatch();
+            stateContext.countDownTaskLatch();
         }
     }
 
@@ -302,7 +302,7 @@ public class TradingDispatcher {
                 return null;
             },
             stateContext,
-            () -> TradingDispatcher.this.onEvent(TradingEvent.RECOMMENDATION_COMPLETE, stateContext)
+            null
         );
     }
 
@@ -357,6 +357,7 @@ public class TradingDispatcher {
                                  TradingStateContext stateContext,
                                  Runnable onComplete) {
 
+        // onComplete is only for dispatcher-owned transitions. Nodes that call TradingDriver themselves pass null.
         CompletableFuture.<Void>runAsync(() -> {
             try {
 

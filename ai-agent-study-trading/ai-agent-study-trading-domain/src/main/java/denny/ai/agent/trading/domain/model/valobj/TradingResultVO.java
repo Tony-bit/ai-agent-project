@@ -34,6 +34,8 @@ public class TradingResultVO {
     private NewsSummary newsReport;
     private InvestmentDebateSummary investmentDebate;
     private InvestmentPlanSummary investmentPlan;
+    private RiskDebateSummary riskDebate;
+    private FinalDecisionSummary finalDecision;
 
     @Data
     @Builder
@@ -102,6 +104,32 @@ public class TradingResultVO {
         private String takeProfitPrice;
         private String holdingPeriod;
         private Double riskRewardRatio;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RiskDebateSummary {
+        private Integer riskScore;
+        private String riskLevel;
+        private List<String> riskItems;
+        private List<String> mitigations;
+        private List<String> aggressiveHistory;
+        private List<String> conservativeHistory;
+        private List<String> neutralHistory;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FinalDecisionSummary {
+        private String decision;
+        private String confidence;
+        private Double overallRating;
+        private String reasoning;
+        private List<String> warnings;
     }
 
     public static TradingResultVO from(TradingContextVO context) {
@@ -177,6 +205,30 @@ public class TradingResultVO {
                     .takeProfitPrice(p.getTakeProfitPrice())
                     .holdingPeriod(p.getHoldingPeriod())
                     .riskRewardRatio(p.getRiskRewardRatio())
+                    .build());
+        }
+
+        if (context.getRiskDebate() != null) {
+            TradingContextVO.RiskDebateVO r = context.getRiskDebate();
+            builder.riskDebate(RiskDebateSummary.builder()
+                    .riskScore(r.getRiskScore())
+                    .riskLevel(r.getRiskLevel())
+                    .riskItems(r.getRiskItems())
+                    .mitigations(r.getMitigations())
+                    .aggressiveHistory(r.getAggressiveHistory())
+                    .conservativeHistory(r.getConservativeHistory())
+                    .neutralHistory(r.getNeutralHistory())
+                    .build());
+        }
+
+        if (context.getFinalDecision() != null) {
+            TradingContextVO.FinalTradeDecisionVO d = context.getFinalDecision();
+            builder.finalDecision(FinalDecisionSummary.builder()
+                    .decision(d.getDecision())
+                    .confidence(d.getConfidence())
+                    .overallRating(d.getOverallRating())
+                    .reasoning(d.getReasoning())
+                    .warnings(d.getWarnings())
                     .build());
         }
 

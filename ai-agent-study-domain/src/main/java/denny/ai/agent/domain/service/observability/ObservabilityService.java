@@ -25,6 +25,8 @@ public interface ObservabilityService {
                   String comment,
                   Map<String, Object> metadata);
 
+    void updateTraceMetadata(String traceId, Map<String, Object> metadata);
+
     void endSpan(String spanId, boolean success, String errorMessage);
 
     void endTrace(String traceId, String output, Map<String, Object> metadata);

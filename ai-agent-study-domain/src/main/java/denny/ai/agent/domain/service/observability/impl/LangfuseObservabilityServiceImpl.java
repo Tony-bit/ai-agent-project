@@ -21,6 +21,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -29,6 +30,8 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
     private final LangfuseProperties properties;
 
     private final RestTemplate langfuseRestTemplate;
+
+    private final Map<String, Map<String, Object>> traceMetadataCache = new ConcurrentHashMap<>();
 
     public LangfuseObservabilityServiceImpl(LangfuseProperties properties) {
         this.properties = properties;
@@ -53,7 +56,10 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
         payload.put("timestamp", Instant.now().toString());
         payload.put("sessionId", sessionId);
         payload.put("input", input);
-        payload.put("metadata", metadata);
+        payload.put("metadata", mergeTraceMetadata(traceId, metadata, false));
+        if (metadata != null && metadata.get("traceName") != null) {
+            payload.put("name", String.valueOf(metadata.get("traceName")));
+        }
 
         sendEvent("trace-create", payload);
         return traceId;
@@ -114,6 +120,18 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
     }
 
     @Override
+    public void updateTraceMetadata(String traceId, Map<String, Object> metadata) {
+        if (!isEnabled() || StringUtils.isBlank(traceId) || metadata == null || metadata.isEmpty()) return;
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", traceId);
+        payload.put("timestamp", Instant.now().toString());
+        payload.put("metadata", mergeTraceMetadata(traceId, metadata, false));
+
+        sendEvent("trace-create", payload);
+    }
+
+    @Override
     public void endSpan(String spanId, boolean success, String errorMessage) {
         if (!isEnabled()) return;
 
@@ -136,10 +154,28 @@ public class LangfuseObservabilityServiceImpl implements ObservabilityService {
         payload.put("id", traceId);
         payload.put("timestamp", Instant.now().toString());
         payload.put("output", output);
-        payload.put("metadata", metadata);
+        payload.put("metadata", mergeTraceMetadata(traceId, metadata, true));
 
         // Langfuse ingestion 对 trace 使用 trace-create(upsert) 更稳定，避免 trace-update 不生效。
         sendEvent("trace-create", payload);
+    }
+
+    private Map<String, Object> mergeTraceMetadata(String traceId, Map<String, Object> metadata, boolean removeAfterMerge) {
+        if (StringUtils.isBlank(traceId)) {
+            return metadata;
+        }
+        Map<String, Object> merged = traceMetadataCache.compute(traceId, (ignored, existing) -> {
+            Map<String, Object> next = existing == null ? new HashMap<>() : new HashMap<>(existing);
+            if (metadata != null) {
+                next.putAll(metadata);
+            }
+            return next;
+        });
+        Map<String, Object> snapshot = merged == null ? null : new HashMap<>(merged);
+        if (removeAfterMerge) {
+            traceMetadataCache.remove(traceId);
+        }
+        return snapshot;
     }
 
     private void sendEvent(String type, Map<String, Object> body) {

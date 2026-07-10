@@ -3,7 +3,9 @@ package denny.ai.agent.domain.service.auto.step.factory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.service.auto.step.RootNode;
+import denny.ai.agent.domain.service.auto.step.routing.MultiTaskExecutionNode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -58,14 +60,14 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
+        @Builder.Default
         private Map<String, Object> dataObjects = new HashMap<>();
 
         /**
-         * 交易流程 CountDownLatch。
-         * 用于 TradingStarter.start() 的 finally 等待并行分析师流程完成，
-         * 避免 SSE emitter 在节点执行期间被提前关闭。
+         * 任务完成信号量。
+         * 用于等待子任务/Agent 执行完成后再返回结果。
          */
-        private CountDownLatch tradingLatch;
+        private CountDownLatch taskLatch;
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);
@@ -73,6 +75,38 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         public <T> T getValue(String key) {
             return (T) dataObjects.get(key);
+        }
+
+        public void putSubTaskResult(String taskId, SubTask subTask) {
+            getSubTaskResults().put(taskId, subTask);
+        }
+
+        public SubTask getSubTaskResult(String taskId) {
+            return getSubTaskResults().get(taskId);
+        }
+
+        public Map<String, SubTask> getAllSubTaskResults() {
+            return getSubTaskResults();
+        }
+
+        public void clearSubTaskResults() {
+            getSubTaskResults().clear();
+        }
+
+        public void clearMultiTaskContext() {
+            dataObjects.remove(MultiTaskExecutionNode.TASK_LIST_KEY);
+            dataObjects.remove(MultiTaskExecutionNode.ORIGINAL_MESSAGE_KEY);
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, SubTask> getSubTaskResults() {
+            Object results = dataObjects.get("subTaskResults");
+            if (results instanceof Map<?, ?>) {
+                return (Map<String, SubTask>) results;
+            }
+            Map<String, SubTask> subTaskResults = new HashMap<>();
+            dataObjects.put("subTaskResults", subTaskResults);
+            return subTaskResults;
         }
     }
 

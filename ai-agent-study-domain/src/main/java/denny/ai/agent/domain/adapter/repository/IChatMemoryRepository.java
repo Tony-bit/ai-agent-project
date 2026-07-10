@@ -2,6 +2,7 @@ package denny.ai.agent.domain.adapter.repository;
 
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ChatSessionEntity;
+import denny.ai.agent.domain.model.entity.ConversationRuntimeWindow;
 
 import java.util.List;
 
@@ -61,12 +62,29 @@ public interface IChatMemoryRepository {
     void cacheMessagesToRedis(String sessionId, List<ChatMessageEntity> messages, int maxSize);
 
     /**
+     * 将运行时窗口缓存到 Redis。
+     *
+     * @param sessionId 会话ID
+     * @param window    带元数据的运行时窗口
+     * @param maxSize   最大缓存条数
+     */
+    void cacheRuntimeWindowToRedis(String sessionId, ConversationRuntimeWindow window, int maxSize);
+
+    /**
      * 从 Redis 获取缓存的消息
      *
      * @param sessionId 会话ID
      * @return 缓存的消息列表
      */
     List<ChatMessageEntity> getCachedMessagesFromRedis(String sessionId);
+
+    /**
+     * 从 Redis 获取运行时窗口。
+     *
+     * @param sessionId 会话ID
+     * @return 运行时窗口
+     */
+    ConversationRuntimeWindow getCachedRuntimeWindowFromRedis(String sessionId);
 
     /**
      * 删除 Redis 缓存

@@ -11,6 +11,7 @@ import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
+import denny.ai.agent.domain.service.sse.SseEventSink;
 import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -20,8 +21,10 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.Lock;
 
 /**
  * @author denny
@@ -30,6 +33,10 @@ import java.util.concurrent.TimeoutException;
 public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategyRouter<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> {
 
     private final Logger log = LoggerFactory.getLogger(AbstractExecuteSupport.class);
+
+    protected static final String SSE_DISCONNECTED_KEY = "sseDisconnected";
+    protected static final String SSE_SEND_LOCK_KEY = "sseSendLock";
+    protected static final String SSE_EVENT_SINK_KEY = "sseEventSink";
 
     @Resource
     protected ApplicationContext applicationContext;
@@ -48,6 +55,12 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     @Resource
     protected ChatMemoryPersistenceService chatMemoryPersistenceService;
+
+    @Resource
+    private denny.ai.agent.domain.service.persona.IUserPersonaCacheService userPersonaCacheService;
+
+    @Resource
+    private denny.ai.agent.domain.model.valobj.MemoryProperties memoryProperties;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
@@ -70,6 +83,17 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
         return (T) applicationContext.getBean(beanName);
     }
 
+    protected boolean shouldContinueSse(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (dynamicContext == null) {
+            return true;
+        }
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            return sink.shouldContinue();
+        }
+        return !isSseDisconnected(dynamicContext);
+    }
+
     /**
      * 通用的SSE结果发送方法
      * @param dynamicContext 动态上下文
@@ -77,6 +101,27 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      */
     protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                 AutoAgentExecuteResultEntity result) {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            if (!sink.shouldContinue()) {
+                log.debug("SSE sink 已关闭，跳过发送: type={}, subType={}, state={}",
+                        result.getType(), result.getSubType(), sink.state());
+                return;
+            }
+            boolean accepted = sink.sendBusiness(result.getType(), result);
+            if (!accepted) {
+                log.debug("SSE sink 拒绝业务事件: type={}, subType={}, state={}",
+                        result.getType(), result.getSubType(), sink.state());
+            }
+            return;
+        }
+
+        if (isSseDisconnected(dynamicContext)) {
+            log.debug("SSE连接已断开，跳过发送: type={}, subType={}",
+                    result.getType(), result.getSubType());
+            return;
+        }
+
         ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
         if (emitter == null) {
             log.error("【SSE致命错误】emitter为空！type={}, subType={}, sessionId={}",
@@ -87,12 +132,95 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
         try {
             String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
+            Object sendLock = dynamicContext.getValue(SSE_SEND_LOCK_KEY);
+            if (sendLock == null) {
                 emitter.send(sseData);
-            log.info("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
+            } else if (sendLock instanceof Lock lock) {
+                lock.lock();
+                try {
+                    if (!isSseDisconnected(dynamicContext)) {
+                        emitter.send(sseData);
+                    }
+                } finally {
+                    lock.unlock();
+                }
+            } else {
+                synchronized (sendLock) {
+                    if (!isSseDisconnected(dynamicContext)) {
+                        emitter.send(sseData);
+                    }
+                }
+            }
+            log.debug("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
         } catch (Exception e) {
-            log.error("【SSE致命错误】发送SSE结果失败：type={}, subType={}, sessionId={}, error={}, exClass={}",
+            if (isClientDisconnect(e)) {
+                markSseDisconnected(dynamicContext);
+                log.warn("SSE连接已断开，停止继续推送: type={}, subType={}, sessionId={}, error={}, exClass={}",
+                        result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName());
+                return;
+            }
+            log.error("【SSE发送错误】发送SSE结果失败：type={}, subType={}, sessionId={}, error={}, exClass={}",
                     result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName(), e);
         }
+    }
+
+    private boolean isSseDisconnected(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            return !sink.shouldContinue();
+        }
+        Object disconnected = dynamicContext.getValue(SSE_DISCONNECTED_KEY);
+        if (disconnected instanceof AtomicBoolean flag) {
+            return flag.get();
+        }
+        return Boolean.TRUE.equals(disconnected);
+    }
+
+    private void markSseDisconnected(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
+        if (sink != null) {
+            sink.markDisconnected(null);
+            return;
+        }
+        Object disconnected = dynamicContext.getValue(SSE_DISCONNECTED_KEY);
+        if (disconnected instanceof AtomicBoolean flag) {
+            flag.set(true);
+        } else {
+            dynamicContext.setValue(SSE_DISCONNECTED_KEY, true);
+        }
+    }
+
+    private boolean isClientDisconnect(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String className = current.getClass().getName();
+            String message = current.getMessage();
+            if (className.contains("AsyncRequestNotUsableException")
+                    || className.contains("ClientAbortException")
+                    || current instanceof IllegalStateException && message != null && message.contains("ResponseBodyEmitter has already completed")
+                    || current instanceof IOException
+                    || containsAny(message,
+                            "ServletOutputStream failed to flush",
+                            "Broken pipe",
+                            "Connection reset",
+                            "你的主机中的软件中止了一个已建立的连接")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean containsAny(String value, String... patterns) {
+        if (value == null) {
+            return false;
+        }
+        for (String pattern : patterns) {
+            if (value.contains(pattern)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -127,6 +255,48 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             );
         } catch (Exception e) {
             log.warn("会话持久化失败，降级处理: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 将跨会话用户画像（persona）注入到 DynamicContext。
+     * <p>
+     * 从 Mem0/Redis 获取用户画像并写入 dynamicContext.setValue("persona", memories)。
+     * 幂等：若 persona 已存在则跳过；配置关闭时跳过；异常时降级为空字符串。
+     *
+     * @param dynamicContext 动态上下文，非空
+     * @param request       执行命令实体，从中取 userId，非空
+     */
+    protected void injectPersonaContext(
+            denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+            denny.ai.agent.domain.model.entity.ExecuteCommandEntity request) {
+        if (StringUtils.isBlank(request.getUserId())) {
+            log.debug("userId 为空，跳过画像注入");
+            return;
+        }
+        if (memoryProperties == null) {
+            log.error("MemoryProperties 未注入，跳过画像注入, userId={}", request.getUserId());
+            return;
+        }
+        if (!memoryProperties.isInjectPersona()) {
+            return;
+        }
+        if (dynamicContext.getValue("persona") != null) {
+            return;
+        }
+        if (userPersonaCacheService == null) {
+            log.warn("IUserPersonaCacheService 未注入，跳过画像注入, userId={}", request.getUserId());
+            return;
+        }
+        try {
+            String memories = userPersonaCacheService.getUserPersona(request.getUserId());
+            dynamicContext.setValue("persona", memories);
+            log.info("已注入用户画像到上下文, userId={}, hasPersona={}",
+                    request.getUserId(), !memories.isEmpty());
+        } catch (Exception e) {
+            log.warn("用户画像检索失败，降级处理: userId={}, error={}",
+                    request.getUserId(), e.getMessage());
+            dynamicContext.setValue("persona", "");
         }
     }
 

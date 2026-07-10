@@ -1,0 +1,655 @@
+[
+  {
+    "caseId": "intent-single-stock-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "单任务股票分析，高置信度",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户明确询问股票分析",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "分析腾讯股票走势",
+          "intent": "STOCK_ANALYSIS",
+          "executorNode": "tradingStarter",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "腾讯股票",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "stockCode": "0700",
+              "stockQueryType": "TREND",
+              "timeRange": "近一个月",
+              "exchange": "HK"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["STOCK_ANALYSIS"],
+      "executorNodes": ["tradingStarter"]
+    },
+    "tags": ["intent-routing", "stock-analysis", "local-eval"]
+  },
+  {
+    "caseId": "intent-single-stock-002",
+    "status": "pending",
+    "category": "single-task",
+    "description": "单任务股票分析，A股标的",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户要求分析具体股票",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "分析贵州茅台近期走势",
+          "intent": "STOCK_ANALYSIS",
+          "executorNode": "tradingStarter",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "贵州茅台",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "stockCode": "600519",
+              "stockQueryType": "TECHNICAL",
+              "timeRange": "近三个月",
+              "exchange": "SH"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["STOCK_ANALYSIS"],
+      "executorNodes": ["tradingStarter"]
+    },
+    "tags": ["intent-routing", "stock-analysis", "ashare"]
+  },
+  {
+    "caseId": "intent-single-general-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "通用对话场景",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户在进行闲聊",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "回答用户关于今天天气的闲聊",
+          "intent": "GENERAL_CHAT",
+          "executorNode": "generalChatNode",
+          "confidence": "MEDIUM",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "天气",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {}
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "general-chat"]
+  },
+  {
+    "caseId": "intent-single-reasoning-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "PE 推理任务",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户请求逻辑分析",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "解释加息对成长股估值的影响",
+          "intent": "PE_REASONING",
+          "executorNode": "step1AnalyzerNode",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "加息与成长股估值",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {}
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["PE_REASONING"],
+      "executorNodes": ["step1AnalyzerNode"]
+    },
+    "tags": ["intent-routing", "pe-reasoning"]
+  },
+  {
+    "caseId": "intent-single-calculation-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "PE 计算任务",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户明确要求数值计算",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "计算复利收益率",
+          "intent": "PE_CALCULATION",
+          "executorNode": "step1AnalyzerNode",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "复利收益率",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {}
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["PE_CALCULATION"],
+      "executorNodes": ["step1AnalyzerNode"]
+    },
+    "tags": ["intent-routing", "pe-calculation"]
+  },
+  {
+    "caseId": "intent-single-retrieval-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "PE 检索任务",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户需要知识解释",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "解释什么是向量数据库",
+          "intent": "PE_RETRIEVAL",
+          "executorNode": "step1AnalyzerNode",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "向量数据库",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "topic": "向量数据库"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["PE_RETRIEVAL"],
+      "executorNodes": ["step1AnalyzerNode"]
+    },
+    "tags": ["intent-routing", "pe-retrieval"]
+  },
+  {
+    "caseId": "intent-multi-mixed-001",
+    "status": "pending",
+    "category": "multi-task",
+    "description": "先闲聊后股票分析的复合请求",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "reasoning": "包含闲聊和股票分析两个独立任务",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 2,
+          "content": "简单回应用户问候",
+          "intent": "GENERAL_CHAT",
+          "executorNode": "generalChatNode",
+          "confidence": "MEDIUM",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "问候",
+              "sentiment": "positive"
+            },
+            "intentSpecificSlots": {}
+          }
+        },
+        {
+          "taskId": "sub-2",
+          "taskIndex": 2,
+          "totalTasks": 2,
+          "content": "分析宁德时代走势",
+          "intent": "STOCK_ANALYSIS",
+          "executorNode": "tradingStarter",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "宁德时代",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "stockCode": "300750",
+              "stockQueryType": "TREND",
+              "timeRange": "近一个月",
+              "exchange": "SZ"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": true,
+      "needsClarification": false,
+      "taskCount": 2,
+      "taskIntents": ["GENERAL_CHAT", "STOCK_ANALYSIS"],
+      "executorNodes": ["generalChatNode", "tradingStarter"]
+    },
+    "tags": ["intent-routing", "multi-task", "mixed"]
+  },
+  {
+    "caseId": "intent-multi-stock-001",
+    "status": "pending",
+    "category": "multi-task",
+    "description": "两个独立股票分析任务",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "reasoning": "用户一次询问两个股票标的",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 2,
+          "content": "分析贵州茅台",
+          "intent": "STOCK_ANALYSIS",
+          "executorNode": "tradingStarter",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "贵州茅台",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "stockCode": "600519",
+              "stockQueryType": "TECHNICAL",
+              "timeRange": "近三个月",
+              "exchange": "SH"
+            }
+          }
+        },
+        {
+          "taskId": "sub-2",
+          "taskIndex": 2,
+          "totalTasks": 2,
+          "content": "分析五粮液",
+          "intent": "STOCK_ANALYSIS",
+          "executorNode": "tradingStarter",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "五粮液",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "stockCode": "000858",
+              "stockQueryType": "TECHNICAL",
+              "timeRange": "近三个月",
+              "exchange": "SZ"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": true,
+      "needsClarification": false,
+      "taskCount": 2,
+      "taskIntents": ["STOCK_ANALYSIS", "STOCK_ANALYSIS"],
+      "executorNodes": ["tradingStarter", "tradingStarter"]
+    },
+    "tags": ["intent-routing", "multi-task", "stock-analysis"]
+  },
+  {
+    "caseId": "intent-multi-pe-001",
+    "status": "pending",
+    "category": "multi-task",
+    "description": "先检索概念再做推理分析",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "reasoning": "包含知识查询与逻辑推理两个子任务",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 2,
+          "content": "解释什么是企业自由现金流",
+          "intent": "PE_RETRIEVAL",
+          "executorNode": "step1AnalyzerNode",
+          "confidence": "HIGH",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "企业自由现金流",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {
+              "topic": "企业自由现金流"
+            }
+          }
+        },
+        {
+          "taskId": "sub-2",
+          "taskIndex": 2,
+          "totalTasks": 2,
+          "content": "分析自由现金流下降意味着什么",
+          "intent": "PE_REASONING",
+          "executorNode": "step1AnalyzerNode",
+          "confidence": "MEDIUM",
+          "taskType": 0,
+          "slots": {
+            "baseSlot": {
+              "topic": "自由现金流下降",
+              "sentiment": "neutral"
+            },
+            "intentSpecificSlots": {}
+          }
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": true,
+      "needsClarification": false,
+      "taskCount": 2,
+      "taskIntents": ["PE_RETRIEVAL", "PE_REASONING"],
+      "executorNodes": ["step1AnalyzerNode", "step1AnalyzerNode"]
+    },
+    "tags": ["intent-routing", "multi-task", "pe"]
+  },
+  {
+    "caseId": "intent-clarification-stock-001",
+    "status": "pending",
+    "category": "clarification",
+    "description": "股票分析缺少明确标的",
+    "response": {
+      "multiTask": false,
+      "needsClarification": true,
+      "missingInfo": ["stockCode"],
+      "clarificationPrompt": "请提供股票代码或股票名称",
+      "reasoning": "用户表达了股票分析意图，但缺少明确股票标的",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": true,
+      "taskCount": 0,
+      "missingInfo": ["stockCode"],
+      "clarificationPrompt": "请提供股票代码或股票名称",
+      "reasoningContains": "缺少明确股票标的"
+    },
+    "tags": ["intent-routing", "clarification", "stock-analysis"]
+  },
+  {
+    "caseId": "intent-clarification-retrieval-001",
+    "status": "pending",
+    "category": "clarification",
+    "description": "检索意图明确但缺少检索主题",
+    "response": {
+      "multiTask": false,
+      "needsClarification": true,
+      "missingInfo": ["topic"],
+      "clarificationPrompt": "请说明你想查询的具体主题或概念",
+      "reasoning": "用户表达了查询意图，但缺少检索对象",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": true,
+      "taskCount": 0,
+      "missingInfo": ["topic"]
+    },
+    "tags": ["intent-routing", "clarification", "pe-retrieval"]
+  },
+  {
+    "caseId": "intent-fallback-invalid-json-001",
+    "status": "pending",
+    "category": "fallback",
+    "description": "LLM 返回非法 JSON，触发降级",
+    "response": "invalid json",
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "fallback", "invalid-json"]
+  },
+  {
+    "caseId": "intent-fallback-empty-tasklist-001",
+    "status": "pending",
+    "category": "fallback",
+    "description": "结构合法但 taskList 为空，触发降级",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "模型未产出有效任务",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "fallback", "empty-tasklist"]
+  },
+  {
+    "caseId": "intent-single-inspection-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "系统巡检任务映射到巡检节点",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "用户要求执行系统巡检",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "检查服务和基础设施状态",
+          "intent": "INSPECTION",
+          "executorNode": "incorrectNode",
+          "confidence": "HIGH",
+          "taskType": 2,
+          "slots": {}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["INSPECTION"],
+      "executorNodes": ["intelligentInspection"],
+      "confidences": ["HIGH"],
+      "taskTypes": [0],
+      "taskStatuses": ["PENDING"]
+    },
+    "tags": ["intent-routing", "inspection", "normalization"]
+  },
+  {
+    "caseId": "intent-normalization-defaults-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "任务缺少可默认字段时执行安全归一化",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "reasoning": "模型只返回了最小任务结构",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "回应用户",
+          "slots": null
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["LOW"],
+      "taskTypes": [0],
+      "taskStatuses": ["PENDING"]
+    },
+    "tags": ["intent-routing", "normalization", "defaults"]
+  },
+  {
+    "caseId": "intent-multitask-single-item-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "模型声明多任务但仅返回一个任务时自动纠正",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "reasoning": "模型错误标记为多任务",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "进行普通问答",
+          "intent": "GENERAL_CHAT",
+          "confidence": "MEDIUM",
+          "slots": {}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "normalization", "multi-task"]
+  },
+  {
+    "caseId": "intent-wrapped-json-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "响应包含说明文字和 Markdown JSON 代码块",
+    "response": "路由结果如下：\n```json\n{\"multiTask\":false,\"needsClarification\":false,\"reasoning\":\"识别为普通对话\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"回应用户\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"slots\":{}}]}\n```\n请按结果执行。",
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["HIGH"]
+    },
+    "tags": ["intent-routing", "markdown", "json-extraction"]
+  },
+  {
+    "caseId": "intent-clarification-default-prompt-001",
+    "status": "pending",
+    "category": "clarification",
+    "description": "缺少澄清提示时根据 missingInfo 生成默认提示",
+    "response": {
+      "multiTask": false,
+      "needsClarification": true,
+      "missingInfo": ["topic"],
+      "reasoning": "缺少查询主题",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": true,
+      "taskCount": 0,
+      "missingInfo": ["topic"],
+      "clarificationPrompt": "请补充以下信息: topic"
+    },
+    "tags": ["intent-routing", "clarification", "default-prompt"]
+  },
+  {
+    "caseId": "intent-fallback-blank-response-001",
+    "status": "pending",
+    "category": "fallback",
+    "description": "LLM 返回空白文本时触发降级",
+    "response": "   ",
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["GENERAL_CHAT"],
+      "executorNodes": ["generalChatNode"],
+      "confidences": ["MEDIUM"],
+      "taskTypes": [0],
+      "taskStatuses": ["PENDING"],
+      "reasoningContains": "LLM返回为空"
+    },
+    "tags": ["intent-routing", "fallback", "blank-response"]
+  }
+]

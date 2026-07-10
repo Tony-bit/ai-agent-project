@@ -10,7 +10,9 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.vo.TradeDecisionEnum;
 import denny.ai.agent.trading.domain.config.TradingDriver;
+import denny.ai.agent.trading.domain.model.valobj.TradingResultVO;
 import denny.ai.agent.trading.domain.prompt.PortfolioManagerPromptTemplate;
+import denny.ai.agent.trading.domain.service.TradingResultExportService;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -29,6 +31,9 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource
+    private TradingResultExportService tradingResultExportService;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -57,6 +62,7 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
                 ticker, context.getFinalDecision() != null ? context.getFinalDecision().getDecision() : "N/A");
 
         dynamicContext.setValue("tradingFinalDecision", JSON.toJSONString(context.getFinalDecision()));
+        tradingResultExportService.export(TradingResultVO.from(context));
 
         if (TradingDriver.getCurrent() != null) {
             TradingDriver.getCurrent().sendSseResult("final", "final_completed",
@@ -107,6 +113,10 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("组合经理调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过组合经理LLM调用");
+            return "";
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

@@ -109,6 +109,10 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("研究主管调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过研究主管LLM调用");
+            return "";
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

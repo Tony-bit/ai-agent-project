@@ -1,0 +1,8 @@
+{
+  "userId": "demo-user",
+  "sessionId": "demo-stock-analysis",
+  "message": "Analyze Ping An Bank and Kweichow Moutai. Cover technical signals, fundamentals, recent news, and main risks for each stock.",
+  "maxStep": 20,
+  "inputType": 0,
+  "agentType": "default"
+}

@@ -1,17 +1,16 @@
-# 基础镜像
-FROM openjdk:8-jre-slim
+# 基础镜像，项目按 Java 17 编译
+FROM eclipse-temurin:17-jre
 
-# 作者
-MAINTAINER denny.xiang
+LABEL maintainer="denny.xiang"
 
 # 配置
 ENV PARAMS=""
 
 # 时区
-ENV TZ=PRC
+ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 添加应用
-ADD target/ai-agent-study-app.jar /ai-agent-study-app.jar
+COPY target/ai-agent-station-study-app.jar /ai-agent-study-app.jar
 
-ENTRYPOINT ["sh","-c","java -jar $JAVA_OPTS /ai-agent-study-app.jar $PARAMS"]
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar /ai-agent-study-app.jar $PARAMS"]

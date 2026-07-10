@@ -3,18 +3,26 @@ package denny.ai.agent.domain.service.auto.step.chat;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.auto.step.routing.ExecutorAdapter;
 import denny.ai.agent.domain.service.oss.OSSUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 通用对话节点
@@ -29,10 +37,13 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
  */
 @Slf4j
 @Service("generalChatNode")
-public class GeneralChatNode extends AbstractExecuteSupport {
+public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorAdapter {
 
     @Resource
     private OSSUploadService ossUploadService;
+
+    @Autowired(required = false)
+    private List<ToolCallback> searchEpisodicMemoryCallbacks;
 
     private static final String RECOGNIZED_INTENT_KEY = "recognizedIntent";
 
@@ -45,9 +56,22 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         请重新描述您的需求，我会尽力帮助您。
         """;
 
-    private static final String GENERAL_CHAT_SYSTEM_PROMPT = """
-        你是一个友好的AI助手，请根据用户的问题提供有帮助的回答。
-        """;
+
+    @Override
+    public String executeSubTask(SubTask subTask,
+                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        log.info("GeneralChatNode 执行子任务: taskId={}, content={}", subTask.getTaskId(), subTask.getContent());
+
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .message(subTask.getContent())
+                .sessionId(dynamicContext.getValue("sessionId") != null
+                        ? dynamicContext.getValue("sessionId").toString() : null)
+                .userId(dynamicContext.getValue("userId") != null
+                        ? dynamicContext.getValue("userId").toString() : null)
+                .build();
+
+        return doTextApply(request, dynamicContext);
+    }
 
     @Override
     protected String doApply(ExecuteCommandEntity request,
@@ -63,32 +87,18 @@ public class GeneralChatNode extends AbstractExecuteSupport {
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         IntentTypeEnum recognizedIntent = dynamicContext.getValue(RECOGNIZED_INTENT_KEY);
 
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
-                .type("system")
-                .subType("general_chat_start")
-                .content("正在思考...")
-                .completed(false)
-                .timestamp(System.currentTimeMillis())
-                .build());
-
-        String systemPrompt = resolveSystemPrompt(recognizedIntent);
+        String systemPrompt = buildSystemPrompt(recognizedIntent, request.getUserId());
 
         ChatClient chatClient = getChatClientByClientId("3001", 0);
 
-        String response = chatClient.prompt()
-                .system(systemPrompt)
-                .user(request.getMessage())
-                .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+        var promptBuilder = chatClient.prompt();
+        promptBuilder =  StringUtils.hasText(systemPrompt) ? promptBuilder.system(systemPrompt) : promptBuilder;
 
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
-                .type("content")
-                .subType("general_chat_response")
-                .content(response)
-                .completed(true)
-                .timestamp(System.currentTimeMillis())
-                .build());
+        promptBuilder.user(request.getMessage())
+                .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
+
+        String response = streamToEmitter(dynamicContext, promptBuilder, "general_chat_response", request.getSessionId());
 
         dynamicContext.setCompleted(true);
         dynamicContext.setValue("generalChatResponse", response);
@@ -102,14 +112,6 @@ public class GeneralChatNode extends AbstractExecuteSupport {
     private String doMultimodalApply(ExecuteCommandEntity request,
                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 多模态对话开始 ===");
-
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
-                .type("system")
-                .subType("multimodal_start")
-                .content("正在识别图片...")
-                .completed(false)
-                .timestamp(System.currentTimeMillis())
-                .build());
 
         // Step 1: 上传图片到 OSS，获取 URL
         String ossUrl = ossUploadService.upload(request.getFile());
@@ -132,21 +134,13 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         String userMessage = request.getMessage() != null ? request.getMessage() : "请描述这张图片的内容";
         String multimodalMessage = userMessage + "\n\n[图片]: " + ossUrl;
 
-        // Step 4: 调用多模态对话
-        String response = chatClient.prompt()
-                .system(GENERAL_CHAT_SYSTEM_PROMPT)
+        // Step 4: 调用多模态对话（prompt 已通过 clientId 从数据库加载）
+        var promptBuilder = chatClient.prompt()
                 .user(multimodalMessage)
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0))
-                .call().content();
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0));
 
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
-                .type("content")
-                .subType("multimodal_response")
-                .content(response)
-                .completed(true)
-                .timestamp(System.currentTimeMillis())
-                .build());
+        String response = streamToEmitter(dynamicContext, promptBuilder, "multimodal_response", request.getSessionId());
 
         dynamicContext.setCompleted(true);
         dynamicContext.setValue("generalChatResponse", response);
@@ -157,16 +151,106 @@ public class GeneralChatNode extends AbstractExecuteSupport {
         return response;
     }
 
-    private String resolveSystemPrompt(IntentTypeEnum recognizedIntent) {
-        if (recognizedIntent == IntentTypeEnum.AMBIGUOUS) {
-            return AMBIGUOUS_SYSTEM_PROMPT;
+    private String buildSystemPrompt(IntentTypeEnum recognizedIntent, String userId) {
+        // prompt 已从数据库加载（通过 clientId=3001），这里只追加 userId 上下文
+        if (userId != null && !userId.isBlank()) {
+            return String.format("[上下文] 当前用户ID: %s", userId);
         }
-        return GENERAL_CHAT_SYSTEM_PROMPT;
+        return null;
     }
 
     private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
         AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createCompleteResult(sessionId);
         sendSseResult(dynamicContext, result);
+    }
+
+    /**
+     * 流式输出到 SSE
+     * <p>
+     * 使用 subscribe() 实时发送每一块内容，实现真流式输出。
+     * 如果 emitter 为空，则降级为同步调用。
+     * </p>
+     *
+     * @param dynamicContext 动态上下文
+     * @param promptBuilder  ChatClient 请求构建器
+     * @param subType        SSE 子类型
+     * @param sessionId      会话ID
+     * @return 完整响应内容
+     */
+    private String streamToEmitter(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                   ChatClient.ChatClientRequestSpec promptBuilder,
+                                   String subType, String sessionId) {
+        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+
+        // 降级：emitter 为空时使用同步调用
+        if (emitter == null) {
+            log.warn("emitter 为空，降级为同步调用");
+            return promptBuilder.call().content();
+        }
+
+        // 发送开始事件
+        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                .type("system")
+                .subType(subType + "_start")
+                .content("开始生成...")
+                .completed(false)
+                .timestamp(System.currentTimeMillis())
+                .build());
+
+        // 使用 StringBuilder 收集完整响应
+        StringBuilder fullContent = new StringBuilder();
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // 真流式：subscribe 实时发送
+        promptBuilder.stream().content()
+                .subscribe(
+                        // onNext: 每收到一块立即发送
+                        chunk -> {
+                            if (!StringUtils.hasText(chunk)) {
+                                return;
+                            }
+                            fullContent.append(chunk);
+                            sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                                    .type("content")
+                                    .subType(subType)
+                                    .content(chunk)
+                                    .completed(false)
+                                    .timestamp(System.currentTimeMillis())
+                                    .build());
+                        },
+                        // onError: 异常处理
+                        error -> {
+                            log.error("流式输出异常: subType={}, error={}", subType, error.getMessage(), error);
+                            sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                                    .type("error")
+                                    .subType(subType)
+                                    .content("流式输出异常: " + error.getMessage())
+                                    .completed(true)
+                                    .timestamp(System.currentTimeMillis())
+                                    .build());
+                            latch.countDown();
+                        },
+                        // onComplete: 完成
+                        () -> {
+                            sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
+                                    .type("content")
+                                    .subType(subType)
+                                    .content(fullContent.toString())
+                                    .completed(true)
+                                    .timestamp(System.currentTimeMillis())
+                                    .build());
+                            latch.countDown();
+                        }
+                );
+
+        try {
+            latch.await();  // 等待流完成
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("流式输出等待被中断: subType={}", subType);
+        }
+
+        return fullContent.toString();
     }
 
     @Override

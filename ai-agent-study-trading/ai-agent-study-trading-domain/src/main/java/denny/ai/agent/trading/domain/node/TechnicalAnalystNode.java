@@ -127,6 +127,10 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
         long startAt = System.currentTimeMillis();
         log.info("技术分析师调用LLM | prompt长度={}", prompt.length());
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过技术分析师LLM调用");
+            return parseReport("", indicators);
+        }
         String response = chatClient.prompt().user(prompt).call().content();
         long latencyMs = System.currentTimeMillis() - startAt;
 

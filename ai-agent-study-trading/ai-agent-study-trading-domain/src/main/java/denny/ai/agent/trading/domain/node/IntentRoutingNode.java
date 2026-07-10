@@ -70,6 +70,10 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         );
 
         // stream() 返回 Flux<String>，通过 block() 同步获取最终内容
+        if (!shouldContinueSse(dynamicContext)) {
+            log.info("SSE已关闭，跳过交易意图识别LLM调用");
+            return "trading_intent_routing_aborted";
+        }
         List<String> contentParts = chatClient.prompt()
                 .messages(messages)
                 .advisors(MessageChatMemoryAdvisor.builder(

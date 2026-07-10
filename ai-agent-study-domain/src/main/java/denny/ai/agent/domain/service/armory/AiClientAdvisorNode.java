@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.adapter.repository.IRagKnowledgeRepository;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
@@ -8,6 +9,8 @@ import denny.ai.agent.domain.model.valobj.AiClientAdvisorVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientAdvisorTypeEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
+import denny.ai.agent.domain.service.chatmemory.SpringAiConversationMemoryRepository;
 import denny.ai.agent.domain.service.observability.ObservabilityService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,15 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
 
     @Resource
     private AiClientNode aiClientNode;
+
+    @Resource
+    private SkillRegistry skillRegistry;
+
+    @Resource
+    private ConversationContextProvider conversationContextProvider;
+
+    @Resource
+    private SpringAiConversationMemoryRepository springAiConversationMemoryRepository;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -76,6 +88,7 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
-        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository, observabilityService);
+        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore, ragKnowledgeRepository,
+                observabilityService, skillRegistry, conversationContextProvider, springAiConversationMemoryRepository);
     }
 }

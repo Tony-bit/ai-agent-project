@@ -8,7 +8,7 @@ import denny.ai.agent.domain.model.valobj.AiClientSystemPromptVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
-import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
 import denny.ai.agent.domain.util.TokenCountUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -33,12 +33,12 @@ import java.util.regex.Pattern;
 @Service
 public class CompressionContextNode extends AbstractArmorySupport {
 
-    private static final int DEFAULT_KEEP_ROUNDS = 2;
+    private static final int DEFAULT_KEEP_MESSAGES = 20;
     private static final int DEFAULT_COMPRESSION_THRESHOLD = 160000;
     private static final int DEFAULT_MAX_SUMMARY_TOKENS = 2000;
 
     @Resource
-    private ChatMemoryPersistenceService chatMemoryService;
+    private ConversationContextProvider conversationContextProvider;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -58,7 +58,7 @@ public class CompressionContextNode extends AbstractArmorySupport {
 
         // 3. 获取消息历史用于压缩
         String sessionId = dynamicContext.getSessionId();
-        List<ChatMessageEntity> messages = chatMemoryService.getConversationHistory(sessionId);
+        List<ChatMessageEntity> messages = conversationContextProvider.getCompressionContext(sessionId).getRecentMessages();
         log.info("获取到消息历史数量: {}", messages != null ? messages.size() : 0);
 
         // 4. 调用压缩模型生成摘要
@@ -102,8 +102,7 @@ public class CompressionContextNode extends AbstractArmorySupport {
      */
     private String buildCompressedPromptWithTruncation(String summary, List<ChatMessageEntity> messages,
                                                        int originalTokens, int summaryTokens, int threshold) {
-        // 尝试保留 2 轮对话
-        String compressedText = buildCompressedPrompt(summary, messages, originalTokens, DEFAULT_KEEP_ROUNDS);
+        String compressedText = buildCompressedPrompt(summary, messages, originalTokens, DEFAULT_KEEP_MESSAGES);
         int compressedTokens = TokenCountUtils.estimate(compressedText);
 
         if (compressedTokens <= threshold) {
@@ -113,8 +112,7 @@ public class CompressionContextNode extends AbstractArmorySupport {
         // 压缩后仍超限，递减保留轮数
         log.info("压缩后仍超限，尝试减少保留轮数: currentTokens={}, threshold={}", compressedTokens, threshold);
 
-        // 尝试保留 1 轮
-        compressedText = buildCompressedPrompt(summary, messages, originalTokens, 1);
+        compressedText = buildCompressedPrompt(summary, messages, originalTokens, DEFAULT_KEEP_MESSAGES / 2);
         compressedTokens = TokenCountUtils.estimate(compressedText);
         if (compressedTokens <= threshold) {
             return compressedText;
@@ -126,15 +124,15 @@ public class CompressionContextNode extends AbstractArmorySupport {
     }
 
     private String buildCompressedPrompt(String summary, List<ChatMessageEntity> messages,
-                                         int originalTokens, int keepRounds) {
+                                         int originalTokens, int keepMessages) {
         StringBuilder sb = new StringBuilder();
         sb.append("[压缩边界] 以下是之前对话的摘要（原始约 ").append(originalTokens).append(" tokens）：\n\n");
         sb.append(summary);
 
-        // 添加最近 N 轮对话
-        if (messages != null && !messages.isEmpty() && keepRounds > 0) {
+        // 添加最近 N 条消息
+        if (messages != null && !messages.isEmpty() && keepMessages > 0) {
             sb.append("\n\n[最近对话]\n");
-            List<ChatMessageEntity> recentMessages = getRecentRounds(messages, keepRounds);
+            List<ChatMessageEntity> recentMessages = getRecentMessages(messages, keepMessages);
             for (ChatMessageEntity msg : recentMessages) {
                 sb.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n\n");
             }
@@ -149,11 +147,15 @@ public class CompressionContextNode extends AbstractArmorySupport {
      * 防御性处理：消息不足时返回全部消息，不抛异常
      */
     protected List<ChatMessageEntity> getRecentRounds(List<ChatMessageEntity> messages, int keepRounds) {
+        return getRecentMessages(messages, keepRounds * 2);
+    }
+
+    protected List<ChatMessageEntity> getRecentMessages(List<ChatMessageEntity> messages, int keepMessages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
         int totalSize = messages.size();
-        int targetSize = keepRounds * 2;
+        int targetSize = keepMessages;
         // 消息不足时，返回全部消息
         if (totalSize <= targetSize) {
             return messages;

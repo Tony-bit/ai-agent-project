@@ -79,6 +79,17 @@ public class RetryableExceptionTypesTest {
         assertFalse(RetryableExceptionTypes.isRetryable(e));
     }
 
+    @Test
+    public void testRestClientExceptionWithSocketTimeoutCauseIsRetryable() {
+        org.springframework.web.client.RestClientException e =
+                new org.springframework.web.client.RestClientException(
+                        "Error while extracting response",
+                        new java.net.SocketTimeoutException("Read timed out")
+                );
+
+        assertTrue(RetryableExceptionTypes.isRetryable(e));
+    }
+
     // ========== TC-RET-04: 异常消息关键词识别 ==========
 
     @Test
@@ -159,6 +170,14 @@ public class RetryableExceptionTypesTest {
     public void testBusinessException() {
         BusinessException e = new BusinessException("business error");
         assertFalse(RetryableExceptionTypes.isRetryable(e));
+    }
+
+    @Test
+    public void shouldTreatResponseValidationExceptionAsRetryable() {
+        ResponseValidationException e = new ResponseValidationException(
+                ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR, "schema mismatch");
+
+        assertTrue(RetryableExceptionTypes.isRetryable(e));
     }
 
     // ========== TC-RET-06: 组合场景 ==========

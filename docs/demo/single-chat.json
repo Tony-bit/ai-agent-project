@@ -1,0 +1,8 @@
+{
+  "userId": "demo-user",
+  "sessionId": "demo-single-chat",
+  "message": "Explain what an AI Agent is in three short sentences.",
+  "maxStep": 5,
+  "inputType": 0,
+  "agentType": "default"
+}

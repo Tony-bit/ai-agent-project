@@ -42,6 +42,7 @@
                         'slide-up': 'slide-up 0.3s ease-out',
                         'slide-down': 'slide-down 0.3s ease-out',
                         'fade-in': 'fade-in 0.4s ease-out',
+                        'fade-out': 'fade-out 0.3s ease-out forwards',
                     },
                     keyframes: {
                         'float': {
@@ -64,6 +65,10 @@
                             '0%': { opacity: '0' },
                             '100%': { opacity: '1' },
                         },
+                        'fade-out': {
+                            '0%': { opacity: '1' },
+                            '100%': { opacity: '0' },
+                        },
                     },
                 }
             }
@@ -71,8 +76,61 @@
     </script>
     <style>
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            position: relative;
+            isolation: isolate;
+            background:
+                radial-gradient(circle at 12% 18%, rgba(96, 165, 250, 0.48), transparent 28%),
+                radial-gradient(circle at 82% 14%, rgba(168, 85, 247, 0.38), transparent 30%),
+                linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: 140% 140%;
             background-attachment: fixed;
+            animation: ambientShift 18s ease-in-out infinite alternate;
+        }
+
+        body::before,
+        body::after {
+            content: '';
+            position: fixed;
+            inset: -20%;
+            pointer-events: none;
+        }
+
+        body::before {
+            z-index: -2;
+            opacity: 0.65;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.26), transparent 26%),
+                radial-gradient(circle at 70% 60%, rgba(59, 130, 246, 0.28), transparent 24%),
+                radial-gradient(circle at 45% 80%, rgba(34, 197, 94, 0.20), transparent 22%);
+            filter: blur(8px);
+            animation: auroraDrift 24s linear infinite;
+        }
+
+        body::after {
+            z-index: -1;
+            opacity: 0.25;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.20) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+            background-size: 44px 44px;
+            mask-image: radial-gradient(circle at center, black, transparent 72%);
+        }
+
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes ambientShift {
+            0% { background-position: 0% 40%; }
+            100% { background-position: 100% 60%; }
+        }
+
+        @keyframes auroraDrift {
+            0% { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
+            50% { transform: rotate(8deg) translate3d(2%, -3%, 0) scale(1.08); }
+            100% { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
         }
 
         .custom-scrollbar::-webkit-scrollbar {
@@ -188,20 +246,28 @@
             border: 1px solid rgba(0, 0, 0, 0.08);
         }
         .markdown-content pre {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border-radius: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
             padding: 16px 20px;
             overflow-x: auto;
             margin: 16px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
         }
         .markdown-content pre code {
             background: none;
             padding: 0;
-            color: #e2e8f0;
+            color: #1f2937;
             font-size: 0.85em;
             border: none;
+        }
+        .markdown-content pre code.hljs {
+            background: transparent;
+            color: #1f2937;
+        }
+        .markdown-content pre ::selection {
+            background: #bfdbfe;
+            color: #0f172a;
         }
         .markdown-content table {
             border-collapse: collapse;
@@ -258,6 +324,7 @@
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
         }
         .glass-dark {
             background: rgba(15, 23, 42, 0.8);
@@ -266,6 +333,8 @@
         }
 
         .session-item {
+            position: relative;
+            overflow: hidden;
             padding: 10px 12px;
             border-radius: 10px;
             cursor: pointer;
@@ -274,11 +343,22 @@
             background: rgba(255, 255, 255, 0.5);
             margin-bottom: 6px;
         }
+        .session-item::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(120deg, transparent, rgba(59, 130, 246, 0.14), transparent);
+            transform: translateX(-110%);
+            transition: transform 0.55s ease;
+        }
         .session-item:hover {
             background: rgba(255, 255, 255, 0.9);
             border-color: rgba(59, 130, 246, 0.2);
             transform: translateX(4px);
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+        }
+        .session-item:hover::before {
+            transform: translateX(110%);
         }
         .session-item.active {
             background: linear-gradient(135deg, #eff6ff, #dbeafe);
@@ -358,6 +438,136 @@
         .input-focus:focus {
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+
+        .dynamic-panel,
+        .dynamic-card,
+        .input-dock,
+        .control-card {
+            transition:
+                transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s ease,
+                border-color 0.35s ease,
+                background 0.35s ease;
+        }
+
+        .dynamic-card {
+            animation: panelRise 0.58s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .dynamic-panel {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dynamic-panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 34%);
+            transition: opacity 0.3s ease;
+        }
+
+        .dynamic-panel.panel-active::before,
+        .is-busy .dynamic-panel-thinking::before {
+            opacity: 1;
+            animation: panelGlow 2.4s ease-in-out infinite;
+        }
+
+        .control-card:hover,
+        .input-dock:focus-within {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.25);
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+        }
+
+        .interactive-button {
+            position: relative;
+            overflow: hidden;
+            transform: translateZ(0);
+        }
+
+        .interactive-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.34) 48%, transparent 76%);
+            transform: translateX(-130%);
+            transition: transform 0.55s ease;
+        }
+
+        .interactive-button:hover::after {
+            transform: translateX(130%);
+        }
+
+        .interactive-button:active {
+            transform: translateY(1px) scale(0.99);
+        }
+
+        .input-counter {
+            transition: color 0.2s ease, transform 0.2s ease;
+        }
+
+        .input-counter.is-active {
+            color: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .streaming-message {
+            position: relative;
+        }
+
+        .streaming-message .bubble-ai {
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12), 0 12px 30px rgba(59, 130, 246, 0.14);
+        }
+
+        .streaming-message .markdown-content::after {
+            content: '';
+            display: inline-block;
+            width: 7px;
+            height: 1.05em;
+            margin-left: 4px;
+            border-radius: 999px;
+            background: #2563eb;
+            vertical-align: -2px;
+            animation: caretBlink 0.9s steps(2, start) infinite;
+        }
+
+        .ai-status-dot {
+            transition: background-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+        }
+
+        .is-busy .ai-status-dot {
+            transform: scale(1.15);
+        }
+
+        @keyframes panelRise {
+            from { opacity: 0; transform: translateY(14px) scale(0.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes panelGlow {
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 0.95; }
+        }
+
+        @keyframes caretBlink {
+            0%, 45% { opacity: 1; }
+            46%, 100% { opacity: 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.001ms !important;
+            }
         }
 
         .avatar-hover {
@@ -461,7 +671,7 @@
 
 <div class="flex-1 flex overflow-hidden p-3 gap-3">
     <!-- 侧边栏 - 收窄到 w-56 -->
-    <aside id="sidebar" class="w-56 glass rounded-2xl overflow-hidden transition-all duration-300 ease-in-out shadow-soft-lg border border-white/50 custom-scrollbar">
+    <aside id="sidebar" class="w-56 glass dynamic-card rounded-2xl overflow-hidden transition-all duration-300 ease-in-out shadow-soft-lg border border-white/50 custom-scrollbar">
         <div class="p-3">
             <div class="flex items-center justify-between mb-3">
                 <h2 class="font-bold text-sm text-gray-800 flex items-center gap-2">
@@ -502,19 +712,19 @@
     </aside>
 
     <!-- Main Content -->
-    <div class="flex-1 flex flex-col overflow-hidden glass rounded-2xl shadow-soft-lg border border-white/50">
+    <div class="flex-1 flex flex-col overflow-hidden glass dynamic-card rounded-2xl shadow-soft-lg border border-white/50">
         <!-- 双面板内容区域 -->
         <div class="flex-1 flex overflow-hidden">
             <!-- 左侧思考过程面板 -->
-            <div class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50">
+            <div id="thinkingPanel" class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50 dynamic-panel dynamic-panel-thinking">
                 <div class="px-4 py-3 bg-gradient-to-r from-primary-50/80 to-transparent border-b border-gray-100/80 flex items-center gap-2">
                     <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-md shadow-primary-500/20">
                         <span class="text-base">🧠</span>
                     </div>
                     <h3 class="font-bold text-sm text-gray-800">AI 思考执行过程</h3>
                     <div class="ml-auto flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 bg-primary-500 rounded-full animate-pulse"></span>
-                        <span class="text-[10px] text-gray-500">处理中</span>
+                        <span id="thinkingStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
+                        <span id="thinkingStatusLabel" class="text-[10px] text-gray-500">待命</span>
                     </div>
                 </div>
                 <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
@@ -534,15 +744,15 @@
             <div class="divider-gradient mx-0"></div>
 
             <!-- 右侧结果面板 -->
-            <div class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50">
+            <div id="resultPanel" class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50 dynamic-panel dynamic-panel-result">
                 <div class="px-4 py-3 bg-gradient-to-r from-green-50/80 to-transparent border-b border-gray-100/80 flex items-center gap-2">
                     <div class="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-green-500/20">
                         <span class="text-base">📋</span>
                     </div>
                     <h3 class="font-bold text-sm text-gray-800">最终执行结果</h3>
                     <div class="ml-auto flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                        <span class="text-[10px] text-gray-500">就绪</span>
+                        <span id="resultStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                        <span id="resultStatusLabel" class="text-[10px] text-gray-500">就绪</span>
                     </div>
                 </div>
                 <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
@@ -561,7 +771,7 @@
         </div>
 
         <!-- 底部输入区域 - 紧凑化 -->
-        <div class="border-t border-gray-200/50 bg-gradient-to-t from-white to-gray-50/50 p-4">
+        <div class="input-dock border-t border-gray-200/50 bg-gradient-to-t from-white to-gray-50/50 p-4">
             <!-- 加载状态 -->
             <div id="loading" class="hidden mb-3">
                 <div class="flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg border border-primary-100">
@@ -585,7 +795,7 @@
             <!-- ========== 通用对话模式面板 ========== -->
             <div id="panelGeneral">
                 <!-- 控制面板 - 紧凑化 -->
-                <div class="mb-3 flex flex-wrap items-center gap-3 p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200/50 shadow-sm">
+                <div class="control-card mb-3 flex flex-wrap items-center gap-3 p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200/50 shadow-sm">
                     <div class="flex items-center gap-2">
                         <label for="aiAgentSelect" class="compact-label text-gray-700">智能体</label>
                         <select id="aiAgentSelect" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus compact-select">
@@ -622,10 +832,15 @@
 
                 <!-- 输入框和发送按钮 -->
                 <div class="flex gap-2">
-                    <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
-                           class="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-sm text-gray-700 placeholder-gray-400 bg-white shadow-sm input-focus">
+                    <div class="flex-1 relative">
+                        <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
+                               class="w-full px-4 py-3 pr-20 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-sm text-gray-700 placeholder-gray-400 bg-white shadow-sm input-focus">
+                        <div class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 font-medium">
+                            <span id="inputCounter" class="input-counter">0</span>/1000
+                        </div>
+                    </div>
                     <button id="sendBtn" onclick="sendMessage()"
-                            class="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 font-semibold flex items-center gap-2 shadow-lg shadow-primary-500/30 btn-glow text-sm">
+                            class="interactive-button px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 font-semibold flex items-center gap-2 shadow-lg shadow-primary-500/30 btn-glow text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                         </svg>
@@ -637,7 +852,7 @@
             <!-- ========== 金融分析模式面板 ========== -->
             <div id="panelTrading" class="hidden">
                 <!-- 金融分析控制面板 - 紧凑化 -->
-                <div class="mb-3 p-3 bg-gradient-to-br from-green-50/50 to-emerald-50/30 rounded-xl border border-green-200/50 shadow-sm">
+                <div class="control-card mb-3 p-3 bg-gradient-to-br from-green-50/50 to-emerald-50/30 rounded-xl border border-green-200/50 shadow-sm">
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="flex items-center gap-2">
                             <label for="tradingTicker" class="compact-label text-gray-700">股票代码</label>
@@ -698,7 +913,7 @@
                 <!-- 发送按钮 -->
                 <div class="flex gap-2">
                     <button id="sendTradingBtn" onclick="sendTradingAnalysis()"
-                            class="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/30 btn-glow-green text-sm">
+                            class="interactive-button flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/30 btn-glow-green text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
@@ -713,6 +928,13 @@
                     <span class="text-[10px] text-gray-500">会话ID:</span>
                     <span id="sessionId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
+                    <button id="syncMemoryBtn" onclick="syncMemory()"
+                            class="ml-2 px-2.5 py-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-full text-[10px] font-semibold hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-sm flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        同步记忆
+                    </button>
                 </div>
             </div>
         </div>
@@ -727,11 +949,15 @@
     let sessionId = generateSessionId();
     document.getElementById('sessionId').textContent = sessionId;
 
-    const currentUserId = 'user_001';
+    const currentUserId = 'test-user-f52b2ed1';
 
     let isConnected = false;
     let eventSource = null;
     let currentStepMessages = new Map();
+    let streamTerminalEventReceived = false;
+
+    // 流式消息累积缓存：key = "type-subType-step", value = { div, content }
+    const streamingMessageCache = new Map();
 
     let sessionCursorTime = null;
     let sessionCursorId = null;
@@ -800,6 +1026,44 @@
         'news_analysis': '新闻分析',
         'risk_debate': '风险辩论'
     };
+
+    const resultContentSubTypes = new Set([
+        'general_chat_response',
+        'multimodal_response'
+    ]);
+
+    const resultSubTypes = new Set([
+        'inspection_report',
+        'final_decision',
+        'final_completed',
+        'trading_complete'
+    ]);
+
+    const hiddenLifecycleSubTypes = new Set([
+        'general_chat_response_start',
+        'multimodal_response_start'
+    ]);
+
+    function isHiddenLifecycleMessage(type, subType) {
+        return type === 'system' && hiddenLifecycleSubTypes.has(subType);
+    }
+
+    function isTerminalSSEEvent(type, subType) {
+        return type === 'complete'
+            || type === 'final'
+            || type === 'error'
+            || (type === 'trading' && (subType === 'error' || subType === 'trading_complete'));
+    }
+
+    function isResultPanelMessage(type, subType) {
+        if (type === 'complete' || type === 'summary') {
+            return true;
+        }
+        if (type === 'content') {
+            return resultContentSubTypes.has(subType) || resultSubTypes.has(subType);
+        }
+        return resultSubTypes.has(subType);
+    }
 
     function formatTime(dateStr) {
         if (!dateStr) return '';
@@ -1196,6 +1460,7 @@
 
         addMessage(message, 'user');
         messageInput.value = '';
+        updateInputCounter();
 
         showLoadingState();
 
@@ -1225,8 +1490,10 @@
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            const sseParser = createSSEParser(handleSSEMessage);
 
             currentStepMessages.clear();
+            streamTerminalEventReceived = false;
 
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
@@ -1242,27 +1509,16 @@
             function readStream() {
                 reader.read().then(({ done, value }) => {
                     if (done) {
+                        sseParser.flush();
                         closeLoadingState('general');
-                        addStageMessage('complete', null, '任务执行完成', null);
+                        if (!streamTerminalEventReceived) {
+                            addStageMessage('complete', null, '任务执行完成', null);
+                        }
                         return;
                     }
 
                     const chunk = decoder.decode(value, { stream: true });
-
-                    const lines = chunk.split('\n');
-                    for (let line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6).trim();
-                            if (data && data !== '[DONE]') {
-                                try {
-                                    const jsonData = JSON.parse(data);
-                                    handleSSEMessage(jsonData);
-                                } catch (e) {
-                                    console.warn('无法解析JSON数据，已忽略:', data.substring(0, 100));
-                                }
-                            }
-                        }
-                    }
+                    sseParser.push(chunk);
                     scrollToBottom();
                     readStream();
                 }).catch(error => {
@@ -1280,27 +1536,184 @@
         });
     }
 
+    function createSSEParser(onMessage) {
+        let buffer = '';
+
+        function parseEvent(eventText) {
+            const data = eventText
+                .split(/\r?\n/)
+                .filter(line => line.startsWith('data:'))
+                .map(line => line.startsWith('data: ') ? line.substring(6) : line.substring(5))
+                .join('\n')
+                .trim();
+
+            if (!data || data === '[DONE]') {
+                return;
+            }
+
+            try {
+                onMessage(JSON.parse(data));
+            } catch (e) {
+                console.warn('无法解析 SSE JSON 数据，已忽略:', data.substring(0, 100), e);
+            }
+        }
+
+        return {
+            push(chunk) {
+                buffer += chunk;
+                const events = buffer.split(/\r?\n\r?\n/);
+                buffer = events.pop() || '';
+                events.forEach(parseEvent);
+            },
+            flush() {
+                if (buffer.trim()) {
+                    parseEvent(buffer);
+                }
+                buffer = '';
+            }
+        };
+    }
+
     function handleSSEMessage(jsonData) {
         const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
 
+        const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
+        if (isTerminalSSEEvent(type, subType)) {
+            streamTerminalEventReceived = true;
+        }
         if (!content || content.trim() === '') {
+            if (completed && type === 'content') {
+                streamingMessageCache.delete(cacheKey);
+            }
             return;
         }
 
+        if (isHiddenLifecycleMessage(type, subType)) {
+            return;
+        }
+
+        if (type === 'content') {
+            // 流式内容消息：分片追加，完成包用完整内容校准同一消息
+            let cached = streamingMessageCache.get(cacheKey);
+
+            if (!cached) {
+                // 首次：创建新消息元素并缓存
+                cached = { div: addStageMessage(type, subType, content, step), content: content };
+                streamingMessageCache.set(cacheKey, cached);
+            } else if (completed === true) {
+                cached.content = content;
+                updateMessageContent(cached.div, cached.content);
+            } else {
+                // 追加：更新内容
+                cached.content += content;
+                updateMessageContent(cached.div, cached.content);
+            }
+            cached.div.classList.add('streaming-message');
+            if (completed === true) {
+                cached.div.classList.remove('streaming-message');
+                streamingMessageCache.delete(cacheKey);
+            }
+
+            const streamingContainerId = isResultPanelMessage(type, subType)
+                ? 'resultMessages'
+                : 'thinkingMessages';
+            scrollToBottom(document.getElementById(streamingContainerId));
+            return;
+        }
+
+        // 其他类型消息（完成、错误、final、system 等）：正常处理
         addStageMessage(type, subType, content, step);
 
         if (type === 'error' || type === 'final' ||
             (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
             closeLoadingState();
         }
+
+        // 完成后清理缓存
+        if (completed) {
+            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
+            streamingMessageCache.delete(cacheKey);
+        }
+    }
+
+    function getGeneralSendButtonContent() {
+        return `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+            发送
+        `;
+    }
+
+    function setProcessingState(active, mode = currentMode || 'general') {
+        document.body.classList.toggle('is-busy', active);
+
+        const thinkingLabel = document.getElementById('thinkingStatusLabel');
+        const thinkingDot = document.getElementById('thinkingStatusDot');
+        const resultLabel = document.getElementById('resultStatusLabel');
+        const resultDot = document.getElementById('resultStatusDot');
+        const thinkingPanel = document.getElementById('thinkingPanel');
+        const resultPanel = document.getElementById('resultPanel');
+
+        if (thinkingLabel) {
+            thinkingLabel.textContent = active ? (mode === 'trading' ? '分析中' : '思考中') : '待命';
+        }
+        if (resultLabel) {
+            resultLabel.textContent = active ? '等待结果' : '就绪';
+        }
+        if (thinkingDot) {
+            thinkingDot.className = active
+                ? 'ai-status-dot w-1.5 h-1.5 bg-primary-500 rounded-full animate-pulse'
+                : 'ai-status-dot w-1.5 h-1.5 bg-slate-300 rounded-full';
+        }
+        if (resultDot) {
+            resultDot.className = active
+                ? 'ai-status-dot w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse'
+                : 'ai-status-dot w-1.5 h-1.5 bg-green-500 rounded-full';
+        }
+        if (thinkingPanel) {
+            thinkingPanel.classList.toggle('panel-active', active);
+        }
+        if (resultPanel) {
+            resultPanel.classList.toggle('panel-active', active);
+        }
+    }
+
+    function clearStreamingEffects() {
+        document.querySelectorAll('.streaming-message').forEach(message => {
+            message.classList.remove('streaming-message');
+        });
+    }
+
+    function updateInputCounter() {
+        const messageInput = document.getElementById('messageInput');
+        const inputCounter = document.getElementById('inputCounter');
+        if (!messageInput || !inputCounter) return;
+
+        const length = messageInput.value.length;
+        inputCounter.textContent = length;
+        inputCounter.classList.toggle('is-active', length > 0);
+    }
+
+    function setupDynamicInteractions() {
+        updateInputCounter();
+        setProcessingState(false);
+
+        const messageInput = document.getElementById('messageInput');
+        if (messageInput) {
+            messageInput.addEventListener('input', updateInputCounter);
+        }
     }
 
     function closeLoadingState(mode) {
         isConnected = false;
         document.getElementById('loading').style.display = 'none';
+        setProcessingState(false, mode || currentMode);
+        clearStreamingEffects();
 
         const sendBtn = document.getElementById('sendBtn');
         sendBtn.disabled = false;
+        sendBtn.innerHTML = getGeneralSendButtonContent();
 
         const sendTradingBtn = document.getElementById('sendTradingBtn');
         sendTradingBtn.disabled = false;
@@ -1315,7 +1728,12 @@
     function showLoadingState() {
         const sendBtn = document.getElementById('sendBtn');
         sendBtn.disabled = true;
+        sendBtn.innerHTML = `
+            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            发送中...
+        `;
         document.getElementById('loading').style.display = 'block';
+        setProcessingState(true, 'general');
     }
 
     function getFriendlyErrorMessage(error) {
@@ -1355,9 +1773,7 @@
 
     function addStageMessage(type, subType, content, step) {
         let targetContainer;
-        const isFinalResult =
-            type === 'complete' ||
-            (type === 'supervision' && subType === 'inspection_report');
+        const isFinalResult = isResultPanelMessage(type, subType);
         if (isFinalResult) {
             targetContainer = document.getElementById('resultMessages');
         } else {
@@ -1410,12 +1826,33 @@
 
         targetContainer.appendChild(messageDiv);
 
+        const targetPanel = targetContainer.closest('.dynamic-panel');
+        if (targetPanel) {
+            targetPanel.classList.add('panel-active');
+            window.setTimeout(() => {
+                if (!isConnected) {
+                    targetPanel.classList.remove('panel-active');
+                }
+            }, 1200);
+        }
+
         messageDiv.querySelectorAll('pre code').forEach((block) => {
             hljs.highlightElement(block);
         });
 
         scrollToBottom(targetContainer);
         return messageDiv;
+    }
+
+    function updateMessageContent(messageDiv, content) {
+        const renderedContent = marked.parse(content);
+        const contentDiv = messageDiv.querySelector('.markdown-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = renderedContent;
+            messageDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
     }
 
     function addMessage(content, type) {
@@ -1497,6 +1934,8 @@
 
         document.getElementById('messageInput').value = '';
         document.getElementById('tradingTicker').value = '';
+        updateInputCounter();
+        setProcessingState(false);
 
         if (currentMode === 'general') {
             document.getElementById('messageInput').focus();
@@ -1526,6 +1965,7 @@
         if (selectedExample) {
             document.getElementById('messageInput').value = selectedExample;
             this.value = '';
+            updateInputCounter();
         }
     });
 
@@ -1614,6 +2054,7 @@
         `;
 
         document.getElementById('loading').style.display = 'block';
+        setProcessingState(true, 'trading');
 
         const requestData = {
             ticker: tickerUpper,
@@ -1639,6 +2080,8 @@
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            const sseParser = createSSEParser(handleSSEMessage);
+            streamTerminalEventReceived = false;
 
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
@@ -1652,26 +2095,16 @@
             function readStream() {
                 reader.read().then(({ done, value }) => {
                     if (done) {
+                        sseParser.flush();
                         closeLoadingState('trading');
-                        addStageMessage('complete', null, '金融分析完成', null);
+                        if (!streamTerminalEventReceived) {
+                            addStageMessage('complete', null, '金融分析完成', null);
+                        }
                         return;
                     }
 
                     const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
-                    for (let line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6).trim();
-                            if (data && data !== '[DONE]') {
-                                try {
-                                    const jsonData = JSON.parse(data);
-                                    handleSSEMessage(jsonData);
-                                } catch (e) {
-                                    console.warn('无法解析JSON数据，已忽略');
-                                }
-                            }
-                        }
-                    }
+                    sseParser.push(chunk);
                     scrollToBottom();
                     readStream();
                 }).catch(error => {
@@ -1689,8 +2122,58 @@
         });
     }
 
+    async function syncMemory() {
+        const syncBtn = document.getElementById('syncMemoryBtn');
+        if (syncBtn.disabled) return;
+
+        syncBtn.disabled = true;
+        const originalContent = syncBtn.innerHTML;
+        syncBtn.innerHTML = `
+            <svg class="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            同步中...
+        `;
+
+        try {
+            const response = await fetch(`http://localhost:8090/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            const result = await response.json();
+            if (result.code === '200') {
+                showToast('已同步记忆到 Mem0', 'success');
+            } else {
+                showToast(result.info || '同步失败', 'error');
+            }
+        } catch (error) {
+            console.error('同步记忆失败:', error);
+            showToast('同步失败: ' + error.message, 'error');
+        } finally {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = originalContent;
+        }
+    }
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+        toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-slide-down text-sm font-medium`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.remove('animate-slide-down');
+            toast.classList.add('animate-fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
+        setupDynamicInteractions();
         loadSessionList(false);
         setupSessionListScroll();
         setupMessageScroll();

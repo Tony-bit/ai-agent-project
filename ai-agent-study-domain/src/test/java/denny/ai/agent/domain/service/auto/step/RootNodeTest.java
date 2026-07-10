@@ -1,12 +1,17 @@
 package denny.ai.agent.domain.service.auto.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.adapter.repository.IAgentRepository;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
+import denny.ai.agent.domain.service.auto.step.routing.QueryDecompositionNode;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
+import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,10 +46,19 @@ public class RootNodeTest {
     private IntentRoutingNode intentRoutingNode;
 
     @Mock
+    private QueryDecompositionNode queryDecompositionNode;
+
+    @Mock
     private Step1AnalyzerNode step1AnalyzerNode;
 
     @Mock
     private IntelligentInspection intelligentInspection;
+
+    @Mock
+    private IAgentRepository repository;
+
+    @Mock
+    private ChatMemoryPersistenceService chatMemoryPersistenceService;
 
     private RootNode rootNode;
 
@@ -55,16 +69,27 @@ public class RootNodeTest {
         rootNode = new RootNode();
 
         setField(rootNode, "intentRoutingNode", intentRoutingNode);
+        setField(rootNode, "queryDecompositionNode", queryDecompositionNode);
+        setField(rootNode, "intentRoutingProperties", new IntentRoutingProperties());
         setField(rootNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(rootNode, "intelligentInspection", intelligentInspection);
+        setField(rootNode, "repository", repository);
+        setField(rootNode, "chatMemoryPersistenceService", chatMemoryPersistenceService);
 
         dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(target, value);
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (NoSuchFieldException e) {
+            // 尝试从父类获取字段（用于 protected 字段）
+            Field field = target.getClass().getSuperclass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        }
     }
 
     // ========== TC-Root-001 ~ TC-Root-005: 三分支路由测试 ==========
@@ -154,6 +179,72 @@ public class RootNodeTest {
         assertEquals(intentRoutingNode, handler);
     }
 
+    @Test
+    public void testSplitModeRoutesToQueryDecomposition() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session")
+                .message("analyze two stocks")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(queryDecompositionNode, handler);
+    }
+
+    @Test
+    public void testUnifiedModeRoutesToIntentRouting() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.UNIFIED);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session")
+                .message("analyze one stock")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(intentRoutingNode, handler);
+    }
+
+    @Test
+    public void shouldIgnoreRoutingModeWhenAiAgentIdIsExplicit() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("123")
+                .sessionId("test-session")
+                .message("PE任务")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(step1AnalyzerNode, handler);
+    }
+
+    @Test
+    public void shouldIgnoreRoutingModeForInspectionAgent() throws Exception {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.setMode(IntentRoutingMode.SPLIT);
+        setField(rootNode, "intentRoutingProperties", properties);
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("5")
+                .sessionId("test-session")
+                .message("执行巡检")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(intelligentInspection, handler);
+    }
+
     /**
      * TC-Root-006: 验证 aiAgentId="5" 精确匹配，不是 "50" 或 "51"
      */
@@ -170,5 +261,76 @@ public class RootNodeTest {
                 rootNode.get(request50, dynamicContext);
 
         assertEquals(step1AnalyzerNode, handler50);
+    }
+
+    /**
+     * TC-Root-007: doApply() 中 injectPersonaContext 在 router() 前被调用
+     * <p>
+     * 验证 RootNode.doApply() 执行流程：
+     * 1. 设置 dynamicContext 初始状态
+     * 2. 调用 injectPersonaContext() 注入用户画像
+     * 3. 调用 router() 开始路由
+     * </p>
+     */
+    @Test
+    public void shouldPersistClarificationPromptAsConversationOutput() throws Exception {
+        String input = "Analyze this stock";
+        String clarificationPrompt = "Please provide the stock code";
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId(null)
+                .userId("test-user")
+                .sessionId("test-session")
+                .message(input)
+                .maxStep(3)
+                .build();
+
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext ctx =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+
+        when(repository.queryAllFlowConfigForIntentRouting()).thenReturn(new HashMap<>());
+        doAnswer(invocation -> {
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext routingContext = invocation.getArgument(1);
+            routingContext.setValue("clarificationPrompt", clarificationPrompt);
+            return clarificationPrompt;
+        }).when(intentRoutingNode).apply(any(ExecuteCommandEntity.class), any(DefaultAutoAgentExecuteStrategyFactory.DynamicContext.class));
+
+        String result = rootNode.doApply(request, ctx);
+
+        assertEquals(clarificationPrompt, result);
+        verify(chatMemoryPersistenceService).persistConversation(
+                eq("test-session"),
+                eq("test-user"),
+                isNull(),
+                eq("RESPONSE_ASSISTANT"),
+                eq(input),
+                eq(clarificationPrompt),
+                isNull(),
+                anyLong(),
+                isNull()
+        );
+    }
+
+    @Test
+    public void testDoApply_injectsPersonaBeforeRouter() throws Exception {
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("123")
+                .userId("test-user")
+                .sessionId("test-session")
+                .message("PE任务")
+                .maxStep(3)
+                .build();
+
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext ctx =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        ctx.setMaxStep(3);
+
+        // mock repository 以避免 NPE
+        when(repository.queryAiAgentClientFlowConfig(anyString())).thenReturn(new HashMap<>());
+
+        // 执行 doApply，验证不抛异常
+        rootNode.doApply(request, ctx);
+
+        // injectPersonaContext 的幂等性和正确性由 AbstractExecuteSupportTest 覆盖
+        assertNotNull("dynamicContext 应被正确初始化", ctx.getMaxStep());
     }
 }

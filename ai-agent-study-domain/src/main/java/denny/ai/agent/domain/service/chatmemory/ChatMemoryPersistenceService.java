@@ -3,12 +3,13 @@ package denny.ai.agent.domain.service.chatmemory;
 import denny.ai.agent.domain.adapter.repository.IChatMemoryRepository;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ChatSessionEntity;
+import denny.ai.agent.domain.model.entity.ConversationMemoryOptions;
+import denny.ai.agent.domain.model.entity.ConversationTurn;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -28,6 +29,9 @@ public class ChatMemoryPersistenceService {
 
     @Resource(name = "customChatMemoryRepository")
     private IChatMemoryRepository chatMemoryRepository;
+
+    @Resource
+    private ConversationMemoryService conversationMemoryService;
 
     @Value("${chat.memory.max-cache-size:20}")
     private int maxCacheSize = DEFAULT_MAX_CACHE_SIZE;
@@ -55,67 +59,17 @@ public class ChatMemoryPersistenceService {
                                      Long latencyMs,
                                      String traceId) {
         try {
-            // 1. 查找或创建会话
-            ChatSessionEntity session = chatMemoryRepository.querySessionBySessionId(sessionId);
-            if (session == null) {
-                session = ChatSessionEntity.builder()
-                        .sessionId(sessionId)
-                        .userId(userId)
-                        .agentId(agentId)
-                        .clientId(clientId)
-                        .messageCount(0)
-                        .firstQuery(truncate(query, 500))
-                        .lastResponse(truncate(response, 500))
-                        .status(ChatSessionEntity.STATUS_ACTIVE)
-                        .createTime(LocalDateTime.now())
-                        .build();
-                chatMemoryRepository.saveSession(session);
-                log.info("创建新会话: sessionId={}", sessionId);
-            }
-
-            // 2. 查询当前消息序号
-            List<ChatMessageEntity> existingMessages = chatMemoryRepository.queryMessagesBySessionId(sessionId);
-            int nextIndex = existingMessages.size() + 1;
-
-            // 3. 保存 user 消息
-            ChatMessageEntity userMessage = ChatMessageEntity.builder()
+            conversationMemoryService.saveTurn(ConversationTurn.builder()
                     .sessionId(sessionId)
-                    .messageIndex(nextIndex)
-                    .role(ChatMessageEntity.ROLE_USER)
-                    .content(query)
+                    .userId(userId)
+                    .agentId(agentId)
+                    .clientId(clientId)
+                    .query(query)
+                    .response(response)
                     .model(model)
                     .latencyMs(latencyMs)
                     .traceId(traceId)
-                    .createTime(LocalDateTime.now())
-                    .build();
-            chatMemoryRepository.saveMessage(userMessage);
-
-            // 4. 保存 assistant 消息
-            ChatMessageEntity assistantMessage = ChatMessageEntity.builder()
-                    .sessionId(sessionId)
-                    .messageIndex(nextIndex + 1)
-                    .role(ChatMessageEntity.ROLE_ASSISTANT)
-                    .content(response)
-                    .model(model)
-                    .latencyMs(latencyMs)
-                    .traceId(traceId)
-                    .createTime(LocalDateTime.now())
-                    .build();
-            chatMemoryRepository.saveMessage(assistantMessage);
-
-            // 5. 更新会话摘要
-            chatMemoryRepository.updateSessionLastResponse(
-                    sessionId,
-                    truncate(response, 500),
-                    2
-            );
-
-            // 6. 刷新 Redis 缓存
-            List<ChatMessageEntity> allMessages = chatMemoryRepository.queryMessagesBySessionId(sessionId);
-            chatMemoryRepository.cacheMessagesToRedis(sessionId, allMessages, maxCacheSize);
-
-            log.info("会话持久化完成: sessionId={}, messageIndex={}+{}", sessionId, nextIndex, nextIndex + 1);
-
+                    .build());
         } catch (Exception e) {
             log.error("持久化会话失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
         }
@@ -128,22 +82,10 @@ public class ChatMemoryPersistenceService {
      * @return 消息列表
      */
     public List<ChatMessageEntity> getConversationHistory(String sessionId) {
-        // 1. 优先从 Redis 读取
-        List<ChatMessageEntity> cached = chatMemoryRepository.getCachedMessagesFromRedis(sessionId);
-        if (cached != null && !cached.isEmpty()) {
-            log.debug("从 Redis 获取会话历史: sessionId={}, count={}", sessionId, cached.size());
-            return cached;
-        }
-
-        // 2. Fallback 到 MySQL
-        List<ChatMessageEntity> messages = chatMemoryRepository.queryMessagesBySessionId(sessionId);
-        if (!messages.isEmpty()) {
-            // 回填到 Redis
-            chatMemoryRepository.cacheMessagesToRedis(sessionId, messages, maxCacheSize);
-            log.debug("从 MySQL 获取会话历史并回填 Redis: sessionId={}, count={}", sessionId, messages.size());
-        }
-
-        return messages;
+        return conversationMemoryService.loadSnapshot(sessionId, ConversationMemoryOptions.builder()
+                .windowSize(maxCacheSize)
+                .allowRuntimeWindow(true)
+                .build()).getRecentMessages();
     }
 
     /**
@@ -162,7 +104,7 @@ public class ChatMemoryPersistenceService {
      * @param sessionId 会话ID
      */
     public void clearCache(String sessionId) {
-        chatMemoryRepository.deleteRedisCache(sessionId);
+        conversationMemoryService.clearRuntimeMemory(sessionId);
     }
 
     private String truncate(String text, int maxLength) {

@@ -1,6 +1,10 @@
 server:
   port: 8090
 
+intent:
+  routing:
+    mode: SPLIT
+
 spring:
 
   main:
@@ -9,6 +13,9 @@ spring:
     import: optional:classpath:config.yml
   ai:
     trading:
+      skills:
+        enabled-client-ids:
+          - "6001"
       data-source:
         provider: tushare
         tushare-token: ${TUSHARE_TOKEN:e054d234d3479bb5c6e7e1146c361d511a7cd9c8bb6de49d37b385c0}
@@ -30,7 +37,7 @@ spring:
       mem0:
         client:
           base-url: http://127.0.0.1:8889
-          timeout-seconds: 120
+          timeout-seconds: 5
         server:
           version: v0.1.116
           vector-store:
@@ -40,7 +47,7 @@ spring:
               port: ${POSTGRES_PORT:15432}
               dbname: ${POSTGRES_DB:ai-rag-knowledge}
               user: ${POSTGRES_USER:postgres}
-              password: ${POSTGRES_PASSWORD:123}
+              password: ${POSTGRES_PASSWORD:postgres}
               collection-name: ${POSTGRES_COLLECTION_NAME:memories}
 #          graph-store:
 #            provider: neo4j
@@ -58,7 +65,7 @@ spring:
           embedder:
             provider: openai
             config:
-              api-key: ${AI_DASHSCOPE_API_KEY:}
+              api-key: ${AI_DASHSCOPE_API_KEY:sk-b1050a5b1a7e41bcaddc968acdf637a6}
               model: text-embedding-v4
               openai-base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     ollama:
@@ -72,13 +79,13 @@ spring:
       api-key: f159764707384a1ca0b0a83fbd3ed065.YooCMBFpJSN0vUoN
       embedding-model: embedding-3
       chat:
-        model: glm-4-flash
+        model: glm-4.7
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
-      username: postgres
-      password: postgres
-      url: jdbc:postgresql://localhost:15432/ai-rag-knowledge
+      username: ${PGVECTOR_USER:${POSTGRES_USER:postgres}}
+      password: ${PGVECTOR_PASSWORD:${POSTGRES_PASSWORD:postgres}}
+      url: ${PGVECTOR_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:15432}/${POSTGRES_DB:ai-rag-knowledge}}
       type: com.zaxxer.hikari.HikariDataSource
       # hikari连接池配置
       hikari:
@@ -145,9 +152,9 @@ rag:
       min-effective-docs: 1
   embedding:
     config:
-      base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
       api-key: sk-b1050a5b1a7e41bcaddc968acdf637a6
-      model: qwen3-vl-embedding
+      model: text-embedding-v3
       timeout-ms: 8000
       dimension: 768
 
@@ -160,8 +167,9 @@ mybatis:
 redis:
   sdk:
     config:
-      host: localhost
+      host: 111.228.9.124
       port: 16379
+      password: ${REDIS_PASSWORD:po4563}
       pool-size: 10
       min-idle-size: 5
       idle-timeout: 30000
@@ -184,10 +192,26 @@ chat:
     enabled: true
     redis-ttl-hours: 24
     max-cache-size: 20
+    runtime-window-size: 20
+    redis-cache-size: 20
+    compression-trigger-size: 20
+    local-cache-ttl-minutes: 60
+    local-cache-max-sessions: 10000
 
 logging:
   level:
-    web: DEBUG # 这将打印所有Controller映射的详细信息
+    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingService: INFO
+    denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode: INFO
+    denny.ai.agent.domain.service.intent.IntentFewshotService: INFO
+#    denny:
+#      ai:
+#        agent:
+#          domain:
+#            service:
+#              armory:
+#                factory:
+#                  element:
+#                    ObservabilityAdvisor: DEBUG
     # 可选：同时开启Spring核心日志，看扫描过程
 #    org.springframework.context: DEBUG
 #    root: info

@@ -1,0 +1,37 @@
+---
+name: get-historical-bars
+description: |
+  获取 A 股股票的历史 K 线数据，包含开高低收和成交量。
+  适用场景：需要分析历史走势、波动区间、趋势结构时使用。
+  日期格式必须为 yyyy-MM-dd。
+  如果用户只提供股票中文名或简称，必须先使用 search-stock-by-name 获取 ticker。
+---
+
+# 获取历史 K 线
+
+## 工具信息
+- **Skill Name**: `get-historical-bars`
+- **Tool Name**: `get_historical_bars`
+- **Implementation**: ToolCallback (`TradingToolCallbacks`)
+
+## 功能说明
+返回指定时间区间内的日线 OHLCV 数据，用于趋势分析、区间涨跌判断和技术指标前置判断。
+
+## 输入参数
+| 参数 | 类型 | 必填 | 说明 | 示例 |
+|------|------|------|------|------|
+| ticker | string | 是 | 6 位股票代码 | "600000" |
+| startDate | string | 是 | 开始日期 | "2024-01-01" |
+| endDate | string | 是 | 结束日期 | "2024-12-31" |
+
+## 返回格式
+Markdown 表格文本，按日期列出开盘价、最高价、最低价、收盘价和成交量。
+
+## 使用场景
+1. 判断某段时间趋势和波动。
+2. 为技术分析或均线判断提供原始价格序列。
+
+## 注意事项
+- 若用户只给公司名、简称或自然语言提到股票但没有 6 位代码，应先使用 `search-stock-by-name` 获取 `ticker`；唯一匹配时再调用本工具，多个候选时进入澄清或消歧。
+- 日期必须使用 `yyyy-MM-dd`。
+- 时间区间过大时应结合分析目标控制范围。
