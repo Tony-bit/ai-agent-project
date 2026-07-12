@@ -64,6 +64,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         context.put(INPUT_KEY, input);
         context.put(SPAN_ID_KEY, spanId);
         context.put(START_AT_KEY, System.currentTimeMillis());
+        context.put("input", input);
 
         return ChatClientRequest.builder()
                 .prompt(chatClientRequest.prompt())
@@ -261,6 +262,25 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         return "";
     }
 
+    private String tryExtractFromGenerations(ChatResponse chatResponse) {
+        try {
+            if (chatResponse.getResults() == null || chatResponse.getResults().isEmpty()) {
+                return "";
+            }
+            for (var generation : chatResponse.getResults()) {
+                if (generation != null && generation.getOutput() != null) {
+                    String text = generation.getOutput().getText();
+                    if (StringUtils.isNotBlank(text)) {
+                        return text;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromGenerations failed: {}", e.getMessage());
+        }
+        return "";
+    }
+
     private String tryExtractFromMessageContent(ChatResponse chatResponse) {
         try {
             if (chatResponse.getMetadata() != null) {
@@ -277,25 +297,6 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             }
         } catch (Exception e) {
             log.debug("tryExtractFromMessageContent failed: {}", e.getMessage());
-        }
-        return "";
-    }
-
-    private String tryExtractFromGenerations(ChatResponse chatResponse) {
-        try {
-            List<Generation> generations = chatResponse.getResults();
-            if (generations == null || generations.isEmpty()) {
-                return "";
-            }
-            Generation firstGeneration = generations.get(0);
-            if (firstGeneration != null && firstGeneration.getOutput() != null) {
-                String text = firstGeneration.getOutput().getText();
-                if (StringUtils.isNotBlank(text)) {
-                    return text;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("tryExtractFromGenerations failed: {}", e.getMessage());
         }
         return "";
     }
