@@ -10,6 +10,7 @@ import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.model.entity.RoutingConversationContext;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
+import denny.ai.agent.domain.service.runtime.RuntimeContextKeys;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -129,6 +131,48 @@ public class QueryDecompositionNodeTest {
         assertFalse(metrics.getStageMetrics().get(0).getSuccess());
         assertEquals("duplicate taskId: sub-1", metrics.getStageMetrics().get(0).getErrorMessage());
         verify(taskRoutingSlotNode).apply(any(), any());
+    }
+
+    @Test
+    public void usesPreparedHistoryWithoutLoadingConversationHistory() throws Exception {
+        List<String> preparedHistory = List.of("user: first", "assistant: second");
+        context.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, preparedHistory);
+        QueryDecompositionResult result = QueryDecompositionResult.builder()
+                .multiTask(false)
+                .reasoning("single")
+                .taskList(List.of(DecomposedTask.builder()
+                        .taskId("sub-1").taskIndex(1).totalTasks(1).content("task").dependsOn(List.of()).build()))
+                .build();
+        RoutingStageMetric metric = RoutingStageMetric.builder()
+                .stageName("query-decomposition").callIndex(0).success(true).build();
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+                .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
+
+        node.doApply(ExecuteCommandEntity.builder().message("task").sessionId("s").build(), context);
+
+        verify(intentRoutingService).decomposeQueryWithMetric(eq("task"), eq(preparedHistory), any());
+        verify(conversationContextProvider, never()).getDecompositionContext(anyString());
+    }
+
+    @Test
+    public void fallsBackToLegacyHistoryWhenPreparedHistoryKeyIsAbsent() throws Exception {
+        QueryDecompositionResult result = QueryDecompositionResult.builder()
+                .multiTask(false)
+                .reasoning("single")
+                .taskList(List.of(DecomposedTask.builder()
+                        .taskId("sub-1").taskIndex(1).totalTasks(1).content("task").dependsOn(List.of()).build()))
+                .build();
+        RoutingStageMetric metric = RoutingStageMetric.builder()
+                .stageName("query-decomposition").callIndex(0).success(true).build();
+        when(conversationContextProvider.getDecompositionContext("s"))
+                .thenReturn(RoutingConversationContext.builder().historyMessages(List.of("user: legacy")).build());
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+                .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
+
+        node.doApply(ExecuteCommandEntity.builder().message("task").sessionId("s").build(), context);
+
+        verify(intentRoutingService).decomposeQueryWithMetric(eq("task"), eq(List.of("user: legacy")), any());
+        verify(conversationContextProvider).getDecompositionContext("s");
     }
 
     private void set(Object target, String name, Object value) throws Exception {

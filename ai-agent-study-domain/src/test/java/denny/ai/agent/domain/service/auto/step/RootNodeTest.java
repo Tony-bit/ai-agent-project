@@ -212,6 +212,22 @@ public class RootNodeTest {
     }
 
     @Test
+    public void shouldUsePreparedIntentRoutingConfigWithoutRepositoryQuery() throws Exception {
+        dynamicContext.setAiAgentClientFlowConfigVOMap(Map.of("intent",
+                AiAgentClientFlowConfigVO.builder().clientId("routing").build()));
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session")
+                .message("analyze one stock")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(intentRoutingNode, handler);
+        verify(repository, never()).queryAllFlowConfigForIntentRouting();
+    }
+
+    @Test
     public void shouldIgnoreRoutingModeWhenAiAgentIdIsExplicit() throws Exception {
         IntentRoutingProperties properties = new IntentRoutingProperties();
         properties.setMode(IntentRoutingMode.SPLIT);

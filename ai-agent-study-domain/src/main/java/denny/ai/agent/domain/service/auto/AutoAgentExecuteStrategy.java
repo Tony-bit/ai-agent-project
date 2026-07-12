@@ -1,17 +1,15 @@
 package denny.ai.agent.domain.service.auto;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import denny.ai.agent.domain.adapter.repository.IAgentRepository;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
-import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.excute.IExecuteStrategy;
+import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,7 +26,7 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
     private DefaultAutoAgentExecuteStrategyFactory defaultAutoAgentExecuteStrategyFactory;
 
     @Resource
-    private IAgentRepository repository;
+    private RuntimeContextAssembler runtimeContextAssembler;
 
     @Override
     public void execute(ExecuteCommandEntity executeCommandEntity, ResponseBodyEmitter emitter) throws Exception {
@@ -48,11 +46,7 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         String traceId = UUID.randomUUID().toString().replace("-", "");
         dynamicContext.setTraceId(traceId);
 
-        // 根据智能体类型构建上下文
-        if (ExecuteCommandEntity.AGENT_TYPE_INSPECTION.equals(executeCommandEntity.getAgentType())) {
-            // 巡检流程：提前加载客户端配置，供 IntelligentInspection 直接使用
-            initInspectionContext(executeCommandEntity, dynamicContext);
-        }
+        runtimeContextAssembler.prepare(executeCommandEntity, dynamicContext);
 
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
@@ -89,25 +83,4 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
             log.warn("SSE 流关闭异常: error={}, msg={}", e.getMessage(), errorMessage);
         }
     }
-
-    /**
-     * 初始化巡检流程的上下文
-     * <p>
-     * 巡检节点独立执行，不需要经过 RootNode 的多步流程链，
-     * 所以需要在此处提前加载客户端配置。
-     */
-    private void initInspectionContext(ExecuteCommandEntity executeCommandEntity,
-                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        log.info("=== 巡检智能体执行开始 ===");
-        log.info("会话ID: {}", executeCommandEntity.getSessionId());
-        log.info("追踪ID: {}", dynamicContext.getTraceId());
-
-        // 加载客户端配置
-        Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap = repository.queryAiAgentClientFlowConfig(executeCommandEntity.getAiAgentId());
-        dynamicContext.setAiAgentClientFlowConfigVOMap(aiAgentClientFlowConfigVOMap);
-
-        log.info("客户端配置加载完成，共 {} 个节点配置",
-                aiAgentClientFlowConfigVOMap != null ? aiAgentClientFlowConfigVOMap.size() : 0);
-    }
-
 }
