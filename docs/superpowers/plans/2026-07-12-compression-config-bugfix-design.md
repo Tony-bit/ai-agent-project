@@ -100,12 +100,13 @@ armory 的 `AiClientLoadDataStrategy` 当前只加载 `ArmoryCommandEntity.comma
 List<AiAgentClientFlowConfigVO> queryActiveFlowConfigsByClientType(String clientType);
 ```
 
-Infrastructure DAO 查询所有 Agent 的启用 flow 记录，条件为：
+Infrastructure DAO 查询所有 Agent 的压缩 flow 记录，条件为：
 
 ```text
 client_type = "COMPRESSION_ASSISTANT"
-status = 1
 ```
+
+注意：当前 `ai_agent_flow_config` 表没有 status 字段，不能使用 `status=1` 过滤；是否有效由记录是否存在决定。
 
 `AiClientLoadDataStrategy` 在启动现有并行查询前执行以下步骤：
 
@@ -223,7 +224,46 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 - 原模型返回 1261 时压缩并完成第二次调用。
 - 不新增数据库 schema、application.yml 或生产 Mock 组件。
 
-## 11. 发布与回滚
+## 11. 数据库准备
+
+完整脚本：`docs/dev-ops/mysql/sql/dml/002-mandatory-context-compression-config.sql`
+
+执行前需要按环境确认脚本顶部三个变量：
+
+```sql
+SET @compression_agent_id = '3';
+SET @compression_client_id = '3202';
+SET @compression_model_id = '2003';
+```
+
+### 11.1 必需数据
+
+| 表 | 必需记录 | 说明 |
+|------|------|------|
+| `ai_agent_flow_config` | `client_type='COMPRESSION_ASSISTANT'` 且全库 distinct client_id 只有一个 | 系统级唯一压缩助手来源 |
+| `ai_client` | `client_id=@compression_client_id` 且 `status=1` | 完整压缩 ChatClient |
+| `ai_client_model` | `model_id=@compression_model_id` 且 `status=1` | 压缩助手底层模型，API 配置必须可用 |
+| `ai_client_config` | client -> model，`task_type=1` 且 `status=1` | AiClientNode 的精确匹配依据 |
+
+### 11.2 可选数据
+
+| 表 | 可选记录 | 缺失行为 |
+|------|------|------|
+| `ai_client_system_prompt` | `prompt_id='7001'` | 使用代码默认压缩提示词 |
+| `ai_client_config` | client -> prompt 7001 | 不关联时使用代码默认提示词 |
+| `ai_client_model.ext_param` | 复合 JSON 中的 compressionConfig | 使用 160000/3/2000 默认值 |
+
+SQL 不创建 API Key 或新的模型记录，因为 `base_url`、`api_key`、模型名称属于环境敏感配置。脚本会先验证 `@compression_model_id` 及其 API 是否已启用；若验证结果不是 1 行，应先由你选择现有可用模型，或按本环境的模型/API 管理流程创建。
+
+### 11.3 操作顺序
+
+1. 执行脚本第 1 段冲突检查；如果 distinct client_id 超过一个，先统一数据，不继续写入。
+2. 确认目标 model/API 验证结果均为 1。
+3. 执行事务内的 client、flow、client-model 关联幂等写入。
+4. 执行末尾验收查询，确认唯一 clientId、task_type=1 唯一关联和模型/API 启用。
+5. 7001 提示词仅在需要数据库覆盖代码默认模板时配置。
+
+## 12. 发布与回滚
 
 现有扁平 ext_param 无需迁移。只有需要调整默认压缩参数的模型才改成复合 JSON。
 
