@@ -443,7 +443,7 @@ git commit -m "feat: retry compressed prompt in one state machine"
 
 | Task | status |
 |------|------|
-| Task 5: RetryChatModel and Assembly Decoupling | append |
+| Task 5: RetryChatModel and Assembly Decoupling | pass |
 
 **Files:**
 - Modify: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/armory/factory/element/RetryChatModel.java`

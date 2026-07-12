@@ -101,7 +101,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.call(any(Prompt.class))).thenReturn(response);
@@ -132,7 +131,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.call(any(Prompt.class))).thenReturn(response);
@@ -161,7 +159,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.call(any(Prompt.class))).thenReturn(response);
@@ -276,7 +273,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.stream(any(Prompt.class))).thenReturn(Flux.just(response));
@@ -306,7 +302,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         ChatResponse response = mock(ChatResponse.class);
         when(delegate.call(any(Prompt.class))).thenReturn(response);
@@ -334,7 +329,6 @@ public class RetryChatModelStreamTest {
                 .build();
 
         RetryChatModel retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
 
         String longPromptText = "a".repeat(200);
         ChatResponse response = mock(ChatResponse.class);

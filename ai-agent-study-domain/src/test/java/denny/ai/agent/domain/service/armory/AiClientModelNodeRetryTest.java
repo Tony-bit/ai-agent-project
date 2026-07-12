@@ -1,7 +1,9 @@
 package denny.ai.agent.domain.service.armory;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
+import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -10,6 +12,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -27,6 +30,26 @@ import static org.mockito.Mockito.*;
  */
 @RunWith(MockitoJUnitRunner.class)
 public class AiClientModelNodeRetryTest {
+
+    @Mock
+    private PromptCompressionService compressionService;
+
+    @Test
+    public void decoratorEnablementCoversAllRetryCompressionCombinations() {
+        AiClientModelNode node = new AiClientModelNode();
+        ReflectionTestUtils.setField(node, "promptCompressionService", compressionService);
+        ChatModel delegate = mock(ChatModel.class);
+        RetryConfig retryOff = RetryConfig.builder().enabled(false).maxAttempts(3).build();
+        RetryConfig retryOn = RetryConfig.builder().enabled(true).maxAttempts(3).build();
+        CompressionPolicy compressionOff = CompressionPolicy.builder().enabled(false).build();
+        CompressionPolicy compressionOn = CompressionPolicy.builder().enabled(true)
+                .proactiveThresholdTokens(100).maxCompressionAttempts(1).build();
+
+        assertSame(delegate, node.applyRetryDecorator(delegate, retryOff, compressionOff));
+        assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOff) instanceof RetryChatModel);
+        assertTrue(node.applyRetryDecorator(delegate, retryOff, compressionOn) instanceof RetryChatModel);
+        assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOn) instanceof RetryChatModel);
+    }
 
     /**
      * TC-Retry-061: 验证 null config 时装饰器不创建（通过 RetryChatModel 构造验证）

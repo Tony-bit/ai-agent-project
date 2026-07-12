@@ -3,12 +3,16 @@ package denny.ai.agent.domain.service.armory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
+import denny.ai.agent.domain.model.valobj.AiClientSystemPromptVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
+import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
+import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodeExtractor;
+import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import io.modelcontextprotocol.client.McpSyncClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -22,6 +26,7 @@ import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -32,6 +37,9 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     @Resource
     private CompressionContextNode compressionContextNode;
+
+    @Resource
+    private PromptCompressionService promptCompressionService;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -70,33 +78,53 @@ public class AiClientModelNode extends AbstractArmorySupport{
                     ).build();
 
             // 应用重试装饰器（含压缩配置）
+            Map<String, AiClientSystemPromptVO> systemPromptMap = dynamicContext.getValue(
+                    AiAgentEnumVO.AI_CLIENT_SYSTEM_PROMPT.getDataName());
+            CompressionPolicy compressionPolicy = toCompressionPolicy(
+                    modelVO.getCompressionConfig(), systemPromptMap);
             ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig(),
-                    modelVO.getCompressionConfig(), dynamicContext);
+                    compressionPolicy);
             registerBean(getBeanName(modelVO.getModelId()), ChatModel.class, registeredModel);
         }
 
         return router(requestParameter, dynamicContext);
     }
 
-    private ChatModel applyRetryDecorator(OpenAiChatModel chatModel, RetryConfig retryConfig,
-                                          CompressionConfig compressionConfig, DynamicContext dynamicContext) {
-        if (retryConfig == null || !retryConfig.isEnabled()) {
+    ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
+                                  CompressionPolicy compressionPolicy) {
+        boolean retryEnabled = retryConfig != null && retryConfig.isEnabled();
+        boolean compressionEnabled = compressionPolicy != null && compressionPolicy.isEnabled();
+        if (!retryEnabled && !compressionEnabled) {
             return chatModel;
         }
+        RetryConfig effectiveRetryConfig = retryEnabled
+                ? retryConfig
+                : RetryConfig.builder().enabled(false).maxAttempts(1).build();
         log.warn("应用重试装饰器，model={}, maxAttempts={}, interval={}ms, multiplier={}",
-                Optional.ofNullable(chatModel.getDefaultOptions())
-                        .map(opts -> opts.getModel())
-                        .orElse("unknown"),
-                retryConfig.getMaxAttempts(),
-                retryConfig.getInitialIntervalMs(),
-                retryConfig.getMultiplier());
-        RetryChatModel retryChatModel = new RetryChatModel(chatModel, retryConfig);
-        // 设置压缩配置和动态上下文
-        if (compressionConfig != null) {
-            retryChatModel.setCompressionConfig(compressionConfig);
-            retryChatModel.setDynamicContext(dynamicContext);
+                chatModel instanceof OpenAiChatModel openAi
+                        ? Optional.ofNullable(openAi.getDefaultOptions()).map(opts -> opts.getModel()).orElse("unknown")
+                        : "unknown",
+                effectiveRetryConfig.getMaxAttempts(),
+                effectiveRetryConfig.getInitialIntervalMs(),
+                effectiveRetryConfig.getMultiplier());
+        return new RetryChatModel(chatModel, effectiveRetryConfig, compressionPolicy,
+                promptCompressionService, new AiErrorCodeExtractor());
+    }
+
+    private CompressionPolicy toCompressionPolicy(CompressionConfig config,
+                                                   Map<String, AiClientSystemPromptVO> systemPromptMap) {
+        if (config == null) {
+            return CompressionPolicy.builder().enabled(false).build();
         }
-        return retryChatModel;
+        AiClientSystemPromptVO prompt = systemPromptMap == null ? null : systemPromptMap.get("7001");
+        return CompressionPolicy.builder()
+                .enabled(config.isEnabled())
+                .compressionModelId(config.getCompressionModelId())
+                .proactiveThresholdTokens(config.getProactiveThresholdTokens())
+                .maxCompressionAttempts(config.getMaxCompressionAttempts())
+                .maxSummaryTokens(config.getMaxSummaryTokens())
+                .promptTemplate(prompt == null ? "" : prompt.getPromptContent())
+                .build();
     }
 
     @Override
