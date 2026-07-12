@@ -85,10 +85,28 @@ ext_param 为空
   -> 按旧扁平 RetryConfig 解析
   -> compression=默认值
 
-JSON 非法
-  -> 记录 modelId 和错误，不记录 JSON 正文
-  -> retry=null, compression=默认值
+JSON 语法错误或字段类型错误
+  -> 记录 modelId、字段路径和错误，不记录 JSON 正文
+  -> 拒绝该模型的 armory 装配
 ```
+
+### 4.1 缺失值与非法值契约
+
+配置字段“缺失”和“显式非法”采用不同语义：
+
+- compressionConfig 整体缺失或某个字段缺失：使用对应代码默认值。
+- 字段显式存在但不满足约束：抛 `IllegalArgumentException` 并拒绝模型装配，不静默回退。
+- JSON 语法错误或数值字段类型错误（如 `"maxSummaryTokens":"abc"`）：拒绝模型装配。
+
+归一化在 repository 解析后的单一 `CompressionConfigValidator` 中完成，AiClientModelNode 只接收已经验证的不可变参数：
+
+| 字段 | 合法范围 | 非法行为 |
+|------|------|------|
+| `proactiveThresholdTokens` | `> maxSummaryTokens + 1024` | 拒绝装配 |
+| `maxCompressionAttempts` | `1..3` | 拒绝装配，不再把 0/4 截断 |
+| `maxSummaryTokens` | `> 0` | 拒绝装配 |
+
+其中 1024 与压缩 request 的模板、边界标签和响应协议预留保持一致。该约束保证 `compressionInputBudget = threshold - maxSummaryTokens - 1024` 至少为 1，避免 threshold=0 静默关闭主动保护或产生不可用压缩请求。
 
 ## 5. 统一压缩助手
 
@@ -181,6 +199,28 @@ Registry 是生产动态装配的主路径；ApplicationContext 只用于兼容�
 - 压缩助手调用使用 `compressionCall=true`，跳过递归压缩但保留普通瞬时错误重试。
 - `CompressionPolicy` 同步删除 enabled 和 compressionModelId。
 
+### 7.1 装配层直接保证
+
+`AiClientModelNode` 不再以 retry enabled 作为是否包装的条件。对加载到的每一个 `AiClientModelVO`，包括压缩助手底层模型，都必须创建 `RetryChatModel`：
+
+```text
+retryConfig=null
+  -> effectiveRetryConfig.enabled=false, maxAttempts=1
+  -> 仍创建 RetryChatModel
+
+retryConfig.enabled=false
+  -> 普通预算为 1
+  -> 仍创建 RetryChatModel
+
+retryConfig.enabled=true
+  -> 使用配置的普通重试预算
+  -> 创建 RetryChatModel
+```
+
+每个包装实例的 `CompressionPolicy` 必须来自该模型解析并验证后的 `CompressionConfig`，逐项传递 threshold、maxCompressionAttempts 和 maxSummaryTokens，禁止复用其他模型的 Policy 或只给部分模型包装。
+
+压缩助手底层模型同样被包装。`DefaultPromptCompressionService` 建立 `compressionCall=true` 的嵌套上下文后，该模型跳过主动压缩和 1261 再压缩，从而不会递归；429/超时/5xx 仍按其 retryConfig 处理。
+
 ## 8. 用户 Query Mock 闭环
 
 组件测试不启动 Spring 容器：
@@ -189,7 +229,8 @@ Registry 是生产动态装配的主路径；ApplicationContext 只用于兼容�
 User Query + recentMessages
   -> RetryRuntimeContextHolder
   -> RetryChatModel
-  -> proactiveThresholdTokens=1，必然主动超限
+  -> maxSummaryTokens=1, proactiveThresholdTokens=1026
+  -> 构造超过 1026 tokens 的 Query，必然主动超限
   -> Mock PromptCompressionService.compress
   -> 捕获 originalPrompt/runtimeContext/policy
   -> 返回更短的 compressedPrompt
@@ -208,20 +249,24 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 - 压缩结果未缩短：抛 `CompressionExhaustedException`。
 - 压缩模型返回 1261：包装领域异常并保留 cause。
 - 没有可压缩历史：抛出包含 `no compressible history` 的异常。
-- DB JSON 非法：retry 关闭，compression 使用默认值，不允许关闭强制保护机制。
+- DB JSON 语法错误、compression 字段类型错误或显式数值非法：拒绝模型装配。
 
 ## 10. 验收标准
 
 - CompressionConfig/CompressionPolicy 不包含 enabled 或 compressionModelId。
 - DB 无压缩参数时使用 160000/3/2000。
+- 显式非法 compression 参数拒绝装配，不能通过 0 或负数关闭主动保护。
 - 旧扁平 Retry JSON 保持有效并自动获得默认压缩能力。
 - 压缩服务按 ArmoryObjectRegistry -> ApplicationContext 顺序解析 `compressionChatClient`。
 - 装配校验检查真实 Registry，缺失时立即失败。
 - 压缩 flow 由 AiClientLoadDataStrategy 通过 repository 的 clientType 查询加载，并写入 `globalCompressionClientId`。
 - 多 Agent 只能共享同一个压缩 clientId；多个 distinct clientId 不按 sequence 选择，直接拒绝。
 - DB 无 7001 时使用代码默认提示词，有 7001 时覆盖且不重复。
-- threshold=1 时 Query 先压缩再调用原 LLM。
+- 合法最小预算参数下，超长 Query 先压缩再调用原 LLM。
 - 原模型返回 1261 时压缩并完成第二次调用。
+- retryConfig 为 null/disabled 及多个模型场景中，所有模型均直接验证为 RetryChatModel。
+- 每个模型的 CompressionPolicy 三个参数与其解析配置完全一致。
+- 压缩助手模型也被包装，compressionCall=true 时不递归压缩。
 - 不新增数据库 schema、application.yml 或生产 Mock 组件。
 
 ## 11. 数据库准备
