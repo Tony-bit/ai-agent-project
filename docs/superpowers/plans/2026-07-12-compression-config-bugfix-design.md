@@ -92,15 +92,23 @@ JSON 非法
 
 ## 5. 统一压缩助手
 
-`AiClientNode` 根据现有 flowConfigMap 中 `COMPRESSION_ASSISTANT` 对应的 clientId 找到完整 ChatClient。保留原普通 Bean 名，同时注册稳定别名：
+`AiClientNode` 根据现有 flowConfigMap 中 `COMPRESSION_ASSISTANT` 对应的 clientId 找到完整 ChatClient。保留原普通名称，同时通过现有 `registerBean(...)` 向 `ArmoryObjectRegistry` 注册稳定别名：
 
 ```text
 compressionChatClient
 ```
 
-`DefaultPromptCompressionService` 只解析该别名，不再使用 `aiClientCOMPRESSION_ASSISTANTtaskType1`，也不再通过 compressionModelId 临时构建 ChatClient。
+动态装配对象不是 Spring Bean。`DefaultPromptCompressionService` 必须注入 `ArmoryObjectRegistry`，并按以下顺序解析：
 
-压缩助手底层模型继续由现有客户端、模型和关联表配置。ChatClient 装配完成后必须校验稳定别名存在；缺失时立即抛出包含 flow key、clientId 和别名的 `IllegalStateException`。
+```text
+1. armoryObjectRegistry.get("compressionChatClient")
+2. applicationContext.getBean("compressionChatClient", ChatClient.class)
+3. 两者均不存在时抛出明确异常
+```
+
+Registry 是生产动态装配的主路径；ApplicationContext 只用于兼容静态 Bean 和已有测试。服务不再使用 `aiClientCOMPRESSION_ASSISTANTtaskType1`，也不再通过 compressionModelId 临时构建 ChatClient。
+
+压缩助手底层模型继续由现有客户端、模型和关联表配置。ChatClient 装配完成后必须使用 `armoryObjectRegistry.contains("compressionChatClient")` 校验稳定别名；不能使用 `ApplicationContext.containsBean()` 校验动态对象。缺失时立即抛出包含 flow key、clientId 和别名的 `IllegalStateException`。
 
 ## 6. 默认压缩提示词
 
@@ -141,7 +149,7 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 
 ## 9. 错误处理
 
-- 压缩助手未装配：armory 装配阶段失败。
+- 压缩助手未装配：基于 ArmoryObjectRegistry 的装配校验立即失败。
 - 压缩结果未缩短：抛 `CompressionExhaustedException`。
 - 压缩模型返回 1261：包装领域异常并保留 cause。
 - 没有可压缩历史：抛出包含 `no compressible history` 的异常。
@@ -152,7 +160,8 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 - CompressionConfig/CompressionPolicy 不包含 enabled 或 compressionModelId。
 - DB 无压缩参数时使用 160000/3/2000。
 - 旧扁平 Retry JSON 保持有效并自动获得默认压缩能力。
-- 压缩服务只解析 `compressionChatClient`，缺失时装配失败。
+- 压缩服务按 ArmoryObjectRegistry -> ApplicationContext 顺序解析 `compressionChatClient`。
+- 装配校验检查真实 Registry，缺失时立即失败。
 - DB 无 7001 时使用代码默认提示词，有 7001 时覆盖且不重复。
 - threshold=1 时 Query 先压缩再调用原 LLM。
 - 原模型返回 1261 时压缩并完成第二次调用。

@@ -18,6 +18,8 @@
 | DAO | Mockito | 返回指定 ext_param 和 flow 配置 |
 | 压缩 LLM | ChatClient/PromptCompressionService Mock | 捕获入参并返回固定摘要或 Prompt |
 | 原 LLM | ChatModel Mock | 模拟成功和 1261 |
+| ArmoryObjectRegistry | 真实对象 | 验证动态注册、主路径查找和装配校验 |
+| ApplicationContext | Mockito | 只验证静态 Bean 兼容回退 |
 | RetryChatModel | 真实组件 | 验证阈值、预算和 Prompt 替换 |
 | RetryRuntimeContextHolder | 真实组件 | 验证上下文绑定与清理 |
 
@@ -28,15 +30,17 @@
 | TC-001 | 解析复合参数 | retry 和三个 compression 参数正确，无 enabled/modelId | append |
 | TC-002 | threshold=1 的用户 Query | 先 compress，再以 compressedPrompt 调原 LLM 一次 | append |
 | TC-003 | 原 LLM 首次返回 1261 | compress 一次，原 LLM 第二次成功 | append |
-| TC-004 | flow 中存在压缩助手 | 同一 ChatClient 注册普通 Bean 和 compressionChatClient | append |
+| TC-004 | flow 中存在压缩助手 | 同一 ChatClient 以普通名称和 compressionChatClient 写入真实 Registry | append |
 | TC-005 | DB 有 prompt 7001 | 使用 DB 提示词且不重复 | append |
+| TC-006 | Registry 主路径解析 | Registry 和 ApplicationContext 均可返回对象 | 使用 Registry 对象且不访问 ApplicationContext | append |
+| TC-007 | Spring 静态 Bean 回退 | Registry 不含别名，ApplicationContext 含别名 | 正确返回 Spring ChatClient | append |
 
 ## 4. 异常场景
 
 | 编号 | 场景 | 预期结果 | status |
 |------|------|------|------|
 | TC-101 | ext_param JSON 非法 | retry=null，compression=默认值，不记录正文 | append |
-| TC-102 | 压缩助手缺失 | 装配失败，异常含 flow key/clientId/alias | append |
+| TC-102 | 压缩助手缺失 | Registry 校验失败，异常含 flow key/clientId/alias | append |
 | TC-103 | 压缩结果未缩短 | CompressionExhaustedException，原 LLM 不调用 | append |
 | TC-104 | 压缩模型返回 1261 | 包装领域异常并保留 cause | append |
 
@@ -76,6 +80,8 @@
 | TC-002 | `should_compress_before_delegate_call_when_query_exceeds_threshold()` | RetryChatModel |
 | TC-003 | `should_call_delegate_again_with_compressed_prompt_after_1261()` | RetryChatModel |
 | TC-004 | `should_register_canonical_alias_for_compression_assistant()` | AiClientNode |
+| TC-006 | `should_resolve_compression_client_from_real_registry_first()` | DefaultPromptCompressionService |
+| TC-007 | `should_fallback_to_application_context_when_registry_is_empty()` | DefaultPromptCompressionService |
 | TC-102 | `should_fail_assembly_when_compression_assistant_is_missing()` | armory 装配 |
 | TC-203 | `should_use_code_default_prompt_when_7001_is_missing()` | AiClientNode |
 | TC-301 | `should_parse_legacy_retry_and_apply_default_compression()` | AgentRepository |
@@ -96,7 +102,7 @@
 | 压缩强制开启 | 不存在 compression enabled | append |
 | 无重复模型配置 | 不存在 per-model compressionModelId | append |
 | 默认策略 | DB 缺失时得到 160000/3/2000 | append |
-| 统一助手 | compressionChatClient 正确注册，缺失时失败 | append |
+| 统一助手 | 真实 Registry 正确注册，Registry 优先查找，缺失时失败 | append |
 | 主动闭环 | threshold=1 时压缩后调用原 LLM | append |
 | 被动闭环 | 1261 后压缩并第二次调用原 LLM | append |
 | 无回归 | 专项、全量测试和编译通过 | append |
