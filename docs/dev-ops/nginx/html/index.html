@@ -8,6 +8,7 @@
     <script src="js/marked.min.js"></script>
     <script src="js/purify.min.js"></script>
     <script src="js/highlight.min.js"></script>
+    <script src="js/agent-ui-core.js"></script>
     <link rel="stylesheet" href="css/github.min.css">
     <link rel="stylesheet" href="css/css2.css">
     <script>
@@ -630,6 +631,83 @@
             font-size: 11px !important;
             font-weight: 600;
         }
+
+        .markdown-content {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .markdown-content pre {
+            max-width: 100%;
+            overflow-x: auto;
+            overscroll-behavior-inline: contain;
+        }
+
+        .markdown-content table {
+            display: block;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+            outline: 2px solid #3b82f6;
+            outline-offset: 2px;
+        }
+
+        .message > .flex-1,
+        .history-message > .flex-1 {
+            min-width: 0;
+        }
+
+        @media (max-width: 900px) {
+            body {
+                min-height: 100vh;
+                height: auto;
+                overflow: auto;
+            }
+
+            nav {
+                position: sticky;
+                top: 0;
+            }
+
+            #agentWorkspace {
+                min-height: calc(100vh - 64px);
+                flex-direction: column;
+                overflow: visible;
+            }
+
+            #sidebar {
+                width: 100%;
+                max-height: 12rem;
+                flex: none;
+            }
+
+            #agentPanels {
+                min-height: 48rem;
+                flex-direction: column;
+            }
+
+            #thinkingPanel,
+            #resultPanel {
+                width: 100%;
+                min-height: 22rem;
+            }
+
+            #agentPanels > .divider-gradient {
+                width: 100%;
+                height: 1px;
+            }
+
+            .input-dock {
+                position: sticky;
+                bottom: 0;
+                z-index: 20;
+            }
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col font-sans overflow-hidden">
@@ -653,14 +731,14 @@
     </div>
 
     <div class="flex items-center gap-2">
-        <button id="newChatBtn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
+        <button id="newChatBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             新建
         </button>
 
-        <button id="clearAllChatsBtn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-250">
+        <button id="clearAllChatsBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-250">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
@@ -669,7 +747,7 @@
     </div>
 </nav>
 
-<div class="flex-1 flex overflow-hidden p-3 gap-3">
+<div id="agentWorkspace" class="flex-1 flex overflow-hidden p-3 gap-3">
     <!-- 侧边栏 - 收窄到 w-56 -->
     <aside id="sidebar" class="w-56 glass dynamic-card rounded-2xl overflow-hidden transition-all duration-300 ease-in-out shadow-soft-lg border border-white/50 custom-scrollbar">
         <div class="p-3">
@@ -682,7 +760,7 @@
                     </div>
                     对话历史
                 </h2>
-                <button id="refreshSessionListBtn" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all duration-200" title="刷新会话列表">
+                <button id="refreshSessionListBtn" type="button" class="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all duration-200" title="刷新会话列表">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
@@ -714,7 +792,7 @@
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden glass dynamic-card rounded-2xl shadow-soft-lg border border-white/50">
         <!-- 双面板内容区域 -->
-        <div class="flex-1 flex overflow-hidden">
+        <div id="agentPanels" class="flex-1 flex overflow-hidden">
             <!-- 左侧思考过程面板 -->
             <div id="thinkingPanel" class="w-1/2 flex flex-col bg-gradient-to-b from-white to-gray-50/50 dynamic-panel dynamic-panel-thinking">
                 <div class="px-4 py-3 bg-gradient-to-r from-primary-50/80 to-transparent border-b border-gray-100/80 flex items-center gap-2">
@@ -724,10 +802,10 @@
                     <h3 class="font-bold text-sm text-gray-800">AI 思考执行过程</h3>
                     <div class="ml-auto flex items-center gap-1.5">
                         <span id="thinkingStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                        <span id="thinkingStatusLabel" class="text-[10px] text-gray-500">待命</span>
+                        <span id="thinkingStatusLabel" class="text-[10px] text-gray-500" aria-live="polite">待命</span>
                     </div>
                 </div>
-                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" role="log" aria-live="polite" aria-relevant="additions text">
                     <div class="flex items-start gap-3 animate-fade-in">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
                             <span class="text-white font-bold text-xs">AI</span>
@@ -752,10 +830,10 @@
                     <h3 class="font-bold text-sm text-gray-800">最终执行结果</h3>
                     <div class="ml-auto flex items-center gap-1.5">
                         <span id="resultStatusDot" class="ai-status-dot w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        <span id="resultStatusLabel" class="text-[10px] text-gray-500">就绪</span>
+                        <span id="resultStatusLabel" class="text-[10px] text-gray-500" aria-live="polite">就绪</span>
                     </div>
                 </div>
-                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" role="log" aria-live="polite" aria-relevant="additions text">
                     <div class="flex items-start gap-3 animate-fade-in">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
                             <span class="text-white font-bold text-xs">AI</span>
@@ -773,20 +851,24 @@
         <!-- 底部输入区域 - 紧凑化 -->
         <div class="input-dock border-t border-gray-200/50 bg-gradient-to-t from-white to-gray-50/50 p-4">
             <!-- 加载状态 -->
-            <div id="loading" class="hidden mb-3">
+            <div id="loading" class="hidden mb-3" role="status" aria-live="polite" aria-atomic="true">
                 <div class="flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg border border-primary-100">
                     <div class="w-4 h-4 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin"></div>
                     <span class="font-medium text-primary-700 text-xs">AI正在思考中，请稍候...</span>
+                    <button id="cancelRequestBtn" type="button"
+                            class="hidden ml-2 px-2.5 py-1 text-[10px] font-semibold text-red-600 bg-white border border-red-200 rounded-full hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300">
+                        取消任务
+                    </button>
                 </div>
             </div>
 
             <!-- 模式切换 Tab -->
             <div class="mb-3 flex items-center gap-1 p-1 bg-gray-100/80 rounded-lg w-fit">
-                <button id="tabGeneral" onclick="switchMode('general')"
+                <button id="tabGeneral" type="button" onclick="switchMode('general')"
                         class="tab-indicator px-4 py-2 text-xs font-semibold rounded-md transition-all duration-300 bg-white text-primary-700 shadow-sm ring-2 ring-primary-500/20">
                     通用对话
                 </button>
-                <button id="tabTrading" onclick="switchMode('trading')"
+                <button id="tabTrading" type="button" onclick="switchMode('trading')"
                         class="tab-indicator px-4 py-2 text-xs font-semibold rounded-md transition-all duration-300 text-gray-600 hover:text-gray-800 hover:bg-white/50">
                     金融分析
                 </button>
@@ -817,17 +899,6 @@
                         </select>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <label for="exampleSelect" class="compact-label text-gray-700">案例</label>
-                        <select id="exampleSelect" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 bg-white input-focus compact-select min-w-[160px]">
-                            <option value="">请选择...</option>
-                            <option value="1+1">1+1</option>
-                            <option value="通过ES查询被限流的用户，给出被限流用户列表。">ES限流用户</option>
-                            <option value="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。">Grafana分析</option>
-                            <option value="检索小傅哥的相关项目，列出一份学习计划">学习计划</option>
-                            <option value="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">推荐入职</option>
-                        </select>
-                    </div>
                 </div>
 
                 <!-- 输入框和发送按钮 -->
@@ -839,7 +910,7 @@
                             <span id="inputCounter" class="input-counter">0</span>/1000
                         </div>
                     </div>
-                    <button id="sendBtn" onclick="sendMessage()"
+                    <button id="sendBtn" type="button" onclick="sendMessage()"
                             class="interactive-button px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 font-semibold flex items-center gap-2 shadow-lg shadow-primary-500/30 btn-glow text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -912,7 +983,7 @@
 
                 <!-- 发送按钮 -->
                 <div class="flex gap-2">
-                    <button id="sendTradingBtn" onclick="sendTradingAnalysis()"
+                    <button id="sendTradingBtn" type="button" onclick="sendTradingAnalysis()"
                             class="interactive-button flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/30 btn-glow-green text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -927,8 +998,10 @@
                 <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 rounded-full">
                     <span class="text-[10px] text-gray-500">会话ID:</span>
                     <span id="sessionId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
+                    <span class="text-[10px] text-gray-500">用户:</span>
+                    <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
-                    <button id="syncMemoryBtn" onclick="syncMemory()"
+                    <button id="syncMemoryBtn" type="button" onclick="syncMemory()"
                             class="ml-2 px-2.5 py-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-full text-[10px] font-semibold hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-sm flex items-center gap-1">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -942,6 +1015,23 @@
 </div>
 
 <script>
+    const {
+        createSseParser,
+        escapeHtml,
+        sanitizeMarkdown,
+        normalizeAgentEvent,
+        classifyAgentEvent,
+        validateSseResponse,
+        resolveRuntimeConfig,
+        buildApiUrl: joinApiUrl,
+        createRequestLifecycle,
+        isNearBottom
+    } = window.AgentUiCore;
+
+    function renderMarkdown(content) {
+        return sanitizeMarkdown(window.marked, window.DOMPurify, content);
+    }
+
     function generateSessionId() {
         return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
@@ -949,15 +1039,79 @@
     let sessionId = generateSessionId();
     document.getElementById('sessionId').textContent = sessionId;
 
-    const currentUserId = 'test-user-f52b2ed1';
+    const runtimeConfig = resolveRuntimeConfig({
+        search: window.location.search,
+        storage: window.localStorage,
+        defaultUserId: 'test-user-f52b2ed1',
+        origin: window.location.origin
+    });
+    const currentUserId = runtimeConfig.userId;
+    document.getElementById('currentUserId').textContent = currentUserId;
+
+    function buildApiUrl(path) {
+        return joinApiUrl(runtimeConfig.apiBase, path);
+    }
 
     let isConnected = false;
     let eventSource = null;
     let currentStepMessages = new Map();
-    let streamTerminalEventReceived = false;
+    let currentMode = 'general';
+    let activeRequest = null;
+    const pendingStreamingRenders = new Map();
+    let streamingRenderFrame = null;
 
-    // 流式消息累积缓存：key = "type-subType-step", value = { div, content }
-    const streamingMessageCache = new Map();
+    function panelWasPinned(container) {
+        return isNearBottom({
+            scrollTop: container.scrollTop,
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight
+        });
+    }
+
+    function flushStreamingRenders() {
+        pendingStreamingRenders.forEach((latestContent, targetDiv) => {
+            const contentDiv = targetDiv.querySelector('.markdown-content');
+            const container = targetDiv.parentElement;
+            const keepPinned = container ? panelWasPinned(container) : false;
+            if (contentDiv) contentDiv.textContent = latestContent;
+            if (container && keepPinned) container.scrollTop = container.scrollHeight;
+        });
+        pendingStreamingRenders.clear();
+        streamingRenderFrame = null;
+    }
+
+    function scheduleStreamingRender(messageDiv, content) {
+        pendingStreamingRenders.set(messageDiv, content);
+        if (streamingRenderFrame !== null) return;
+        streamingRenderFrame = window.requestAnimationFrame(flushStreamingRenders);
+    }
+
+    const requestLifecycle = createRequestLifecycle({
+        onChange: ({ status, mode }) => {
+            const running = status === 'running';
+            isConnected = running;
+            document.getElementById('loading').classList.toggle('hidden', !running);
+            document.getElementById('sendBtn').disabled = running;
+            document.getElementById('sendTradingBtn').disabled = running;
+            document.getElementById('cancelRequestBtn').classList.toggle('hidden', !running);
+            setProcessingState(running, mode || currentMode);
+            if (running) {
+                setRunningButtonContent(mode);
+            } else {
+                clearStreamingEffects();
+                restoreSendButtonContent();
+                const statusText = {
+                    completed: ['待命', '已完成'],
+                    failed: ['异常', '未完成'],
+                    cancelled: ['已取消', '已取消'],
+                    idle: ['待命', '就绪']
+                };
+                const [thinkingText, resultText] = statusText[status] || statusText.idle;
+                document.getElementById('thinkingStatusLabel').textContent = thinkingText;
+                document.getElementById('resultStatusLabel').textContent = resultText;
+            }
+        }
+    });
 
     let sessionCursorTime = null;
     let sessionCursorId = null;
@@ -991,6 +1145,12 @@
         'trading': { name: '交易分析', icon: '📈', class: 'stage-analysis' },
         'final': { name: '最终决策', icon: '🎯', class: 'stage-summary' }
     };
+
+    Object.assign(stageTypeMap, {
+        content: { name: '流式回答', icon: '💬', class: 'stage-execution' },
+        progress: { name: '执行进度', icon: '⏳', class: 'stage-analysis' },
+        system: { name: '系统消息', icon: 'ℹ️', class: 'stage-analysis' }
+    });
 
     const subTypeMap = {
         'analysis_status': '任务状态',
@@ -1027,43 +1187,12 @@
         'risk_debate': '风险辩论'
     };
 
-    const resultContentSubTypes = new Set([
-        'general_chat_response',
-        'multimodal_response'
-    ]);
-
-    const resultSubTypes = new Set([
-        'inspection_report',
-        'final_decision',
-        'final_completed',
-        'trading_complete'
-    ]);
-
-    const hiddenLifecycleSubTypes = new Set([
-        'general_chat_response_start',
-        'multimodal_response_start'
-    ]);
-
-    function isHiddenLifecycleMessage(type, subType) {
-        return type === 'system' && hiddenLifecycleSubTypes.has(subType);
-    }
-
-    function isTerminalSSEEvent(type, subType) {
-        return type === 'complete'
-            || type === 'final'
-            || type === 'error'
-            || (type === 'trading' && (subType === 'error' || subType === 'trading_complete'));
-    }
-
-    function isResultPanelMessage(type, subType) {
-        if (type === 'complete' || type === 'summary') {
-            return true;
-        }
-        if (type === 'content') {
-            return resultContentSubTypes.has(subType) || resultSubTypes.has(subType);
-        }
-        return resultSubTypes.has(subType);
-    }
+    Object.assign(subTypeMap, {
+        protocol_error: '协议异常',
+        stream_interrupted: '连接中断',
+        cancelled: '用户取消',
+        analyst_progress: '分析师进度'
+    });
 
     function formatTime(dateStr) {
         if (!dateStr) return '';
@@ -1100,7 +1229,7 @@
         }
 
         try {
-            let url = `http://localhost:8090/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`;
+            let url = buildApiUrl(`/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`);
             if (sessionCursorTime && sessionCursorId && append) {
                 url += `&cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
             }
@@ -1178,6 +1307,10 @@
         const title = truncateText(session.firstQuery, 25);
         const preview = truncateText(session.lastResponse, 35);
         const time = formatTime(session.createTime);
+        const messageCount = Number.isInteger(Number(session.messageCount))
+            && Number(session.messageCount) >= 0
+            ? Number(session.messageCount)
+            : null;
 
         li.innerHTML = `
             <div class="session-item-title">${escapeHtml(title)}</div>
@@ -1186,7 +1319,7 @@
             </div>
             <div class="flex items-center justify-between">
                 <span class="session-item-time">${time}</span>
-                ${session.messageCount ? `<span class="text-[9px] text-gray-400">${session.messageCount}条</span>` : ''}
+                ${messageCount !== null ? `<span class="text-[9px] text-gray-400">${messageCount}条</span>` : ''}
             </div>
         `;
 
@@ -1198,6 +1331,7 @@
     }
 
     async function selectSession(selectedSessionId, element) {
+        cancelActiveRequest(false);
         document.querySelectorAll('.session-item').forEach(item => {
             item.classList.remove('active');
         });
@@ -1250,7 +1384,7 @@
         }
 
         try {
-            let url = `http://localhost:8090/api/v1/session/${encodeURIComponent(targetSessionId)}/messages`;
+            let url = buildApiUrl(`/api/v1/session/${encodeURIComponent(targetSessionId)}/messages`);
             if (messageCursorIndex !== null) {
                 url += `?cursorIndex=${messageCursorIndex}`;
             }
@@ -1304,7 +1438,7 @@
                         </div>
                         <div class="flex-1 bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-3.5 border border-red-100/50 shadow-sm">
                             <div class="text-sm text-red-800">
-                                <strong class="font-semibold">错误:</strong> ${error.message}
+                                <strong class="font-semibold">错误:</strong> ${escapeHtml(error.message)}
                             </div>
                         </div>
                     </div>
@@ -1344,8 +1478,13 @@
                 const targetContainer = isFinalResult ? resultDiv : thinkingDiv;
 
                 const timeInfo = msg.createTime ? `<span class="text-[10px] text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
-                const modelInfo = msg.model ? `<span class="text-[10px] text-gray-400 ml-2">${msg.model}</span>` : '';
-                const latencyInfo = msg.latencyMs ? `<span class="text-[10px] text-gray-400 ml-2">${msg.latencyMs}ms</span>` : '';
+                const modelInfo = msg.model
+                    ? `<span class="text-[10px] text-gray-400 ml-2">${escapeHtml(String(msg.model))}</span>`
+                    : '';
+                const latencyInfo = Number.isFinite(Number(msg.latencyMs))
+                    ? `<span class="text-[10px] text-gray-400 ml-2">${Number(msg.latencyMs)}ms</span>`
+                    : '';
+                const historyContent = renderMarkdown(msg.content || '');
 
                 const aiHtml = `
                     <div class="flex items-start gap-3 history-message">
@@ -1356,7 +1495,7 @@
                             <div class="text-sm text-primary-800">
                                 <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}${modelInfo}${latencyInfo}
-                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                                <div class="markdown-content mt-2">${historyContent}</div>
                             </div>
                         </div>
                     </div>
@@ -1368,7 +1507,7 @@
         thinkingDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
         resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
-        scrollToBottom();
+        scrollToBottom(null, true);
     }
 
     function appendMessagesToPanels(messages) {
@@ -1393,6 +1532,7 @@
                 resultDiv.insertAdjacentHTML('beforeend', userHtml);
             } else if (msg.role === 'assistant') {
                 const timeInfo = msg.createTime ? `<span class="text-[10px] text-gray-400 ml-2">${formatTime(msg.createTime)}</span>` : '';
+                const historyContent = renderMarkdown(msg.content || '');
                 const aiHtml = `
                     <div class="flex items-start gap-3 history-message">
                         <div class="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20 avatar-hover">
@@ -1402,7 +1542,7 @@
                             <div class="text-sm text-primary-800">
                                 <strong class="font-semibold">AI助手:</strong>
                                 ${timeInfo}
-                                <div class="markdown-content mt-2">${marked.parse(msg.content || '')}</div>
+                                <div class="markdown-content mt-2">${historyContent}</div>
                             </div>
                         </div>
                     </div>
@@ -1412,13 +1552,6 @@
         });
 
         resultDiv.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-    }
-
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     function setupSessionListScroll() {
@@ -1444,25 +1577,77 @@
         });
     }
 
+    function createStreamState(mode) {
+        return {
+            mode,
+            terminalSeen: false,
+            outcome: null,
+            protocolErrors: 0,
+            streamingCache: new Map()
+        };
+    }
+
+    function reportProtocolError(streamState, error, raw) {
+        streamState.protocolErrors += 1;
+        streamState.outcome = 'failed';
+        console.warn('SSE 协议数据无法解析:', String(raw || '').slice(0, 200), error.message);
+        if (streamState.protocolErrors === 1) {
+            addStageMessage('error', 'protocol_error', '收到无法解析的流式事件', null, 'thinking');
+        }
+    }
+
+    function handleRawSseEvent(streamState, rawEvent) {
+        let event;
+        try {
+            event = normalizeAgentEvent(rawEvent);
+        } catch (error) {
+            reportProtocolError(streamState, error, JSON.stringify(rawEvent));
+            return;
+        }
+        handleSSEMessage(streamState, event);
+    }
+
+    async function consumeSseResponse(response, streamState) {
+        validateSseResponse(response);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const parser = createSseParser({
+            onEvent: (event) => handleRawSseEvent(streamState, event),
+            onError: (error, raw) => reportProtocolError(streamState, error, raw)
+        });
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                parser.push(decoder.decode(value, { stream: true }));
+            }
+            parser.push(decoder.decode());
+            parser.finish();
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
     function sendMessage() {
         const messageInput = document.getElementById('messageInput');
         const message = messageInput.value.trim();
 
         if (!message) {
-            alert('请输入消息内容');
+            showToast('请输入消息内容', 'info');
             return;
         }
 
-        if (isConnected) {
-            alert('正在处理中，请稍候...');
+        const request = requestLifecycle.start('general');
+        if (!request) {
+            showToast('已有任务正在处理中', 'info');
             return;
         }
+        activeRequest = request;
 
         addMessage(message, 'user');
         messageInput.value = '';
         updateInputCounter();
-
-        showLoadingState();
 
         const aiAgentId = document.getElementById('aiAgentSelect').value;
         const requestData = {
@@ -1475,25 +1660,19 @@
             requestData.aiAgentId = aiAgentId;
         }
 
-        fetch('http://localhost:8090/api/v1/agent/auto_agent', {
+        const streamState = createStreamState('general');
+
+        fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: requestLifecycle.signal(request)
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new NetworkError('网络请求失败: ' + response.status);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            const sseParser = createSSEParser(handleSSEMessage);
-
+        .then(async (response) => {
             currentStepMessages.clear();
-            streamTerminalEventReceived = false;
 
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
@@ -1504,135 +1683,82 @@
             const resultChildren = Array.from(resultDiv.children);
             resultChildren.slice(1).forEach(child => child.remove());
 
-            isConnected = true;
-
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        sseParser.flush();
-                        closeLoadingState('general');
-                        if (!streamTerminalEventReceived) {
-                            addStageMessage('complete', null, '任务执行完成', null);
-                        }
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    sseParser.push(chunk);
-                    scrollToBottom();
-                    readStream();
-                }).catch(error => {
-                    console.error('读取流数据错误:', error);
-                    closeLoadingState('general');
-                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-                });
+            await consumeSseResponse(response, streamState);
+            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
+                streamState.outcome = 'failed';
+                addStageMessage('error', 'stream_interrupted',
+                    '连接已结束，但未收到任务完成事件', null, 'thinking');
             }
-            readStream();
         })
         .catch(error => {
-            console.error('请求错误:', error);
-            closeLoadingState('general');
-            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
+            if (error.name !== 'AbortError' && requestLifecycle.isActive(request)) {
+                console.error('请求错误:', error);
+                streamState.outcome = 'failed';
+                if (streamState.protocolErrors === 0) {
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+                }
+                requestLifecycle.finish(request, 'failed');
+            }
+        })
+        .finally(() => {
+            if (requestLifecycle.isActive(request)) {
+                requestLifecycle.finish(request,
+                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+            }
+            if (activeRequest && activeRequest.id === request.id) activeRequest = null;
         });
     }
 
-    function createSSEParser(onMessage) {
-        let buffer = '';
+    function handleSSEMessage(streamState, event) {
+        if (streamState.terminalSeen) {
+            console.warn('忽略终止事件后的 SSE 数据:', event.type, event.subType || '');
+            return;
+        }
 
-        function parseEvent(eventText) {
-            const data = eventText
-                .split(/\r?\n/)
-                .filter(line => line.startsWith('data:'))
-                .map(line => line.startsWith('data: ') ? line.substring(6) : line.substring(5))
-                .join('\n')
-                .trim();
+        const { type, subType, step, content, completed } = event;
+        const classification = classifyAgentEvent(event);
+        const cacheKey = `${type}-${subType || 'default'}-${step == null ? '' : step}`;
 
-            if (!data || data === '[DONE]') {
+        if (classification.requestTerminal) {
+            const protocolAlreadyFailed = streamState.outcome === 'failed';
+            streamState.terminalSeen = true;
+            if (streamState.outcome !== 'failed') {
+                streamState.outcome = classification.outcome;
+            }
+            if (protocolAlreadyFailed && classification.outcome === 'completed') {
+                console.warn('协议已失败，忽略后续成功终止事件');
                 return;
             }
-
-            try {
-                onMessage(JSON.parse(data));
-            } catch (e) {
-                console.warn('无法解析 SSE JSON 数据，已忽略:', data.substring(0, 100), e);
-            }
         }
 
-        return {
-            push(chunk) {
-                buffer += chunk;
-                const events = buffer.split(/\r?\n\r?\n/);
-                buffer = events.pop() || '';
-                events.forEach(parseEvent);
-            },
-            flush() {
-                if (buffer.trim()) {
-                    parseEvent(buffer);
-                }
-                buffer = '';
-            }
-        };
-    }
-
-    function handleSSEMessage(jsonData) {
-        const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
-
-        const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
-        if (isTerminalSSEEvent(type, subType)) {
-            streamTerminalEventReceived = true;
-        }
-        if (!content || content.trim() === '') {
-            if (completed && type === 'content') {
-                streamingMessageCache.delete(cacheKey);
-            }
-            return;
-        }
-
-        if (isHiddenLifecycleMessage(type, subType)) {
-            return;
-        }
-
-        if (type === 'content') {
-            // 流式内容消息：分片追加，完成包用完整内容校准同一消息
-            let cached = streamingMessageCache.get(cacheKey);
-
+        if (type === 'content' && completed === false) {
+            let cached = streamState.streamingCache.get(cacheKey);
             if (!cached) {
-                // 首次：创建新消息元素并缓存
-                cached = { div: addStageMessage(type, subType, content, step), content: content };
-                streamingMessageCache.set(cacheKey, cached);
-            } else if (completed === true) {
-                cached.content = content;
-                updateMessageContent(cached.div, cached.content);
-            } else {
-                // 追加：更新内容
-                cached.content += content;
-                updateMessageContent(cached.div, cached.content);
+                cached = {
+                    div: addStageMessage(type, subType, content, step, 'thinking', true),
+                    content: ''
+                };
+                streamState.streamingCache.set(cacheKey, cached);
             }
+            cached.content += content;
+            scheduleStreamingRender(cached.div, cached.content);
             cached.div.classList.add('streaming-message');
-            if (completed === true) {
-                cached.div.classList.remove('streaming-message');
-                streamingMessageCache.delete(cacheKey);
-            }
-
-            const streamingContainerId = isResultPanelMessage(type, subType)
-                ? 'resultMessages'
-                : 'thinkingMessages';
-            scrollToBottom(document.getElementById(streamingContainerId));
             return;
         }
 
-        // 其他类型消息（完成、错误、final、system 等）：正常处理
-        addStageMessage(type, subType, content, step);
-
-        if (type === 'error' || type === 'final' ||
-            (type === 'trading' && (subType === 'error' || subType === 'trading_complete'))) {
-            closeLoadingState();
-        }
-
-        // 完成后清理缓存
-        if (completed) {
-            const cacheKey = `${type}-${subType || 'default'}-${step || ''}`;
-            streamingMessageCache.delete(cacheKey);
+        if (type === 'content' && completed === true) {
+            const cached = streamState.streamingCache.get(cacheKey);
+            const finalContent = cached && cached.content ? cached.content : content;
+            if (finalContent.trim()) {
+                addStageMessage('summary', subType, finalContent, step, 'result');
+            }
+            if (cached) {
+                cached.div.classList.remove('streaming-message');
+            }
+            streamState.streamingCache.delete(cacheKey);
+        } else if (content.trim() || classification.error) {
+            const visibleContent = content.trim() ? content : '任务执行失败';
+            addStageMessage(type, subType, visibleContent, step, classification.target);
         }
     }
 
@@ -1643,6 +1769,40 @@
             </svg>
             发送
         `;
+    }
+
+    function getTradingSendButtonContent() {
+        return `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            开始金融分析
+        `;
+    }
+
+    function restoreSendButtonContent() {
+        document.getElementById('sendBtn').innerHTML = getGeneralSendButtonContent();
+        document.getElementById('sendTradingBtn').innerHTML = getTradingSendButtonContent();
+    }
+
+    function setRunningButtonContent(mode) {
+        const button = document.getElementById(mode === 'trading' ? 'sendTradingBtn' : 'sendBtn');
+        button.innerHTML = `
+            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ${mode === 'trading' ? '分析中...' : '发送中...'}
+        `;
+    }
+
+    function cancelActiveRequest(notifyUser) {
+        const request = activeRequest;
+        if (!request || !requestLifecycle.isActive(request)) return false;
+        if (!requestLifecycle.cancel(request)) return false;
+        if (activeRequest && activeRequest.id === request.id) activeRequest = null;
+        if (notifyUser) {
+            showToast('任务已取消', 'info');
+            addStageMessage('error', 'cancelled', '用户已取消本次任务', null, 'thinking');
+        }
+        return true;
     }
 
     function setProcessingState(active, mode = currentMode || 'general') {
@@ -1680,6 +1840,10 @@
     }
 
     function clearStreamingEffects() {
+        if (streamingRenderFrame !== null) {
+            window.cancelAnimationFrame(streamingRenderFrame);
+            flushStreamingRenders();
+        }
         document.querySelectorAll('.streaming-message').forEach(message => {
             message.classList.remove('streaming-message');
         });
@@ -1703,37 +1867,6 @@
         if (messageInput) {
             messageInput.addEventListener('input', updateInputCounter);
         }
-    }
-
-    function closeLoadingState(mode) {
-        isConnected = false;
-        document.getElementById('loading').style.display = 'none';
-        setProcessingState(false, mode || currentMode);
-        clearStreamingEffects();
-
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = getGeneralSendButtonContent();
-
-        const sendTradingBtn = document.getElementById('sendTradingBtn');
-        sendTradingBtn.disabled = false;
-        sendTradingBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            开始金融分析
-        `;
-    }
-
-    function showLoadingState() {
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = `
-            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            发送中...
-        `;
-        document.getElementById('loading').style.display = 'block';
-        setProcessingState(true, 'general');
     }
 
     function getFriendlyErrorMessage(error) {
@@ -1771,32 +1904,31 @@
         return '请求失败（' + msg.substring(0, 50) + '），请稍后重试';
     }
 
-    function addStageMessage(type, subType, content, step) {
-        let targetContainer;
-        const isFinalResult = isResultPanelMessage(type, subType);
-        if (isFinalResult) {
-            targetContainer = document.getElementById('resultMessages');
-        } else {
-            targetContainer = document.getElementById('thinkingMessages');
-        }
+    function addStageMessage(type, subType, content, step, explicitTarget, plainText = false) {
+        const classification = classifyAgentEvent({ type, subType });
+        const target = explicitTarget || classification.target;
+        const targetContainer = document.getElementById(
+            target === 'result' ? 'resultMessages' : 'thinkingMessages'
+        );
 
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message';
 
-        const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
-        const subTypeName = subType ? subTypeMap[subType] || subType : '';
+        const stageInfo = stageTypeMap[type] || { name: '未知事件', icon: '📝', class: 'stage-analysis' };
+        const subTypeName = subType ? (subTypeMap[subType] || '未知阶段') : '';
+        const safeStep = Number.isInteger(step) ? String(step) : '';
 
         const isError = type === 'error' || subType === 'error';
 
-        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
+        let indicators = `<span class="stage-indicator ${stageInfo.class}">${escapeHtml(stageInfo.icon)} ${escapeHtml(stageInfo.name)}</span>`;
         if (subTypeName) {
-            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
+            indicators += `<span class="sub-type-indicator">${escapeHtml(subTypeName)}</span>`;
         }
-        if (step) {
-            indicators += `<span class="sub-type-indicator">第${step}步</span>`;
+        if (safeStep) {
+            indicators += `<span class="sub-type-indicator">第${escapeHtml(safeStep)}步</span>`;
         }
 
-        const renderedContent = marked.parse(content);
+        const renderedContent = plainText ? '' : renderMarkdown(content);
 
         const bubbleClass = isError ? 'bubble-error' : 'bubble-ai';
         const errorIndicator = isError ? `
@@ -1824,7 +1956,13 @@
             </div>
         `;
 
+        const keepPinned = panelWasPinned(targetContainer);
         targetContainer.appendChild(messageDiv);
+        if (plainText) {
+            const contentDiv = messageDiv.querySelector('.markdown-content');
+            if (contentDiv) contentDiv.textContent = content;
+        }
+        if (keepPinned) targetContainer.scrollTop = targetContainer.scrollHeight;
 
         const targetPanel = targetContainer.closest('.dynamic-panel');
         if (targetPanel) {
@@ -1836,16 +1974,18 @@
             }, 1200);
         }
 
-        messageDiv.querySelectorAll('pre code').forEach((block) => {
-            hljs.highlightElement(block);
-        });
-
-        scrollToBottom(targetContainer);
+        if (!plainText) {
+            messageDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
         return messageDiv;
     }
 
     function updateMessageContent(messageDiv, content) {
-        const renderedContent = marked.parse(content);
+        const container = messageDiv.parentElement;
+        const keepPinned = container ? panelWasPinned(container) : false;
+        const renderedContent = renderMarkdown(content);
         const contentDiv = messageDiv.querySelector('.markdown-content');
         if (contentDiv) {
             contentDiv.innerHTML = renderedContent;
@@ -1853,10 +1993,12 @@
                 hljs.highlightElement(block);
             });
         }
+        if (container && keepPinned) container.scrollTop = container.scrollHeight;
     }
 
     function addMessage(content, type) {
         if (type === 'user') {
+            const safeContent = escapeHtml(content);
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
 
@@ -1870,28 +2012,31 @@
                     </div>
                     <div class="flex-1 bubble-user rounded-xl p-3 shadow-sm">
                         <div class="text-sm text-green-800">
-                            <strong class="font-semibold">您:</strong> ${content}
+                            <strong class="font-semibold">您:</strong> ${safeContent}
                         </div>
                     </div>
                 `;
                 container.appendChild(messageDiv);
-                scrollToBottom(container);
+                scrollToBottom(container, true);
             });
         }
     }
 
-    function scrollToBottom(container) {
+    function scrollToBottom(container, force = false) {
         if (!container) {
-            const thinkingDiv = document.getElementById('thinkingMessages');
-            const resultDiv = document.getElementById('resultMessages');
-            thinkingDiv.scrollTop = thinkingDiv.scrollHeight;
-            resultDiv.scrollTop = resultDiv.scrollHeight;
-        } else {
+            ['thinkingMessages', 'resultMessages'].forEach((id) => {
+                const panel = document.getElementById(id);
+                if (force || panelWasPinned(panel)) panel.scrollTop = panel.scrollHeight;
+            });
+            return;
+        }
+        if (force || panelWasPinned(container)) {
             container.scrollTop = container.scrollHeight;
         }
     }
 
     function createNewChat() {
+        cancelActiveRequest(false);
         const thinkingDiv = document.getElementById('thinkingMessages');
         const resultDiv = document.getElementById('resultMessages');
 
@@ -1960,15 +2105,6 @@
         }
     });
 
-    document.getElementById('exampleSelect').addEventListener('change', function() {
-        const selectedExample = this.value;
-        if (selectedExample) {
-            document.getElementById('messageInput').value = selectedExample;
-            this.value = '';
-            updateInputCounter();
-        }
-    });
-
     document.getElementById('newChatBtn').addEventListener('click', createNewChat);
     document.getElementById('clearAllChatsBtn').addEventListener('click', clearAllChats);
     document.getElementById('refreshSessionListBtn').addEventListener('click', () => {
@@ -1978,9 +2114,8 @@
         loadSessionList(false);
     });
 
-    let currentMode = 'general';
-
     function switchMode(mode) {
+        if (mode !== currentMode) cancelActiveRequest(false);
         currentMode = mode;
         const tabGeneral = document.getElementById('tabGeneral');
         const tabTrading = document.getElementById('tabTrading');
@@ -2028,33 +2163,25 @@
         const selectedAnalysts = getSelectedAnalysts();
 
         if (!ticker) {
-            alert('请输入股票代码');
+            showToast('请输入股票代码', 'info');
             return;
         }
 
         if (selectedAnalysts.length === 0) {
-            alert('请至少选择一个分析师类型');
+            showToast('请至少选择一个分析师类型', 'info');
             return;
         }
 
-        if (isConnected) {
-            alert('正在处理中，请稍候...');
+        const request = requestLifecycle.start('trading');
+        if (!request) {
+            showToast('已有任务正在处理中', 'info');
             return;
         }
+        activeRequest = request;
 
         const tickerUpper = ticker.toUpperCase();
         const dateInfo = tradeDate ? `（${tradeDate}）` : '（今日）';
         addMessage(`分析股票: ${tickerUpper} ${dateInfo}`, 'user');
-
-        const sendBtn = document.getElementById('sendTradingBtn');
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = `
-            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            分析中...
-        `;
-
-        document.getElementById('loading').style.display = 'block';
-        setProcessingState(true, 'trading');
 
         const requestData = {
             ticker: tickerUpper,
@@ -2065,24 +2192,18 @@
             sessionId: sessionId
         };
 
-        fetch('http://localhost:8090/api/v1/trading/analysis', {
+        const streamState = createStreamState('trading');
+
+        fetch(buildApiUrl('/api/v1/trading/analysis'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: requestLifecycle.signal(request)
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('网络请求失败: ' + response.status);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            const sseParser = createSSEParser(handleSSEMessage);
-            streamTerminalEventReceived = false;
-
+        .then(async (response) => {
             const thinkingDiv = document.getElementById('thinkingMessages');
             const resultDiv = document.getElementById('resultMessages');
             const thinkingChildren = Array.from(thinkingDiv.children);
@@ -2090,35 +2211,29 @@
             const resultChildren = Array.from(resultDiv.children);
             resultChildren.slice(1).forEach(child => child.remove());
 
-            isConnected = true;
-
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        sseParser.flush();
-                        closeLoadingState('trading');
-                        if (!streamTerminalEventReceived) {
-                            addStageMessage('complete', null, '金融分析完成', null);
-                        }
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    sseParser.push(chunk);
-                    scrollToBottom();
-                    readStream();
-                }).catch(error => {
-                    console.error('读取流数据错误:', error);
-                    closeLoadingState('trading');
-                    addStageMessage('error', null, getFriendlyErrorMessage(error), null);
-                });
+            await consumeSseResponse(response, streamState);
+            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
+                streamState.outcome = 'failed';
+                addStageMessage('error', 'stream_interrupted',
+                    '连接已结束，但未收到任务完成事件', null, 'thinking');
             }
-            readStream();
         })
         .catch(error => {
-            console.error('请求错误:', error);
-            closeLoadingState('trading');
-            addStageMessage('error', null, getFriendlyErrorMessage(error), null);
+            if (error.name !== 'AbortError' && requestLifecycle.isActive(request)) {
+                console.error('请求错误:', error);
+                streamState.outcome = 'failed';
+                if (streamState.protocolErrors === 0) {
+                    addStageMessage('error', null, getFriendlyErrorMessage(error), null, 'thinking');
+                }
+                requestLifecycle.finish(request, 'failed');
+            }
+        })
+        .finally(() => {
+            if (requestLifecycle.isActive(request)) {
+                requestLifecycle.finish(request,
+                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+            }
+            if (activeRequest && activeRequest.id === request.id) activeRequest = null;
         });
     }
 
@@ -2137,7 +2252,7 @@
         `;
 
         try {
-            const response = await fetch(`http://localhost:8090/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`, {
+            const response = await fetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`), {
                 method: 'POST',
                 headers: { 'Accept': 'application/json' }
             });
@@ -2157,19 +2272,29 @@
         }
     }
 
-    function showToast(message, type) {
+    function showToast(message, type = 'info') {
+        const previous = document.getElementById('activeToast');
+        if (previous) previous.remove();
+
         const toast = document.createElement('div');
+        toast.id = 'activeToast';
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
         const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
         toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-slide-down text-sm font-medium`;
         toast.textContent = message;
         document.body.appendChild(toast);
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             toast.classList.remove('animate-slide-down');
             toast.classList.add('animate-fade-out');
-            setTimeout(() => toast.remove(), 300);
+            window.setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
+
+    document.getElementById('cancelRequestBtn').addEventListener('click', () => {
+        cancelActiveRequest(true);
+    });
 
     window.addEventListener('load', function() {
         document.getElementById('messageInput').focus();
