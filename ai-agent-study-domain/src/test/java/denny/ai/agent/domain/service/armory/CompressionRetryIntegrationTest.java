@@ -1,9 +1,9 @@
 package denny.ai.agent.domain.service.armory;
 
-import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
-import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
+import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,6 +34,9 @@ public class CompressionRetryIntegrationTest {
     @Mock
     private ChatResponse successResponse;
 
+    @Mock
+    private PromptCompressionService compressionService;
+
     private RetryChatModel retryChatModel;
     private Prompt originalPrompt;
 
@@ -46,15 +49,14 @@ public class CompressionRetryIntegrationTest {
                 .maxIntervalMs(0)
                 .retryableErrorCodes(List.of("429"))
                 .build();
-        CompressionConfig compressionConfig = CompressionConfig.builder()
+        CompressionPolicy compressionPolicy = CompressionPolicy.builder()
                 .enabled(true)
                 .proactiveThresholdTokens(Integer.MAX_VALUE)
                 .maxCompressionAttempts(1)
                 .build();
 
-        retryChatModel = new RetryChatModel(delegate, retryConfig);
-        retryChatModel.setCompressionConfig(compressionConfig);
-        retryChatModel.setDynamicContext(new DynamicContext());
+        retryChatModel = new RetryChatModel(delegate, retryConfig, compressionPolicy,
+                compressionService, null);
         originalPrompt = Prompt.builder()
                 .messages(new UserMessage("current question"))
                 .build();
@@ -62,6 +64,9 @@ public class CompressionRetryIntegrationTest {
 
     @Test
     public void contextOverflowCompressesAndCallsDelegateAgain() {
+        Prompt compressedPrompt = Prompt.builder().messages(new UserMessage("x")).build();
+        when(compressionService.compress(any(Prompt.class), any(), any()))
+                .thenReturn(compressedPrompt);
         when(delegate.call(any(Prompt.class)))
                 .thenThrow(new RuntimeException("{\"error\":{\"code\":\"1261\"}}"))
                 .thenReturn(successResponse);

@@ -2,10 +2,14 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
+import denny.ai.agent.domain.service.compression.CompressionExhaustedException;
+import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -36,6 +40,9 @@ public class RetryStrategyTest {
 
     @Mock
     private ChatResponse successResponse;
+
+    @Mock
+    private PromptCompressionService compressionService;
 
     private RetryConfig defaultConfig;
     private AiErrorCodeExtractor errorCodeExtractor;
@@ -380,6 +387,78 @@ public class RetryStrategyTest {
         assertSame(error, thrown);
     }
 
+    @Test
+    public void contextOverflowCompressesAndContinuesInSameStrategy() {
+        Prompt original = makePrompt("a".repeat(200));
+        Prompt compressed = makePrompt("short");
+        when(delegate.call(any(Prompt.class)))
+                .thenThrow(new RuntimeException("{\"error\":{\"code\":\"1261\"}}"))
+                .thenReturn(successResponse);
+        when(compressionService.compress(eq(original), any(), any())).thenReturn(compressed);
+        TestRetryStrategy strategy = new TestRetryStrategy(defaultConfig, compressionPolicy(2), context());
+
+        assertSame(successResponse, strategy.execute(original));
+
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(delegate, times(2)).call(captor.capture());
+        assertSame(original, captor.getAllValues().get(0));
+        assertSame(compressed, captor.getAllValues().get(1));
+    }
+
+    @Test
+    public void proactiveCompressionDoesNotConsumeModelAttempt() {
+        Prompt original = makePrompt("a".repeat(200));
+        Prompt compressed = makePrompt("x");
+        when(compressionService.compress(eq(original), any(), any())).thenReturn(compressed);
+        when(delegate.call(compressed)).thenReturn(successResponse);
+        CompressionPolicy policy = CompressionPolicy.builder()
+                .enabled(true).proactiveThresholdTokens(1).maxCompressionAttempts(1).build();
+
+        assertSame(successResponse, new TestRetryStrategy(defaultConfig, policy, context()).execute(original));
+        verify(delegate).call(compressed);
+    }
+
+    @Test
+    public void compressionMustReducePromptSize() {
+        Prompt original = makePrompt("short");
+        Prompt larger = makePrompt("a".repeat(500));
+        when(delegate.call(original)).thenThrow(new RuntimeException("{\"error\":{\"code\":\"1261\"}}"));
+        when(compressionService.compress(eq(original), any(), any())).thenReturn(larger);
+
+        assertThrows(CompressionExhaustedException.class,
+                () -> new TestRetryStrategy(defaultConfig, compressionPolicy(1), context()).execute(original));
+        verify(delegate, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
+    public void disabledCompressionMakes1261TerminalEvenWhenRetryable() {
+        RetryConfig config = RetryConfig.builder().enabled(true).maxAttempts(3)
+                .retryableErrorCodes(List.of("1261")).build();
+        RuntimeException overflow = new RuntimeException("{\"error\":{\"code\":\"1261\"}}");
+        when(delegate.call(any(Prompt.class))).thenThrow(overflow);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> new TestRetryStrategy(config).execute(makePrompt("prompt")));
+
+        assertSame(overflow, thrown);
+        verify(delegate, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
+    public void retryDisabledStillAllowsOverflowReplacementCall() {
+        RetryConfig config = RetryConfig.builder().enabled(false).maxAttempts(5).build();
+        Prompt original = makePrompt("a".repeat(200));
+        Prompt compressed = makePrompt("x");
+        when(delegate.call(any(Prompt.class)))
+                .thenThrow(new RuntimeException("{\"error\":{\"code\":\"1261\"}}"))
+                .thenReturn(successResponse);
+        when(compressionService.compress(eq(original), any(), any())).thenReturn(compressed);
+
+        assertSame(successResponse,
+                new TestRetryStrategy(config, compressionPolicy(1), context()).execute(original));
+        verify(delegate, times(2)).call(any(Prompt.class));
+    }
+
     // Removed: testCheckedExceptionWrapped - ChatModel.call() doesn't throw checked exceptions
     // Removed: testNullException_throwsIllegalState - RetryStrategy already handles null lastException
 
@@ -391,7 +470,15 @@ public class RetryStrategyTest {
         private final AiErrorCodeExtractor extractor;
 
         protected TestRetryStrategy(RetryConfig retryConfig) {
-            super(RetryStrategyTest.this.delegate, retryConfig, null, null, RetryStrategyTest.this.errorCodeExtractor);
+            this(retryConfig, null, null);
+        }
+
+        protected TestRetryStrategy(RetryConfig retryConfig,
+                                    CompressionPolicy compressionPolicy,
+                                    RetryRuntimeContext runtimeContext) {
+            super(RetryStrategyTest.this.delegate, retryConfig, compressionPolicy,
+                    RetryStrategyTest.this.compressionService, runtimeContext,
+                    RetryStrategyTest.this.errorCodeExtractor);
             this.chatModelDelegate = RetryStrategyTest.this.delegate;
             this.extractor = RetryStrategyTest.this.errorCodeExtractor;
         }
@@ -412,5 +499,17 @@ public class RetryStrategyTest {
             }
             throw e;
         }
+    }
+
+    private CompressionPolicy compressionPolicy(int attempts) {
+        return CompressionPolicy.builder()
+                .enabled(true)
+                .proactiveThresholdTokens(Integer.MAX_VALUE)
+                .maxCompressionAttempts(attempts)
+                .build();
+    }
+
+    private RetryRuntimeContext context() {
+        return RetryRuntimeContext.builder().sessionId("session").traceId("trace").build();
     }
 }

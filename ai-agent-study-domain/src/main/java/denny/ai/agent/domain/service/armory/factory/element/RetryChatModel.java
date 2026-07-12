@@ -2,8 +2,10 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.CompressionConfig;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.armory.CompressionRequiredException;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.util.TokenCountUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
@@ -27,6 +29,9 @@ public class RetryChatModel implements ChatModel {
     private final RetryConfig retryConfig;
     private final AiErrorCodeExtractor errorCodeExtractor;
 
+    private CompressionPolicy compressionPolicy;
+    private PromptCompressionService compressionService;
+
     private CompressionConfig compressionConfig;
     private DynamicContext dynamicContext;
 
@@ -41,6 +46,16 @@ public class RetryChatModel implements ChatModel {
         this.errorCodeExtractor = errorCodeExtractor != null ? errorCodeExtractor : new AiErrorCodeExtractor();
     }
 
+    public RetryChatModel(ChatModel delegate,
+                          RetryConfig retryConfig,
+                          CompressionPolicy compressionPolicy,
+                          PromptCompressionService compressionService,
+                          AiErrorCodeExtractor errorCodeExtractor) {
+        this(delegate, retryConfig, errorCodeExtractor);
+        this.compressionPolicy = compressionPolicy;
+        this.compressionService = compressionService;
+    }
+
     public void setCompressionConfig(CompressionConfig compressionConfig) {
         this.compressionConfig = compressionConfig;
     }
@@ -51,7 +66,7 @@ public class RetryChatModel implements ChatModel {
 
     @Override
     public ChatResponse call(Prompt prompt) {
-        return new CallRetryStrategy().execute(prompt);
+        return new CallRetryStrategy(null).execute(prompt);
     }
 
     @Override
@@ -193,10 +208,10 @@ public class RetryChatModel implements ChatModel {
     // ===== CallRetryStrategy =====
     private class CallRetryStrategy extends RetryStrategy<ChatResponse> {
 
-        CallRetryStrategy() {
+        CallRetryStrategy(RetryRuntimeContext runtimeContext) {
             super(RetryChatModel.this.delegate, RetryChatModel.this.retryConfig,
-                    RetryChatModel.this.compressionConfig, RetryChatModel.this.dynamicContext,
-                    RetryChatModel.this.errorCodeExtractor);
+                    RetryChatModel.this.compressionPolicy, RetryChatModel.this.compressionService,
+                    runtimeContext, RetryChatModel.this.errorCodeExtractor);
         }
 
         @Override
