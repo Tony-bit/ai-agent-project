@@ -5,6 +5,9 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.excute.IExecuteStrategy;
 import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
+import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
+import denny.ai.agent.domain.model.valobj.runtime.TurnRuntimeContext;
+import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,7 +49,8 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         String traceId = UUID.randomUUID().toString().replace("-", "");
         dynamicContext.setTraceId(traceId);
 
-        runtimeContextAssembler.prepare(executeCommandEntity, dynamicContext);
+        TurnRuntimeContext turnContext = runtimeContextAssembler.prepare(executeCommandEntity, dynamicContext);
+        RetryRuntimeContext retryContext = RetryRuntimeContext.from(turnContext);
 
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
@@ -54,7 +58,25 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         log.info("开始执行处理器链，agentType={}, aiAgentId={}", executeCommandEntity.getAgentType(), executeCommandEntity.getAiAgentId());
 
         try {
-            String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
+            Exception executionFailure = null;
+            String apply;
+            try {
+                apply = RetryRuntimeContextHolder.withContextThrowing(retryContext,
+                        () -> executeHandler.apply(executeCommandEntity, dynamicContext));
+            } catch (Exception error) {
+                executionFailure = error;
+                throw error;
+            } finally {
+                try {
+                    runtimeContextAssembler.afterTurn(executeCommandEntity, dynamicContext, turnContext);
+                } catch (RuntimeException cleanupError) {
+                    if (executionFailure != null) {
+                        executionFailure.addSuppressed(cleanupError);
+                    } else {
+                        throw cleanupError;
+                    }
+                }
+            }
             log.info("测试结果:{}", apply);
         } catch (Exception e) {
             log.error("节点链执行异常: {}", e.getMessage(), e);
