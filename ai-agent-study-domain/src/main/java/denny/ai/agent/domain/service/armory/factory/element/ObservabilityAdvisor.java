@@ -58,6 +58,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
 
         context.put(SPAN_ID_KEY, spanId);
         context.put(START_AT_KEY, System.currentTimeMillis());
+        context.put("input", input);
 
         return ChatClientRequest.builder()
                 .prompt(chatClientRequest.prompt())
@@ -181,6 +182,10 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         String outputText = tryExtractFromResult(chatResponse);
 
         if (StringUtils.isBlank(outputText)) {
+            outputText = tryExtractFromGenerations(chatResponse);
+        }
+
+        if (StringUtils.isBlank(outputText)) {
             outputText = tryExtractFromMetadata(chatResponse);
         }
 
@@ -189,8 +194,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         }
 
         if (StringUtils.isBlank(outputText)) {
-            log.warn("ObservabilityAdvisor: output text extraction all paths returned empty, "
-                    + "chatResponse={}", chatResponse);
+            logOutputExtractionFailure(chatResponse);
         }
 
         return outputText;
@@ -228,6 +232,25 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         return "";
     }
 
+    private String tryExtractFromGenerations(ChatResponse chatResponse) {
+        try {
+            if (chatResponse.getResults() == null || chatResponse.getResults().isEmpty()) {
+                return "";
+            }
+            for (var generation : chatResponse.getResults()) {
+                if (generation != null && generation.getOutput() != null) {
+                    String text = generation.getOutput().getText();
+                    if (StringUtils.isNotBlank(text)) {
+                        return text;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("tryExtractFromGenerations failed: {}", e.getMessage());
+        }
+        return "";
+    }
+
     private String tryExtractFromMessageContent(ChatResponse chatResponse) {
         try {
             if (chatResponse.getMetadata() != null) {
@@ -246,6 +269,17 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             log.debug("tryExtractFromMessageContent failed: {}", e.getMessage());
         }
         return "";
+    }
+
+    private void logOutputExtractionFailure(ChatResponse chatResponse) {
+        try {
+            int resultCount = chatResponse.getResults() == null ? 0 : chatResponse.getResults().size();
+            Object metadataKeys = chatResponse.getMetadata() == null ? "[]" : chatResponse.getMetadata().keySet();
+            log.warn("ObservabilityAdvisor: output text extraction all paths returned empty, resultPresent={}, resultCount={}, metadataKeys={}",
+                    chatResponse.getResult() != null, resultCount, metadataKeys);
+        } catch (Exception e) {
+            log.warn("ObservabilityAdvisor: output text extraction failed and diagnostics also failed: {}", e.getMessage());
+        }
     }
 
     private String extractModelName(ChatClientResponse response) {
