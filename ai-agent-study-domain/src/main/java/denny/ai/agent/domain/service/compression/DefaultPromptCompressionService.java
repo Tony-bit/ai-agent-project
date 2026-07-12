@@ -63,6 +63,10 @@ public class DefaultPromptCompressionService implements PromptCompressionService
                 policy.getProactiveThresholdTokens() - policy.getMaxSummaryTokens() - REQUEST_OVERHEAD_TOKENS);
         ClientSelection clientSelection = resolveCompressionClient(policy);
         String request = buildCompressionRequest(history, policy.getMaxSummaryTokens(), inputBudget);
+        log.info("[CompressionRequest] traceId={}, sessionId={}, historyMessages={}, inputBudget={}, requestTokens={}, completeClient={}",
+                runtimeContext == null ? null : runtimeContext.getTraceId(),
+                runtimeContext == null ? null : runtimeContext.getSessionId(),
+                history.size(), inputBudget, TokenCountUtils.estimate(request), clientSelection.completeBean());
         RetryRuntimeContext compressionContext = runtimeContext == null
                 ? RetryRuntimeContext.builder().compressionCall(true).recentMessages(history).build()
                 : runtimeContext.forCompressionCall();
@@ -80,6 +84,10 @@ public class DefaultPromptCompressionService implements PromptCompressionService
         }
 
         String formattedSummary = formatSummary(summary);
+        log.info("[CompressionResponse] traceId={}, sessionId={}, summaryTokens={}",
+                runtimeContext == null ? null : runtimeContext.getTraceId(),
+                runtimeContext == null ? null : runtimeContext.getSessionId(),
+                TokenCountUtils.estimate(formattedSummary));
         return rebuildPrompt(originalPrompt, formattedSummary);
     }
 

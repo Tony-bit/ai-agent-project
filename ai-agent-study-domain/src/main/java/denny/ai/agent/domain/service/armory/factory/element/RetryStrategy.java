@@ -65,10 +65,15 @@ public abstract class RetryStrategy<T> {
 
         while (modelCalls < maxModelCalls) {
             modelCalls++;
+            log.info("[Retry] traceId={}, sessionId={}, modelCall={}/{}, ordinaryRetriesRemaining={}, promptTokens={}",
+                    traceId(), sessionId(), modelCalls, maxModelCalls, ordinaryRetriesRemaining,
+                    TokenCountUtils.estimate(currentPrompt.toString()));
             try {
                 return doExecute(currentPrompt);
             } catch (Exception error) {
                 String errorCode = errorCodeExtractor.extract(error);
+                log.warn("[Retry] traceId={}, sessionId={}, modelCall={}/{}, errorCode={}",
+                        traceId(), sessionId(), modelCalls, maxModelCalls, errorCode);
                 if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCode)) {
                     if (!compressionEnabled()) {
                         return onExhausted(toRuntimeException(error));
@@ -109,9 +114,19 @@ public abstract class RetryStrategy<T> {
         if (afterTokens >= beforeTokens) {
             throw new CompressionExhaustedException("compressed prompt must be smaller than original prompt");
         }
-        log.info("[Compression] trigger={}, attempt={}, beforeTokens={}, afterTokens={}",
-                trigger, attempt, beforeTokens, afterTokens);
+        int maxAttempts = Math.max(1, Math.min(compressionPolicy.getMaxCompressionAttempts(),
+                MAX_SAFE_COMPRESSION_ATTEMPTS));
+        log.info("[Compression] traceId={}, sessionId={}, compressionAttempt={}/{}, trigger={}, beforeTokens={}, afterTokens={}",
+                traceId(), sessionId(), attempt, maxAttempts, trigger, beforeTokens, afterTokens);
         return compressed;
+    }
+
+    private String traceId() {
+        return runtimeContext == null ? null : runtimeContext.getTraceId();
+    }
+
+    private String sessionId() {
+        return runtimeContext == null ? null : runtimeContext.getSessionId();
     }
 
     private boolean shouldCompressProactively(Prompt prompt) {
