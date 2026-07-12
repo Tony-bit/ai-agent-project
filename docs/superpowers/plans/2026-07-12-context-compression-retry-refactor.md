@@ -643,7 +643,7 @@ git commit -m "feat: retry and compress reactive model streams"
 
 | Task | status |
 |------|------|
-| Task 8: Remove the Obsolete Armory Compression Route | append |
+| Task 8: Remove the Obsolete Armory Compression Route | pass |
 
 **Files:**
 - Delete: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/armory/CompressionContextNode.java`

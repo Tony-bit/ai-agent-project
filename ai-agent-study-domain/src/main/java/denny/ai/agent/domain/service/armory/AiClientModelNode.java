@@ -36,9 +36,6 @@ public class AiClientModelNode extends AbstractArmorySupport{
     private AiClientAdvisorNode aiClientAdvisorNode;
 
     @Resource
-    private CompressionContextNode compressionContextNode;
-
-    @Resource
     private PromptCompressionService promptCompressionService;
 
     @Override
@@ -129,11 +126,6 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     @Override
     public StrategyHandler<ArmoryCommandEntity, DynamicContext, String> get(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
-        // 检查是否需要压缩
-        if (dynamicContext.isCompressionRequired()) {
-            log.info("检测到压缩需求，路由到 CompressionContextNode");
-            return compressionContextNode;
-        }
         return aiClientAdvisorNode;
     }
 
