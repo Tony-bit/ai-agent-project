@@ -6,6 +6,7 @@ import com.alibaba.cloud.ai.graph.skills.SpringAiSkillAdvisor;
 import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import com.alibaba.cloud.ai.graph.skills.registry.classpath.ClasspathSkillRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,6 +14,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @Slf4j
 public class TradingSkillsConfig {
+
+    @Value("${spring.ai.trading.skills.auto-reload:false}")
+    private boolean autoReload;
 
     @Bean
     public SkillRegistry tradingSkillRegistry() {
@@ -34,7 +38,7 @@ public class TradingSkillsConfig {
     public SkillsAgentHook tradingSkillsAgentHook(SkillRegistry tradingSkillRegistry) {
         return SkillsAgentHook.builder()
                 .skillRegistry(tradingSkillRegistry)
-                .autoReload(true)
+                .autoReload(autoReload)
                 .build();
     }
 

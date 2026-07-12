@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.BaseSlot;
@@ -15,6 +16,7 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.runtime.RuntimeContextKeys;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -32,6 +34,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 /**
@@ -269,6 +272,38 @@ public class IntentRoutingNodeTest {
         ArgumentCaptor<AiAgentClientFlowConfigVO> captor = ArgumentCaptor.forClass(AiAgentClientFlowConfigVO.class);
         verify(intentRoutingService).routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), captor.capture());
         assertEquals("intent-routing-client", captor.getValue().getClientId());
+    }
+
+    @Test
+    public void should_use_prepared_history_without_loading_conversation_history() throws Exception {
+        List<String> preparedHistory = List.of("user: 上一轮", "assistant: 上一轮回答");
+        dynamicContext.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, preparedHistory);
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+                .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
+
+        intentRoutingNode.doApply(request, dynamicContext);
+
+        ArgumentCaptor<List<String>> historyCaptor = ArgumentCaptor.forClass(List.class);
+        verify(intentRoutingService).routeUnified(anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class));
+        assertEquals(preparedHistory, historyCaptor.getValue());
+        verify(chatMemoryPersistenceService, never()).getConversationHistory(anyString());
+    }
+
+    @Test
+    public void should_fallback_to_legacy_history_when_prepared_history_type_is_invalid() throws Exception {
+        dynamicContext.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, "bad-history");
+        when(chatMemoryPersistenceService.getConversationHistory("test-session-123")).thenReturn(List.of(
+                ChatMessageEntity.builder().role("user").content("legacy").build()
+        ));
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+                .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
+
+        intentRoutingNode.doApply(request, dynamicContext);
+
+        ArgumentCaptor<List<String>> historyCaptor = ArgumentCaptor.forClass(List.class);
+        verify(intentRoutingService).routeUnified(anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class));
+        assertEquals(List.of("user: legacy"), historyCaptor.getValue());
+        verify(chatMemoryPersistenceService).getConversationHistory("test-session-123");
     }
 
     private MultiIntentRoutingResult buildSingleTaskResult(IntentTypeEnum intent, String executorNode) {

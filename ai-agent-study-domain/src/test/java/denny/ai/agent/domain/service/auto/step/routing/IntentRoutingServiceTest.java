@@ -42,6 +42,7 @@ import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -726,6 +727,57 @@ public class IntentRoutingServiceTest {
         assertEquals(IntentTypeEnum.PE_RETRIEVAL, result.getTaskList().get(0).getIntent());
         verify(intentFewshotService).retrieveTopK("summarize RAG docs", 5);
         verify(intentFewshotService, never()).retrieveTopK("combined", 5);
+    }
+
+    @Test
+    public void should_retrieve_fewshot_realtime_for_repeated_unified_query() {
+        when(intentFewshotService.retrieveTopK("分析贵州茅台", 5))
+                .thenReturn(List.of(IntentFewshotSample.builder()
+                        .queryText("分析平安银行")
+                        .exampleJson("{\"intent\":\"STOCK_ANALYSIS\"}")
+                        .build()))
+                .thenReturn(List.of(IntentFewshotSample.builder()
+                        .queryText("分析招商银行")
+                        .exampleJson("{\"intent\":\"STOCK_ANALYSIS\"}")
+                        .build()));
+        when(chatModel.call(any(Prompt.class))).thenReturn(response("""
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"stock","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析贵州茅台",
+                    "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
+                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","timeRange":"近三个月","exchange":"SH"}}}
+                 ]}
+                """));
+
+        intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
+        intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
+
+        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台", 5);
+        verify(chatModel, times(2)).call(any(Prompt.class));
+    }
+
+    @Test
+    public void should_not_cache_fewshot_failure_for_next_unified_query() {
+        when(intentFewshotService.retrieveTopK("分析贵州茅台", 5))
+                .thenThrow(new RuntimeException("pgvector down"))
+                .thenReturn(List.of(IntentFewshotSample.builder()
+                        .queryText("分析招商银行")
+                        .exampleJson("{\"intent\":\"STOCK_ANALYSIS\"}")
+                        .build()));
+        when(chatModel.call(any(Prompt.class))).thenReturn(response("""
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"stock","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析贵州茅台",
+                    "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
+                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","timeRange":"近三个月","exchange":"SH"}}}
+                 ]}
+                """));
+
+        intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
+        intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
+
+        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台", 5);
+        verify(chatModel, times(2)).call(any(Prompt.class));
     }
 
     @Test

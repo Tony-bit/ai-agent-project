@@ -49,9 +49,9 @@ public class RootNode extends AbstractExecuteSupport {
         log.info("最大执行步数: {}", requestParameter.getMaxStep());
         log.info("会话ID: {}", requestParameter.getSessionId());
 
-        // 意图路由场景（aiAgentId 为空）：配置已在 RootNode.get() 中通过 queryAllFlowConfigForIntentRouting() 加载
-        // 此处不再重复加载，避免覆盖掉正确的配置
-        if (requestParameter.getAiAgentId() != null && !requestParameter.getAiAgentId().isBlank()) {
+        if ((dynamicContext.getAiAgentClientFlowConfigVOMap() == null
+                || dynamicContext.getAiAgentClientFlowConfigVOMap().isEmpty())
+                && requestParameter.getAiAgentId() != null && !requestParameter.getAiAgentId().isBlank()) {
             Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap =
                     repository.queryAiAgentClientFlowConfig(requestParameter.getAiAgentId());
             dynamicContext.setAiAgentClientFlowConfigVOMap(aiAgentClientFlowConfigVOMap);
@@ -90,9 +90,12 @@ public class RootNode extends AbstractExecuteSupport {
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         // 意图路由场景：无 aiAgentId，直接 queryAll + group by clientType
         if (requestParameter.getAiAgentId() == null || requestParameter.getAiAgentId().isBlank()) {
-            Map<String, AiAgentClientFlowConfigVO> intentRoutingConfigMap =
-                    repository.queryAllFlowConfigForIntentRouting();
-            dynamicContext.setAiAgentClientFlowConfigVOMap(intentRoutingConfigMap);
+            if (dynamicContext.getAiAgentClientFlowConfigVOMap() == null
+                    || dynamicContext.getAiAgentClientFlowConfigVOMap().isEmpty()) {
+                Map<String, AiAgentClientFlowConfigVO> intentRoutingConfigMap =
+                        repository.queryAllFlowConfigForIntentRouting();
+                dynamicContext.setAiAgentClientFlowConfigVOMap(intentRoutingConfigMap);
+            }
             return intentRoutingProperties.getMode() == IntentRoutingMode.SPLIT
                     ? queryDecompositionNode : intentRoutingNode;
         }

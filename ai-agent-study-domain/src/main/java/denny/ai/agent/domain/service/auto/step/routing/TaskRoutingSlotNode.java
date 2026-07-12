@@ -13,6 +13,7 @@ import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.runtime.RuntimeHistorySupport;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,7 +44,7 @@ public class TaskRoutingSlotNode extends AbstractExecuteSupport {
         RoutingExecutionMetrics metrics = context.getValue(RoutingResultHandler.METRICS_KEY);
         AiAgentClientFlowConfigVO config = context.getAiAgentClientFlowConfigVOMap()
                 .get(AiClientTypeEnumVO.INTENT_ROUTING.getCode());
-        List<String> history = history(request.getSessionId());
+        List<String> history = history(request.getSessionId(), context);
         List<DecomposedTask> ordered = decomposition.getTaskList().stream()
                 .sorted(Comparator.comparing(DecomposedTask::getTaskIndex))
                 .toList();
@@ -77,15 +78,9 @@ public class TaskRoutingSlotNode extends AbstractExecuteSupport {
         return routingResultHandler.select(context);
     }
 
-    private List<String> history(String sessionId) {
-        try {
-            return chatMemoryPersistenceService.getConversationHistory(sessionId).stream()
-                    .filter(message -> message.getRole() != null && message.getContent() != null)
-                    .map(message -> message.getRole() + ": " + message.getContent())
-                    .toList();
-        } catch (Exception e) {
-            log.warn("Failed to load conversation history: sessionId={}, error={}", sessionId, e.getMessage());
-            return List.of();
-        }
+    private List<String> history(String sessionId,
+                                 DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) {
+        return RuntimeHistorySupport.preparedHistory(context)
+                .orElseGet(() -> RuntimeHistorySupport.loadLegacyHistory(sessionId, chatMemoryPersistenceService));
     }
 }

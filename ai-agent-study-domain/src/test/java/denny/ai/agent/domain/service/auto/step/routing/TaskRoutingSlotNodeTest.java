@@ -14,6 +14,7 @@ import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.chatmemory.ChatMemoryPersistenceService;
+import denny.ai.agent.domain.service.runtime.RuntimeContextKeys;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -167,6 +169,35 @@ public class TaskRoutingSlotNodeTest {
         assertSame(fallback, resultCaptor.getValue());
         assertFalse(resultCaptor.getValue().getMultiTask());
         assertEquals(IntentTypeEnum.GENERAL_CHAT, resultCaptor.getValue().getTaskList().get(0).getIntent());
+    }
+
+    @Test
+    public void usesPreparedHistoryForEverySlotRoutingCall() throws Exception {
+        List<String> preparedHistory = List.of("user: first", "assistant: second");
+        context.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, preparedHistory);
+        DecomposedTask first = decomposed("sub-1", 1, 2);
+        DecomposedTask second = decomposed("sub-2", 2, 2);
+        QueryDecompositionResult decomposition = QueryDecompositionResult.builder()
+                .multiTask(true).reasoning("two").taskList(List.of(first, second)).build();
+        context.setValue(QueryDecompositionNode.DECOMPOSITION_RESULT_KEY, decomposition);
+        IntentRoutingResult routing = IntentRoutingResult.builder()
+                .intent(IntentTypeEnum.GENERAL_CHAT).confidence(ConfidenceEnum.HIGH).intentSpecificSlots(Map.of()).build();
+        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
+                .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
+                        RoutingStageMetric.builder().stageName("task-routing-slot")
+                                .taskId(invocation.getArgument(1)).callIndex(invocation.getArgument(2))
+                                .success(true).build()));
+        when(intentRoutingService.toSubTask(first, routing)).thenReturn(subTask(first));
+        when(intentRoutingService.toSubTask(second, routing)).thenReturn(subTask(second));
+        MultiIntentRoutingResult finalResult = MultiIntentRoutingResult.builder()
+                .multiTask(true).needsClarification(false).taskList(List.of(subTask(first), subTask(second))).build();
+        when(intentRoutingService.buildSplitResult(any(), any())).thenReturn(finalResult);
+
+        node.doApply(ExecuteCommandEntity.builder().message("combined").sessionId("s").build(), context);
+
+        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-1"), eq("sub-1"), eq(1), eq(preparedHistory), any());
+        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-2"), eq("sub-2"), eq(2), eq(preparedHistory), any());
+        verify(chatMemoryPersistenceService, never()).getConversationHistory(any());
     }
 
     private DecomposedTask decomposed(String id, int index, int total) {
