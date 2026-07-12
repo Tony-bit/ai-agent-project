@@ -92,11 +92,54 @@ JSON 非法
 
 ## 5. 统一压缩助手
 
-`AiClientNode` 根据现有 flowConfigMap 中 `COMPRESSION_ASSISTANT` 对应的 clientId 找到完整 ChatClient。保留原普通名称，同时通过现有 `registerBean(...)` 向 `ArmoryObjectRegistry` 注册稳定别名：
+### 5.1 可实施的数据来源
+
+armory 的 `AiClientLoadDataStrategy` 当前只加载 `ArmoryCommandEntity.commandIdList` 对应的客户端，不读取 workflow 的 `RuntimeContextKeys.FLOW_CONFIG_MAP`。本方案不跨生命周期复用 workflow context，而是在 armory 数据加载阶段增加独立查询：
+
+```java
+List<AiAgentClientFlowConfigVO> queryActiveFlowConfigsByClientType(String clientType);
+```
+
+Infrastructure DAO 查询所有 Agent 的启用 flow 记录，条件为：
+
+```text
+client_type = "COMPRESSION_ASSISTANT"
+status = 1
+```
+
+`AiClientLoadDataStrategy` 在启动现有并行查询前执行以下步骤：
+
+1. 调用上述 repository 方法加载所有启用的压缩 flow。
+2. 按 `clientId` 去重；0 个直接失败，超过 1 个 distinct clientId 直接失败。
+3. 多条记录指向同一个 clientId 时允许，说明多个 Agent 共享同一系统压缩助手；`sequence` 不参与选择。
+4. 将唯一 clientId 写入 armory `DynamicContext` 专用 key：
+
+```java
+public static final String GLOBAL_COMPRESSION_CLIENT_ID = "globalCompressionClientId";
+```
+
+5. 将该 clientId 合并进 `commandIdList` 的副本后，再由现有 `AiClientLoadDataStrategy` 加载对应 API、Model、Prompt、Advisor 和 `AiClientVO`。不修改原 command 对象的集合。
+
+该 key 的 value 是唯一 clientId，不使用 `COMPRESSION_ASSISTANT` 作为 key，也不把整个 flowConfigMap 写入 armory DynamicContext。
+
+### 5.2 clientId + taskType 匹配
+
+`AiClientNode` 从 `dynamicContext.getValue(GLOBAL_COMPRESSION_CLIENT_ID)` 取得唯一 clientId，并在已加载的 `AiClientVO` 中筛选：
+
+```text
+aiClientVO.clientId == globalCompressionClientId
+&& aiClientVO.taskType == 1
+```
+
+匹配结果必须恰好为 1：0 个表示压缩助手配置不完整；超过 1 个表示同一 clientId 存在重复 taskType=1 模型关联，两种情况都拒绝装配。`sequence` 不用于选择 ChatClient，避免装配顺序改变结果。
+
+匹配成功后保留原普通名称，同时通过现有 `registerBean(...)` 向 `ArmoryObjectRegistry` 注册稳定别名：
 
 ```text
 compressionChatClient
 ```
+
+### 5.3 Registry 查找契约
 
 动态装配对象不是 Spring Bean。`DefaultPromptCompressionService` 必须注入 `ArmoryObjectRegistry`，并按以下顺序解析：
 
@@ -108,7 +151,17 @@ compressionChatClient
 
 Registry 是生产动态装配的主路径；ApplicationContext 只用于兼容静态 Bean 和已有测试。服务不再使用 `aiClientCOMPRESSION_ASSISTANTtaskType1`，也不再通过 compressionModelId 临时构建 ChatClient。
 
-压缩助手底层模型继续由现有客户端、模型和关联表配置。ChatClient 装配完成后必须使用 `armoryObjectRegistry.contains("compressionChatClient")` 校验稳定别名；不能使用 `ApplicationContext.containsBean()` 校验动态对象。缺失时立即抛出包含 flow key、clientId 和别名的 `IllegalStateException`。
+压缩助手底层模型继续由现有客户端、模型和关联表配置。ChatClient 装配完成后必须使用 `armoryObjectRegistry.contains("compressionChatClient")` 校验稳定别名；不能使用 `ApplicationContext.containsBean()` 校验动态对象。
+
+### 5.4 全局唯一性与并发
+
+`ArmoryObjectRegistry` 是全局 Registry，因此 `compressionChatClient` 被定义为系统级唯一别名，而不是 Agent 级别别名。每次 armory 装配都必须先执行全量 distinct clientId 校验：
+
+- 所有 Agent 指向同一个 clientId：允许重复注册同一逻辑配置。
+- 任意两个 Agent 指向不同 clientId：装配失败，不按 sequence 选择，也不允许最后写入覆盖前值。
+- Registry 已存在别名且本次构建的 clientId 与已记录的全局 clientId 不同：在 put 前失败。
+
+为支持最后一条校验，Registry 额外保存不可变映射 `globalCompressionClientId -> clientId`，或者将 clientId 与 ChatClient 封装为注册值；实施计划选择前者，便于诊断和测试。
 
 ## 6. 默认压缩提示词
 
@@ -149,7 +202,8 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 
 ## 9. 错误处理
 
-- 压缩助手未装配：基于 ArmoryObjectRegistry 的装配校验立即失败。
+- 没有启用的压缩 flow、存在多个 distinct clientId、clientId+taskType=1 匹配不唯一：armory 装配立即失败。
+- Registry 中已有不同全局 clientId：在覆盖稳定别名前失败。
 - 压缩结果未缩短：抛 `CompressionExhaustedException`。
 - 压缩模型返回 1261：包装领域异常并保留 cause。
 - 没有可压缩历史：抛出包含 `no compressible history` 的异常。
@@ -162,6 +216,8 @@ Mock 只替代压缩 LLM 和原 LLM 的输出；holder、阈值判断、预算�
 - 旧扁平 Retry JSON 保持有效并自动获得默认压缩能力。
 - 压缩服务按 ArmoryObjectRegistry -> ApplicationContext 顺序解析 `compressionChatClient`。
 - 装配校验检查真实 Registry，缺失时立即失败。
+- 压缩 flow 由 AiClientLoadDataStrategy 通过 repository 的 clientType 查询加载，并写入 `globalCompressionClientId`。
+- 多 Agent 只能共享同一个压缩 clientId；多个 distinct clientId 不按 sequence 选择，直接拒绝。
 - DB 无 7001 时使用代码默认提示词，有 7001 时覆盖且不重复。
 - threshold=1 时 Query 先压缩再调用原 LLM。
 - 原模型返回 1261 时压缩并完成第二次调用。

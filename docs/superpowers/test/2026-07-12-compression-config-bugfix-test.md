@@ -34,6 +34,7 @@
 | TC-005 | DB 有 prompt 7001 | 使用 DB 提示词且不重复 | append |
 | TC-006 | Registry 主路径解析 | Registry 和 ApplicationContext 均可返回对象 | 使用 Registry 对象且不访问 ApplicationContext | append |
 | TC-007 | Spring 静态 Bean 回退 | Registry 不含别名，ApplicationContext 含别名 | 正确返回 Spring ChatClient | append |
+| TC-008 | 多 Agent 共享助手 | 多条 flow 均指向 clientId=3202 | 去重为 3202，忽略 sequence 差异并正常装配 | append |
 
 ## 4. 异常场景
 
@@ -43,6 +44,9 @@
 | TC-102 | 压缩助手缺失 | Registry 校验失败，异常含 flow key/clientId/alias | append |
 | TC-103 | 压缩结果未缩短 | CompressionExhaustedException，原 LLM 不调用 | append |
 | TC-104 | 压缩模型返回 1261 | 包装领域异常并保留 cause | append |
+| TC-105 | 多 Agent 配置冲突 | active flow 包含 clientId=3202 和 4202 | 装配失败，不写/覆盖稳定别名 | append |
+| TC-106 | taskType 匹配缺失 | 唯一 clientId 没有 taskType=1 AiClientVO | 装配失败并包含 clientId/taskType | append |
+| TC-107 | taskType 匹配重复 | 同一 clientId 有两个 taskType=1 关联 | 装配失败，不按列表顺序选择 | append |
 
 ## 5. 边界场景
 
@@ -52,6 +56,7 @@
 | TC-202 | 复合配置缺 compression | 自动补默认值 | append |
 | TC-203 | DB 无 prompt 7001 | 使用非空代码默认提示词 | append |
 | TC-204 | retry 关闭 | 普通预算为 1，主动和 1261 压缩仍有效 | append |
+| TC-205 | 原 command 不含压缩 clientId | 全局 flow 指向 3202 | 使用合并副本加载 3202，原 commandIdList 不变 | append |
 
 ## 6. 回归场景
 
@@ -85,6 +90,11 @@
 | TC-102 | `should_fail_assembly_when_compression_assistant_is_missing()` | armory 装配 |
 | TC-203 | `should_use_code_default_prompt_when_7001_is_missing()` | AiClientNode |
 | TC-301 | `should_parse_legacy_retry_and_apply_default_compression()` | AgentRepository |
+| TC-008 | `should_accept_multiple_agents_when_compression_client_id_is_identical()` | AiClientLoadDataStrategy |
+| TC-105 | `should_reject_multiple_distinct_global_compression_client_ids()` | AiClientLoadDataStrategy |
+| TC-106 | `should_reject_compression_client_without_task_type_one()` | AiClientNode |
+| TC-107 | `should_reject_duplicate_task_type_one_compression_clients()` | AiClientNode |
+| TC-205 | `should_load_global_compression_client_without_mutating_command_ids()` | AiClientLoadDataStrategy |
 
 ## 9. 执行与验收
 
@@ -103,6 +113,7 @@
 | 无重复模型配置 | 不存在 per-model compressionModelId | append |
 | 默认策略 | DB 缺失时得到 160000/3/2000 | append |
 | 统一助手 | 真实 Registry 正确注册，Registry 优先查找，缺失时失败 | append |
+| 全局唯一 | 所有 Agent 只能指向同一 compression clientId，冲突时拒绝装配 | append |
 | 主动闭环 | threshold=1 时压缩后调用原 LLM | append |
 | 被动闭环 | 1261 后压缩并第二次调用原 LLM | append |
 | 无回归 | 专项、全量测试和编译通过 | append |
