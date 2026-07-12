@@ -3,13 +3,20 @@ package denny.ai.agent.domain.service.armory.factory.element;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
+import denny.ai.agent.domain.service.compression.CompressionExhaustedException;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
+import denny.ai.agent.domain.util.TokenCountUtils;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RetryChatModel implements ChatModel {
 
@@ -43,8 +50,131 @@ public class RetryChatModel implements ChatModel {
 
     @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
-        // Reactive retry/compression is implemented separately in Task 7.
-        return delegate.stream(prompt);
+        RetryRuntimeContext capturedContext = RetryRuntimeContextHolder.current();
+        return Flux.defer(() -> {
+            StreamState state = new StreamState(prompt, capturedContext);
+            try {
+                state.compressProactivelyIfRequired();
+                return streamAttempt(state);
+            } catch (RuntimeException error) {
+                return Flux.error(error);
+            }
+        });
+    }
+
+    private Flux<ChatResponse> streamAttempt(StreamState state) {
+        if (state.modelCalls >= state.maxModelCalls) {
+            return Flux.error(new IllegalStateException("model call safety limit exhausted"));
+        }
+        state.modelCalls++;
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        return Flux.defer(() -> delegate.stream(state.currentPrompt))
+                .doOnNext(response -> emitted.set(true))
+                .onErrorResume(error -> {
+                    if (emitted.get()) {
+                        return Flux.error(error);
+                    }
+                    Exception exception = error instanceof Exception value
+                            ? value : new RuntimeException(error);
+                    String errorCode = errorCodeExtractor.extract(exception);
+                    if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCode)) {
+                        if (!state.compressionEnabled()) {
+                            return Flux.error(error);
+                        }
+                        if (state.compressionAttempts >= state.maxCompressionAttempts) {
+                            return Flux.error(new CompressionExhaustedException(
+                                    "context overflow after " + state.compressionAttempts
+                                            + " compression attempts", error));
+                        }
+                        try {
+                            state.currentPrompt = state.compress(state.currentPrompt, "1261");
+                            return streamAttempt(state);
+                        } catch (RuntimeException compressionError) {
+                            return Flux.error(compressionError);
+                        }
+                    }
+                    if (state.isOrdinaryRetryable(exception, errorCode)
+                            && state.ordinaryRetriesRemaining > 0) {
+                        state.ordinaryRetriesRemaining--;
+                        long delay = state.nextDelay();
+                        return Mono.delay(Duration.ofMillis(delay))
+                                .thenMany(streamAttempt(state));
+                    }
+                    return Flux.error(error);
+                });
+    }
+
+    private final class StreamState {
+        private Prompt currentPrompt;
+        private final RetryRuntimeContext runtimeContext;
+        private final int maxCompressionAttempts;
+        private final int maxModelCalls;
+        private int ordinaryRetriesRemaining;
+        private int compressionAttempts;
+        private int modelCalls;
+        private long interval;
+        private final long maxInterval;
+
+        private StreamState(Prompt prompt, RetryRuntimeContext runtimeContext) {
+            this.currentPrompt = prompt;
+            this.runtimeContext = runtimeContext;
+            int ordinaryAttempts = retryConfig.isEnabled()
+                    ? Math.max(1, Math.min(retryConfig.getMaxAttempts(), 10)) : 1;
+            this.maxCompressionAttempts = compressionEnabled()
+                    ? Math.max(1, Math.min(compressionPolicy.getMaxCompressionAttempts(), 3)) : 0;
+            this.maxModelCalls = ordinaryAttempts + maxCompressionAttempts;
+            this.ordinaryRetriesRemaining = ordinaryAttempts - 1;
+            this.maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
+            this.interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
+        }
+
+        private void compressProactivelyIfRequired() {
+            if (compressionEnabled()
+                    && compressionPolicy.getProactiveThresholdTokens() > 0
+                    && TokenCountUtils.estimate(currentPrompt.toString())
+                    > compressionPolicy.getProactiveThresholdTokens()) {
+                currentPrompt = compress(currentPrompt, "proactive");
+            }
+        }
+
+        private Prompt compress(Prompt prompt, String trigger) {
+            if (compressionService == null) {
+                throw new CompressionExhaustedException("compression service is unavailable");
+            }
+            compressionAttempts++;
+            int beforeTokens = TokenCountUtils.estimate(prompt.toString());
+            Prompt compressed = compressionService.compress(prompt, runtimeContext, compressionPolicy);
+            int afterTokens = TokenCountUtils.estimate(compressed.toString());
+            if (afterTokens >= beforeTokens) {
+                throw new CompressionExhaustedException("compressed prompt must be smaller than original prompt");
+            }
+            return compressed;
+        }
+
+        private boolean compressionEnabled() {
+            return compressionPolicy != null && compressionPolicy.isEnabled()
+                    && (runtimeContext == null || !runtimeContext.isCompressionCall());
+        }
+
+        private boolean isOrdinaryRetryable(Exception error, String errorCode) {
+            Set<String> nonRetryable = toSet(retryConfig.getNonRetryableErrorCodes());
+            if (nonRetryable.contains(errorCode)) {
+                return false;
+            }
+            return toSet(retryConfig.getRetryableErrorCodes()).contains(errorCode)
+                    || RetryableExceptionTypes.isRetryable(error);
+        }
+
+        private long nextDelay() {
+            long current = interval;
+            double multiplier = retryConfig.getMultiplier() <= 0 ? 1.0 : retryConfig.getMultiplier();
+            interval = (long) Math.min(maxInterval, Math.max(0, interval * multiplier));
+            return current;
+        }
+
+        private Set<String> toSet(List<String> values) {
+            return values == null ? Set.of() : Set.copyOf(values);
+        }
     }
 
     private class CallRetryStrategy extends RetryStrategy<ChatResponse> {
