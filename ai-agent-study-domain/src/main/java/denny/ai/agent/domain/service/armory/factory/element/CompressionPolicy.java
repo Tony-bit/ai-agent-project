@@ -7,8 +7,6 @@ import lombok.Value;
 @Builder
 public class CompressionPolicy {
 
-    boolean enabled;
-    String compressionModelId;
     int proactiveThresholdTokens;
     int maxCompressionAttempts;
     int maxSummaryTokens;

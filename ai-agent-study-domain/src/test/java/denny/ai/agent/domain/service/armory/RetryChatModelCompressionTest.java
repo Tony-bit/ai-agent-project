@@ -87,19 +87,20 @@ public class RetryChatModelCompressionTest {
     }
 
     @Test
-    public void disabledCompressionCallsDelegateDirectly() {
+    public void disabledRetryStillAppliesMandatoryCompression() {
         Prompt prompt = prompt("a".repeat(500));
-        when(delegate.call(prompt)).thenReturn(successResponse);
+        Prompt compressed = prompt("x");
+        when(compressionService.compress(eq(prompt), any(), any())).thenReturn(compressed);
+        when(delegate.call(compressed)).thenReturn(successResponse);
 
         assertSame(successResponse, model(false, 1).call(prompt));
 
-        verify(compressionService, never()).compress(any(), any(), any());
+        verify(compressionService).compress(eq(prompt), any(), any());
     }
 
     private RetryChatModel model(boolean compressionEnabled, int threshold) {
-        RetryConfig retryConfig = RetryConfig.builder().enabled(true).maxAttempts(2).build();
+        RetryConfig retryConfig = RetryConfig.builder().enabled(compressionEnabled).maxAttempts(2).build();
         CompressionPolicy policy = CompressionPolicy.builder()
-                .enabled(compressionEnabled)
                 .proactiveThresholdTokens(threshold)
                 .maxCompressionAttempts(2)
                 .build();

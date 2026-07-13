@@ -1,11 +1,11 @@
 package denny.ai.agent.domain.service.compression;
 
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
-import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodeExtractor;
 import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodes;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
+import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import denny.ai.agent.domain.util.TokenCountUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -13,11 +13,10 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.context.ApplicationContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -31,20 +30,30 @@ import java.util.regex.Pattern;
 @Service
 public class DefaultPromptCompressionService implements PromptCompressionService {
 
-    static final String COMPRESSION_CLIENT_BEAN = "aiClientCOMPRESSION_ASSISTANTtaskType1";
+    static final String COMPRESSION_CLIENT_BEAN = ArmoryObjectRegistry.COMPRESSION_CHAT_CLIENT;
     private static final int REQUEST_OVERHEAD_TOKENS = 1024;
     private static final Pattern SUMMARY_PATTERN = Pattern.compile("(?i)<摘要>([\\s\\S]*?)</摘要>");
 
     private final ApplicationContext applicationContext;
+    private final ArmoryObjectRegistry armoryObjectRegistry;
     private final AiErrorCodeExtractor errorCodeExtractor;
 
     public DefaultPromptCompressionService(ApplicationContext applicationContext) {
-        this(applicationContext, new AiErrorCodeExtractor());
+        this(applicationContext, new ArmoryObjectRegistry(), new AiErrorCodeExtractor());
+    }
+
+    @Autowired
+    public DefaultPromptCompressionService(ApplicationContext applicationContext,
+                                           ArmoryObjectRegistry armoryObjectRegistry) {
+        this(applicationContext, armoryObjectRegistry, new AiErrorCodeExtractor());
     }
 
     DefaultPromptCompressionService(ApplicationContext applicationContext,
+                                    ArmoryObjectRegistry armoryObjectRegistry,
                                     AiErrorCodeExtractor errorCodeExtractor) {
         this.applicationContext = Objects.requireNonNull(applicationContext, "applicationContext must not be null");
+        this.armoryObjectRegistry = Objects.requireNonNull(armoryObjectRegistry,
+                "armoryObjectRegistry must not be null");
         this.errorCodeExtractor = Objects.requireNonNull(errorCodeExtractor, "errorCodeExtractor must not be null");
     }
 
@@ -92,22 +101,19 @@ public class DefaultPromptCompressionService implements PromptCompressionService
     }
 
     private ClientSelection resolveCompressionClient(CompressionPolicy policy) {
+        ChatClient registryClient = armoryObjectRegistry.get(COMPRESSION_CLIENT_BEAN);
+        if (registryClient != null) {
+            return new ClientSelection(registryClient, true);
+        }
         if (applicationContext.containsBean(COMPRESSION_CLIENT_BEAN)) {
             return new ClientSelection(applicationContext.getBean(COMPRESSION_CLIENT_BEAN, ChatClient.class), true);
         }
-        String modelBeanName = AiAgentEnumVO.AI_CLIENT_MODEL.getBeanName(policy.getCompressionModelId());
         try {
-            ChatModel model = applicationContext.getBean(modelBeanName, ChatModel.class);
-            ChatClient client = ChatClient.builder(model)
-                    .defaultSystem(Objects.requireNonNullElse(policy.getPromptTemplate(), ""))
-                    .defaultOptions(OpenAiChatOptions.builder()
-                            .maxTokens(Math.max(1, policy.getMaxSummaryTokens()))
-                            .build())
-                    .build();
-            return new ClientSelection(client, false);
+            return new ClientSelection(
+                    applicationContext.getBean(COMPRESSION_CLIENT_BEAN, ChatClient.class), true);
         } catch (RuntimeException error) {
-            throw new IllegalStateException("Unable to resolve compression client bean="
-                    + COMPRESSION_CLIENT_BEAN + " or modelId=" + policy.getCompressionModelId(), error);
+            throw new IllegalStateException("Unable to resolve compression client alias="
+                    + COMPRESSION_CLIENT_BEAN, error);
         }
     }
 

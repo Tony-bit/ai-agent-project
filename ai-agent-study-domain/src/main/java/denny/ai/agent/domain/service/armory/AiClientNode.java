@@ -7,6 +7,8 @@ import denny.ai.agent.domain.model.valobj.AiClientSystemPromptVO;
 import denny.ai.agent.domain.model.valobj.AiClientVO;
 import denny.ai.agent.domain.model.valobj.enums.AiAgentEnumVO;
 import denny.ai.agent.domain.service.armory.factory.DynamicContext;
+import denny.ai.agent.domain.service.armory.business.data.impl.AiClientLoadDataStrategy;
+import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import io.modelcontextprotocol.client.McpSyncClient;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -60,15 +62,40 @@ public class AiClientNode extends AbstractArmorySupport {
         }
 
         Map<String, AiClientSystemPromptVO> systemPromptMap = dynamicContext.getValue(AiAgentEnumVO.AI_CLIENT_SYSTEM_PROMPT.getDataName());
+        String globalCompressionClientId = dynamicContext.getValue(
+                AiClientLoadDataStrategy.GLOBAL_COMPRESSION_CLIENT_ID);
+        List<AiClientVO> compressionClients = aiClientList.stream()
+                .filter(client -> globalCompressionClientId != null
+                        && globalCompressionClientId.equals(client.getClientId())
+                        && Integer.valueOf(1).equals(client.getTaskType()))
+                .toList();
+        if (compressionClients.size() != 1) {
+            throw new IllegalStateException("Compression ChatClient match must be exactly one, clientId="
+                    + globalCompressionClientId + ", taskType=1, matches=" + compressionClients.size());
+        }
 
         for (AiClientVO aiClientVO : aiClientList) {
             // 每个客户端构建前清空 Registry
             toolCallbackRegistry.clear();
 
+            boolean compressionClient = globalCompressionClientId.equals(aiClientVO.getClientId())
+                    && Integer.valueOf(1).equals(aiClientVO.getTaskType());
+
             StringBuilder defaultSystem = new StringBuilder("Ai 智能体 \r\n");
+            boolean hasCompressionPrompt = false;
             for (String promptId : aiClientVO.getPromptIdList()) {
-                AiClientSystemPromptVO aiClientSystemPromptVO = systemPromptMap.get(promptId);
-                defaultSystem.append(aiClientSystemPromptVO.getPromptContent());
+                AiClientSystemPromptVO aiClientSystemPromptVO = systemPromptMap == null
+                        ? null : systemPromptMap.get(promptId);
+                if (aiClientSystemPromptVO != null && aiClientSystemPromptVO.getPromptContent() != null) {
+                    defaultSystem.append(aiClientSystemPromptVO.getPromptContent());
+                    if ("7001".equals(promptId)
+                            && !aiClientSystemPromptVO.getPromptContent().isBlank()) {
+                        hasCompressionPrompt = true;
+                    }
+                }
+            }
+            if (compressionClient && !hasCompressionPrompt) {
+                defaultSystem.append(AiClientModelNode.DEFAULT_COMPRESSION_PROMPT_TEMPLATE);
             }
 
             ChatModel chatModel = getBean(aiClientVO.getModelBeanName());
@@ -115,6 +142,14 @@ public class AiClientNode extends AbstractArmorySupport {
                     .build();
 
             registerBean(beanName(aiClientVO.getClientId(), aiClientVO.getTaskType()), ChatClient.class, chatClient);
+            if (compressionClient) {
+                armoryObjectRegistry.registerGlobalCompressionClient(globalCompressionClientId, chatClient);
+            }
+        }
+
+        if (!armoryObjectRegistry.contains(ArmoryObjectRegistry.COMPRESSION_CHAT_CLIENT)) {
+            throw new IllegalStateException("Compression ChatClient alias was not registered: "
+                    + ArmoryObjectRegistry.COMPRESSION_CHAT_CLIENT);
         }
 
         return router(requestParameter, dynamicContext);

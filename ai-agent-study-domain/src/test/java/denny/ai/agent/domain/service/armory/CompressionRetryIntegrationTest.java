@@ -50,7 +50,6 @@ public class CompressionRetryIntegrationTest {
                 .retryableErrorCodes(List.of("429"))
                 .build();
         CompressionPolicy compressionPolicy = CompressionPolicy.builder()
-                .enabled(true)
                 .proactiveThresholdTokens(Integer.MAX_VALUE)
                 .maxCompressionAttempts(1)
                 .build();

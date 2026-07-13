@@ -32,6 +32,13 @@ import java.util.Map;
 @Slf4j
 public class AiClientModelNode extends AbstractArmorySupport{
 
+    static final String DEFAULT_COMPRESSION_PROMPT_TEMPLATE = """
+            你是上下文压缩助手。请保留任务目标、关键事实、约束、已完成工作、未决事项和必要标识符。
+            输出必须使用以下协议：
+            <分析>仅用于内部整理，不应进入最终摘要</分析>
+            <摘要>可供后续模型继续执行任务的精炼上下文</摘要>
+            """;
+
     @Resource
     private AiClientAdvisorNode aiClientAdvisorNode;
 
@@ -90,10 +97,6 @@ public class AiClientModelNode extends AbstractArmorySupport{
     ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
                                   CompressionPolicy compressionPolicy) {
         boolean retryEnabled = retryConfig != null && retryConfig.isEnabled();
-        boolean compressionEnabled = compressionPolicy != null && compressionPolicy.isEnabled();
-        if (!retryEnabled && !compressionEnabled) {
-            return chatModel;
-        }
         RetryConfig effectiveRetryConfig = retryEnabled
                 ? retryConfig
                 : RetryConfig.builder().enabled(false).maxAttempts(1).build();
@@ -110,17 +113,15 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     private CompressionPolicy toCompressionPolicy(CompressionConfig config,
                                                    Map<String, AiClientSystemPromptVO> systemPromptMap) {
-        if (config == null) {
-            return CompressionPolicy.builder().enabled(false).build();
-        }
+        CompressionConfig effectiveConfig = config == null ? CompressionConfig.builder().build() : config;
         AiClientSystemPromptVO prompt = systemPromptMap == null ? null : systemPromptMap.get("7001");
         return CompressionPolicy.builder()
-                .enabled(config.isEnabled())
-                .compressionModelId(config.getCompressionModelId())
-                .proactiveThresholdTokens(config.getProactiveThresholdTokens())
-                .maxCompressionAttempts(config.getMaxCompressionAttempts())
-                .maxSummaryTokens(config.getMaxSummaryTokens())
-                .promptTemplate(prompt == null ? "" : prompt.getPromptContent())
+                .proactiveThresholdTokens(effectiveConfig.getProactiveThresholdTokens())
+                .maxCompressionAttempts(effectiveConfig.getMaxCompressionAttempts())
+                .maxSummaryTokens(effectiveConfig.getMaxSummaryTokens())
+                .promptTemplate(prompt == null || prompt.getPromptContent() == null
+                        || prompt.getPromptContent().isBlank()
+                        ? DEFAULT_COMPRESSION_PROMPT_TEMPLATE : prompt.getPromptContent())
                 .build();
     }
 

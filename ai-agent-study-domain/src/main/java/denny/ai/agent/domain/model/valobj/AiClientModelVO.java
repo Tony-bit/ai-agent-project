@@ -111,13 +111,10 @@ public class AiClientModelVO {
         /**
          * 是否启用压缩
          */
-        @Builder.Default
-        private boolean enabled = false;
-
         /**
          * 压缩模型ID
          */
-        private String compressionModelId;
+
 
         /**
          * 主动压缩阈值（token数），超过此值则触发压缩

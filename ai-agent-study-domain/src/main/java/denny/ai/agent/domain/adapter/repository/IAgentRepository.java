@@ -34,4 +34,6 @@ public interface IAgentRepository {
      */
     Map<String, AiAgentClientFlowConfigVO> queryAllFlowConfigForIntentRouting();
 
+    List<AiAgentClientFlowConfigVO> queryActiveFlowConfigsByClientType(String clientType);
+
 }

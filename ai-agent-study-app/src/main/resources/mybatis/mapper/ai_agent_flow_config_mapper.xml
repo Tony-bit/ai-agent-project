@@ -80,5 +80,11 @@
         )
         ORDER BY sequence ASC
     </select>
-</mapper>
 
+    <select id="queryByClientType" resultMap="AiAgentFlowConfigMap">
+        SELECT id, agent_id, client_id, client_name, client_type, sequence, step_prompt, create_time
+        FROM ai_agent_flow_config
+        WHERE client_type = #{clientType}
+        ORDER BY agent_id ASC, sequence ASC
+    </select>
+</mapper>

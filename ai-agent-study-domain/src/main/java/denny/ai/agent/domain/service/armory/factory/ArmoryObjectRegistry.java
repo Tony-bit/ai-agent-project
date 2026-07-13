@@ -11,10 +11,23 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ArmoryObjectRegistry {
 
+    public static final String COMPRESSION_CHAT_CLIENT = "compressionChatClient";
+    public static final String GLOBAL_COMPRESSION_CLIENT_ID = "globalCompressionClientId";
+
     private final Map<String, Object> registry = new ConcurrentHashMap<>();
 
     public void put(String key, Object value) {
         registry.put(key, value);
+    }
+
+    public synchronized void registerGlobalCompressionClient(String clientId, Object chatClient) {
+        Object existingClientId = registry.get(GLOBAL_COMPRESSION_CLIENT_ID);
+        if (existingClientId != null && !existingClientId.equals(clientId)) {
+            throw new IllegalStateException("Global compression clientId conflict: existing="
+                    + existingClientId + ", requested=" + clientId);
+        }
+        registry.put(GLOBAL_COMPRESSION_CLIENT_ID, clientId);
+        registry.put(COMPRESSION_CHAT_CLIENT, chatClient);
     }
 
     @SuppressWarnings("unchecked")

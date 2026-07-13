@@ -138,7 +138,7 @@ public abstract class RetryStrategy<T> {
 
     private boolean compressionEnabled() {
         return compressionPolicy != null
-                && compressionPolicy.isEnabled()
+                && compressionPolicy != null
                 && (runtimeContext == null || !runtimeContext.isCompressionCall());
     }
 

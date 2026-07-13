@@ -45,7 +45,7 @@
 
 | 编号 | 场景 | 预期结果 | status |
 |------|------|------|------|
-| TC-101 | ext_param JSON 非法 | 拒绝模型装配，错误含 modelId，不记录正文 | append |
+| TC-101 | ext_param JSON 非法 | retry=null、compression 使用默认值；日志含 modelId 且不记录正文 | append |
 | TC-102 | 压缩助手缺失 | Registry 校验失败，异常含 flow key/clientId/alias | append |
 | TC-103 | 压缩结果未缩短 | CompressionExhaustedException，原 LLM 不调用 | append |
 | TC-104 | 压缩模型返回 1261 | 包装领域异常并保留 cause | append |
@@ -122,25 +122,25 @@
 
 | 步骤 | 预期 | status |
 |------|------|------|
-| 编写配置兼容测试 | 新测试先失败再通过 | append |
-| 编写统一助手测试 | 注册及缺失分支通过 | append |
-| 编写 Query 闭环测试 | 主动和 1261 场景通过 | append |
-| 运行专项测试 | 全部通过 | append |
-| 运行 domain clean 全量测试 | 0 失败 | append |
-| 运行全项目 clean compile | BUILD SUCCESS | append |
+| 编写配置兼容测试 | 新测试先失败再通过 | pass |
+| 编写统一助手测试 | 注册及缺失分支通过 | pass |
+| 编写 Query 闭环测试 | 主动和 1261 场景通过 | pass |
+| 运行专项测试 | 全部通过 | pass |
+| 运行 domain clean 全量测试 | 0 失败 | pass |
+| 运行全项目 clean compile | BUILD SUCCESS | pass |
 
 | 验收项 | 标准 | status |
 |------|------|------|
-| 压缩强制开启 | 不存在 compression enabled | append |
-| 无重复模型配置 | 不存在 per-model compressionModelId | append |
-| 默认策略 | DB 缺失时得到 160000/3/2000 | append |
-| 非法配置 | 显式非法值和字段类型错误均拒绝装配 | append |
-| 统一助手 | 真实 Registry 正确注册，Registry 优先查找，缺失时失败 | append |
-| 全局唯一 | 所有 Agent 只能指向同一 compression clientId，冲突时拒绝装配 | append |
-| 强制包装 | null/disabled retry 和多模型均全部包装为 RetryChatModel | append |
-| Policy 隔离 | 每个模型使用自身验证后的三个 compression 参数 | append |
-| 主动闭环 | 合法最小预算参数下，超长 Query 压缩后调用原 LLM | append |
-| 被动闭环 | 1261 后压缩并第二次调用原 LLM | append |
-| 无回归 | 专项、全量测试和编译通过 | append |
+| 压缩强制开启 | 不存在 compression enabled | pass |
+| 无重复模型配置 | 不存在 per-model compressionModelId | pass |
+| 默认策略 | DB 缺失时得到 160000/3/2000 | pass |
+| 非法配置 | 显式非法值和字段类型错误均拒绝装配 | pass |
+| 统一助手 | 真实 Registry 正确注册，Registry 优先查找，缺失时失败 | pass |
+| 全局唯一 | 所有 Agent 只能指向同一 compression clientId，冲突时拒绝装配 | pass |
+| 强制包装 | null/disabled retry 和多模型均全部包装为 RetryChatModel | pass |
+| Policy 隔离 | 每个模型使用自身验证后的三个 compression 参数 | pass |
+| 主动闭环 | 合法最小预算参数下，超长 Query 压缩后调用原 LLM | pass |
+| 被动闭环 | 1261 后压缩并第二次调用原 LLM | pass |
+| 无回归 | 专项、全量测试和编译通过 | pass |
 
-当前结论：修订规格待评审，尚未进入实现。
+当前结论：需求实现及自动化验证已完成，达到提测条件。

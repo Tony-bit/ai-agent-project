@@ -10,8 +10,11 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -21,6 +24,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Slf4j
 @Service("aiClientLoadDataStrategy")
 public class AiClientLoadDataStrategy implements ILoadDataStrategy {
+    public static final String GLOBAL_COMPRESSION_CLIENT_ID = "globalCompressionClientId";
+    private static final String COMPRESSION_ASSISTANT = "COMPRESSION_ASSISTANT";
+
     @Resource
     private IAgentRepository repository;
 
@@ -29,7 +35,26 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
 
     @Override
     public void loadData(ArmoryCommandEntity armoryCommandEntity, DynamicContext dynamicContext) {
-        List<String> clientIdList = armoryCommandEntity.getCommandIdList();
+        List<AiAgentClientFlowConfigVO> compressionFlows =
+                repository.queryActiveFlowConfigsByClientType(COMPRESSION_ASSISTANT);
+        Set<String> compressionClientIds = compressionFlows == null ? Set.of()
+                : compressionFlows.stream()
+                        .map(AiAgentClientFlowConfigVO::getClientId)
+                        .filter(clientId -> clientId != null && !clientId.isBlank())
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (compressionClientIds.size() != 1) {
+            throw new IllegalStateException("Exactly one global compression clientId is required, found="
+                    + compressionClientIds);
+        }
+        String globalCompressionClientId = compressionClientIds.iterator().next();
+        dynamicContext.setValue(GLOBAL_COMPRESSION_CLIENT_ID, globalCompressionClientId);
+
+        LinkedHashSet<String> mergedClientIds = new LinkedHashSet<>();
+        if (armoryCommandEntity.getCommandIdList() != null) {
+            mergedClientIds.addAll(armoryCommandEntity.getCommandIdList());
+        }
+        mergedClientIds.add(globalCompressionClientId);
+        List<String> clientIdList = new ArrayList<>(mergedClientIds);
 
         CompletableFuture<List<AiClientApiVO>> aiClientApiListFuture = CompletableFuture.supplyAsync(() -> {
             log.info("查询配置数据(ai_client_api) {}", clientIdList);

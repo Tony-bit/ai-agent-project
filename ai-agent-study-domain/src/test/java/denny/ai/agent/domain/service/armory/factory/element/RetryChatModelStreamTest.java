@@ -49,7 +49,6 @@ public class RetryChatModelStreamTest {
                 .retryableErrorCodes(java.util.List.of("429"))
                 .build();
         compressionPolicy = CompressionPolicy.builder()
-                .enabled(true)
                 .proactiveThresholdTokens(Integer.MAX_VALUE)
                 .maxCompressionAttempts(2)
                 .build();
@@ -125,7 +124,7 @@ public class RetryChatModelStreamTest {
         Prompt original = prompt("a".repeat(500));
         Prompt compressed = prompt("x");
         CompressionPolicy proactive = CompressionPolicy.builder()
-                .enabled(true).proactiveThresholdTokens(1).maxCompressionAttempts(1).build();
+                .proactiveThresholdTokens(1).maxCompressionAttempts(1).build();
         when(compressionService.compress(eq(original), any(), eq(proactive))).thenReturn(compressed);
         when(delegate.stream(compressed)).thenReturn(Flux.just(successResponse));
 

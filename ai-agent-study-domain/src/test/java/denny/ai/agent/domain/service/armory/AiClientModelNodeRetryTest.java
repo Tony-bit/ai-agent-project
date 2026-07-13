@@ -41,11 +41,11 @@ public class AiClientModelNodeRetryTest {
         ChatModel delegate = mock(ChatModel.class);
         RetryConfig retryOff = RetryConfig.builder().enabled(false).maxAttempts(3).build();
         RetryConfig retryOn = RetryConfig.builder().enabled(true).maxAttempts(3).build();
-        CompressionPolicy compressionOff = CompressionPolicy.builder().enabled(false).build();
-        CompressionPolicy compressionOn = CompressionPolicy.builder().enabled(true)
+        CompressionPolicy compressionOff = CompressionPolicy.builder().build();
+        CompressionPolicy compressionOn = CompressionPolicy.builder()
                 .proactiveThresholdTokens(100).maxCompressionAttempts(1).build();
 
-        assertSame(delegate, node.applyRetryDecorator(delegate, retryOff, compressionOff));
+        assertTrue(node.applyRetryDecorator(delegate, retryOff, compressionOff) instanceof RetryChatModel);
         assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOff) instanceof RetryChatModel);
         assertTrue(node.applyRetryDecorator(delegate, retryOff, compressionOn) instanceof RetryChatModel);
         assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOn) instanceof RetryChatModel);

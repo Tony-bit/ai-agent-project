@@ -412,7 +412,7 @@ public class RetryStrategyTest {
         when(compressionService.compress(eq(original), any(), any())).thenReturn(compressed);
         when(delegate.call(compressed)).thenReturn(successResponse);
         CompressionPolicy policy = CompressionPolicy.builder()
-                .enabled(true).proactiveThresholdTokens(1).maxCompressionAttempts(1).build();
+                .proactiveThresholdTokens(1).maxCompressionAttempts(1).build();
 
         assertSame(successResponse, new TestRetryStrategy(defaultConfig, policy, context()).execute(original));
         verify(delegate).call(compressed);
@@ -503,7 +503,6 @@ public class RetryStrategyTest {
 
     private CompressionPolicy compressionPolicy(int attempts) {
         return CompressionPolicy.builder()
-                .enabled(true)
                 .proactiveThresholdTokens(Integer.MAX_VALUE)
                 .maxCompressionAttempts(attempts)
                 .build();

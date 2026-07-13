@@ -152,7 +152,7 @@ public class RetryChatModel implements ChatModel {
         }
 
         private boolean compressionEnabled() {
-            return compressionPolicy != null && compressionPolicy.isEnabled()
+            return compressionPolicy != null
                     && (runtimeContext == null || !runtimeContext.isCompressionCall());
         }
 

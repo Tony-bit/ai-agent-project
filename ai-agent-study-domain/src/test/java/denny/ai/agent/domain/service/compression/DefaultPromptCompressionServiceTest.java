@@ -3,6 +3,7 @@ package denny.ai.agent.domain.service.compression;
 import denny.ai.agent.domain.model.entity.ChatMessageEntity;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
+import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import denny.ai.agent.domain.util.TokenCountUtils;
 import org.junit.Before;
@@ -52,9 +53,9 @@ public class DefaultPromptCompressionServiceTest {
     @Before
     public void setUp() {
         compressionClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(applicationContext.containsBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN))
+        org.mockito.Mockito.lenient().when(applicationContext.containsBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN))
                 .thenReturn(true);
-        when(applicationContext.getBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN, ChatClient.class))
+        org.mockito.Mockito.lenient().when(applicationContext.getBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN, ChatClient.class))
                 .thenReturn(compressionClient);
         service = new DefaultPromptCompressionService(applicationContext);
     }
@@ -133,25 +134,37 @@ public class DefaultPromptCompressionServiceTest {
     }
 
     @Test
-    public void fallsBackToConfiguredModelWithSystemTemplateAndMaxTokens() {
-        ChatModel model = mock(ChatModel.class);
+    public void fallsBackToSpringCompressionClientWhenRegistryIsEmpty() {
+        ChatClient springClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(applicationContext.containsBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN))
                 .thenReturn(false);
-        when(applicationContext.getBean("ai_client_model_compression-model", ChatModel.class)).thenReturn(model);
-        when(model.call(any(Prompt.class))).thenReturn(response("summary"));
+        when(applicationContext.getBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN,
+                ChatClient.class)).thenReturn(springClient);
+        when(springClient.prompt(anyString()).call().content()).thenReturn("summary");
+        clearInvocations(springClient);
         Prompt original = new Prompt(List.of(new SystemMessage("original system"), new UserMessage("current")));
 
         service.compress(original, context(List.of(message("user", "history"))),
                 policy(4096, "compression system template"));
 
-        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
-        verify(model).call(promptCaptor.capture());
-        Prompt compressionPrompt = promptCaptor.getValue();
-        assertTrue(compressionPrompt.getInstructions().stream()
-                .anyMatch(message -> message instanceof SystemMessage
-                        && message.getText().contains("compression system template")));
-        OpenAiChatOptions options = (OpenAiChatOptions) compressionPrompt.getOptions();
-        assertEquals(Integer.valueOf(100), options.getMaxTokens());
+        verify(springClient).prompt(anyString());
+    }
+
+    @Test
+    public void resolvesCompressionClientFromRegistryFirst() {
+        ArmoryObjectRegistry registry = new ArmoryObjectRegistry();
+        ChatClient registryClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        registry.registerGlobalCompressionClient("3202", registryClient);
+        when(registryClient.prompt(anyString()).call().content()).thenReturn("summary");
+        clearInvocations(registryClient);
+        DefaultPromptCompressionService registryService =
+                new DefaultPromptCompressionService(applicationContext, registry);
+
+        registryService.compress(new Prompt(new UserMessage("current")),
+                context(List.of(message("user", "history"))), policy(4096, "unused"));
+
+        verify(registryClient).prompt(anyString());
+        verify(applicationContext, never()).containsBean(DefaultPromptCompressionService.COMPRESSION_CLIENT_BEAN);
     }
 
     @Test
@@ -184,8 +197,6 @@ public class DefaultPromptCompressionServiceTest {
 
     private CompressionPolicy policy(int threshold, String template) {
         return CompressionPolicy.builder()
-                .enabled(true)
-                .compressionModelId("compression-model")
                 .proactiveThresholdTokens(threshold)
                 .maxCompressionAttempts(2)
                 .maxSummaryTokens(100)

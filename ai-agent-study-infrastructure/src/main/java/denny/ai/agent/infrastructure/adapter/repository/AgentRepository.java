@@ -1,6 +1,7 @@
 package denny.ai.agent.infrastructure.adapter.repository;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import denny.ai.agent.domain.adapter.repository.IAgentRepository;
@@ -137,7 +138,7 @@ public class AgentRepository implements IAgentRepository {
                         }
 
                         // 4. 解析 extParam 中的重试配置
-                        AiClientModelVO.RetryConfig retryConfig = parseRetryConfig(model);
+                        ModelRuntimeConfig runtimeConfig = parseRuntimeConfig(model);
 
                         // 5. 转换为VO对象
                         AiClientModelVO modelVO = AiClientModelVO.builder()
@@ -146,7 +147,8 @@ public class AgentRepository implements IAgentRepository {
                                 .modelName(model.getModelName())
                                 .modelType(model.getModelType())
                                 .toolMcpIds(toolMcpIds)
-                                .retryConfig(retryConfig)
+                                .retryConfig(runtimeConfig.retryConfig())
+                                .compressionConfig(runtimeConfig.compressionConfig())
                                 .build();
 
                         // 避免重复添加相同的模型配置
@@ -547,6 +549,26 @@ public class AgentRepository implements IAgentRepository {
     }
 
     @Override
+    public List<AiAgentClientFlowConfigVO> queryActiveFlowConfigsByClientType(String clientType) {
+        if (clientType == null || clientType.isBlank()) {
+            return List.of();
+        }
+        List<AiAgentFlowConfigPO> flowConfigs = aiAgentFlowConfigDao.queryByClientType(clientType);
+        if (flowConfigs == null || flowConfigs.isEmpty()) {
+            return List.of();
+        }
+        return flowConfigs.stream()
+                .map(flowConfig -> AiAgentClientFlowConfigVO.builder()
+                        .clientId(flowConfig.getClientId())
+                        .clientName(flowConfig.getClientName())
+                        .clientType(flowConfig.getClientType())
+                        .sequence(flowConfig.getSequence())
+                        .stepPrompt(flowConfig.getStepPrompt())
+                        .build())
+                .toList();
+    }
+
+    @Override
     public Map<String, AiAgentClientFlowConfigVO> queryAllFlowConfigForIntentRouting() {
         try {
             List<AiAgentFlowConfigPO> flowConfigs = aiAgentFlowConfigDao.queryAllForIntentRouting();
@@ -600,16 +622,53 @@ public class AgentRepository implements IAgentRepository {
                 ));
     }
 
-    private AiClientModelVO.RetryConfig parseRetryConfig(AiClientModelPO modelPO) {
+    private ModelRuntimeConfig parseRuntimeConfig(AiClientModelPO modelPO) {
+        AiClientModelVO.CompressionConfig defaults = AiClientModelVO.CompressionConfig.builder().build();
         if (modelPO.getExtParam() == null || modelPO.getExtParam().trim().isEmpty()) {
             log.warn("extparam is null, modelId: {}", modelPO.getModelId());
-            return null;
+            return new ModelRuntimeConfig(null, defaults);
         }
+        String extParam = modelPO.getExtParam();
         try {
-            return JSON.parseObject(modelPO.getExtParam(), AiClientModelVO.RetryConfig.class);
+            JSONObject root = JSON.parseObject(extParam);
+            boolean composite = root.containsKey("retryConfig") || root.containsKey("compressionConfig");
+            AiClientModelVO.RetryConfig retryConfig = composite
+                    ? root.getObject("retryConfig", AiClientModelVO.RetryConfig.class)
+                    : root.toJavaObject(AiClientModelVO.RetryConfig.class);
+            AiClientModelVO.CompressionConfig compressionConfig = composite
+                    ? root.getObject("compressionConfig", AiClientModelVO.CompressionConfig.class)
+                    : null;
+            if (compressionConfig == null) {
+                compressionConfig = defaults;
+            }
+            validateCompressionConfig(compressionConfig, modelPO.getModelId());
+            return new ModelRuntimeConfig(retryConfig, compressionConfig);
         } catch (Exception e) {
-            log.warn("解析模型 retry 配置失败，extParam={}, ex={}", modelPO.getExtParam(), e.getMessage());
-            return null;
+            log.warn("解析模型运行配置失败，modelId={}, error={}", modelPO.getModelId(), e.getMessage());
+            if (JSON.isValidObject(extParam)) {
+                throw new IllegalArgumentException("Invalid model runtime config, modelId="
+                        + modelPO.getModelId() + ", error=" + e.getMessage(), e);
+            }
+            return new ModelRuntimeConfig(null, defaults);
         }
+    }
+
+    private void validateCompressionConfig(AiClientModelVO.CompressionConfig config, String modelId) {
+        if (config.getProactiveThresholdTokens() <= 0) {
+            throw new IllegalArgumentException("compressionConfig.proactiveThresholdTokens must be positive, modelId=" + modelId);
+        }
+        if (config.getMaxCompressionAttempts() < 1 || config.getMaxCompressionAttempts() > 3) {
+            throw new IllegalArgumentException("compressionConfig.maxCompressionAttempts must be between 1 and 3, modelId=" + modelId);
+        }
+        if (config.getMaxSummaryTokens() <= 0) {
+            throw new IllegalArgumentException("compressionConfig.maxSummaryTokens must be positive, modelId=" + modelId);
+        }
+        if (config.getProactiveThresholdTokens() <= config.getMaxSummaryTokens() + 1024) {
+            throw new IllegalArgumentException("compressionConfig has no compression input budget, modelId=" + modelId);
+        }
+    }
+
+    private record ModelRuntimeConfig(AiClientModelVO.RetryConfig retryConfig,
+                                      AiClientModelVO.CompressionConfig compressionConfig) {
     }
 }

@@ -80,5 +80,6 @@ public interface IAiAgentFlowConfigDao {
      * @return 配置列表
      */
     List<AiAgentFlowConfigPO> queryAllForIntentRouting();
-}
 
+    List<AiAgentFlowConfigPO> queryByClientType(@Param("clientType") String clientType);
+}
