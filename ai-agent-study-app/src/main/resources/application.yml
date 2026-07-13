@@ -36,14 +36,14 @@ spring:
     alibaba:
       mem0:
         client:
-          base-url: http://127.0.0.1:8889
+          base-url: http://111.228.9.124:8889
           timeout-seconds: 5
         server:
           version: v0.1.116
           vector-store:
             provider: pgvector
             config:
-              host: ${POSTGRES_HOST:localhost}
+              host: ${POSTGRES_HOST:111.228.9.124}
               port: ${POSTGRES_PORT:15432}
               dbname: ${POSTGRES_DB:ai-rag-knowledge}
               user: ${POSTGRES_USER:postgres}
