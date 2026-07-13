@@ -3,6 +3,18 @@ FROM eclipse-temurin:17-jre
 
 LABEL maintainer="denny.xiang"
 
+ARG ELASTICSEARCH_MCP_VERSION=1.0.7
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/elasticsearch-mcp \
+    && cd /opt/elasticsearch-mcp \
+    && npm init -y \
+    && npm install --omit=dev --no-audit --no-fund "@awesome-ai/elasticsearch-mcp@${ELASTICSEARCH_MCP_VERSION}" \
+    && npm cache clean --force
+
 # 配置
 ENV PARAMS=""
 
