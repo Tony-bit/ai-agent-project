@@ -1149,8 +1149,33 @@
     Object.assign(stageTypeMap, {
         content: { name: '流式回答', icon: '💬', class: 'stage-execution' },
         progress: { name: '执行进度', icon: '⏳', class: 'stage-analysis' },
-        system: { name: '系统消息', icon: 'ℹ️', class: 'stage-analysis' }
+        system: { name: '系统消息', icon: 'ℹ️', class: 'stage-analysis' },
+        analyst: { name: '分析师节点', icon: '📊', class: 'stage-analysis' },
+        debate: { name: '投资辩论', icon: '⚖️', class: 'stage-execution' },
+        recommendation: { name: '推荐节点', icon: '🧭', class: 'stage-execution' },
+        risk: { name: '风险管理', icon: '🛡️', class: 'stage-supervision' },
+        risk_debate: { name: '风控辩论', icon: '🛡️', class: 'stage-supervision' },
+        intent_routing: { name: '意图识别', icon: '🧩', class: 'stage-analysis' }
     });
+
+    const tradingRoleMap = {
+        bull_start: { name: '多头研究员', icon: '🐂', class: 'stage-execution' },
+        bull_thesis: { name: '多头研究员', icon: '🐂', class: 'stage-execution' },
+        bear_start: { name: '空头研究员', icon: '🐻', class: 'stage-execution' },
+        bear_thesis: { name: '空头研究员', icon: '🐻', class: 'stage-execution' },
+        research_manager_start: { name: '研究经理', icon: '🧑‍⚖️', class: 'stage-execution' },
+        recommendation_start: { name: '推荐节点', icon: '🧭', class: 'stage-execution' },
+        recommendation_plan: { name: '推荐节点', icon: '🧭', class: 'stage-execution' },
+        aggressive_start: { name: '激进风控分析师', icon: '🔥', class: 'stage-supervision' },
+        aggressive_opinion: { name: '激进风控分析师', icon: '🔥', class: 'stage-supervision' },
+        conservative_start: { name: '保守风控分析师', icon: '🧱', class: 'stage-supervision' },
+        conservative_opinion: { name: '保守风控分析师', icon: '🧱', class: 'stage-supervision' },
+        neutral_start: { name: '中立风控分析师', icon: '⚖️', class: 'stage-supervision' },
+        neutral_opinion: { name: '中立风控分析师', icon: '⚖️', class: 'stage-supervision' },
+        portfolio_manager_start: { name: '组合经理', icon: '🎯', class: 'stage-summary' },
+        final_decision: { name: '组合经理', icon: '🎯', class: 'stage-summary' },
+        final_completed: { name: '组合经理', icon: '🎯', class: 'stage-summary' }
+    };
 
     const subTypeMap = {
         'analysis_status': '任务状态',
@@ -1191,8 +1216,84 @@
         protocol_error: '协议异常',
         stream_interrupted: '连接中断',
         cancelled: '用户取消',
-        analyst_progress: '分析师进度'
+        analyst_start: '开始分析',
+        analyst_progress: '分析进度',
+        analyst_report: '分析报告',
+        trading_init: '初始化',
+        debate_start: '辩论开始',
+        debate_complete: '辩论完成',
+        bull_start: '开始分析',
+        bull_thesis: '多头观点',
+        bear_start: '开始分析',
+        bear_thesis: '空头观点',
+        research_manager_start: '综合研判',
+        recommendation_start: '开始推荐',
+        recommendation_plan: '投资计划',
+        risk_start: '风控开始',
+        aggressive_start: '开始分析',
+        conservative_start: '开始分析',
+        neutral_start: '开始分析',
+        portfolio_manager_start: '最终审批',
+        final_report_start: '最终报告',
+        final_completed: '最终输出',
+        clarification_required: '需要澄清',
+        intent_result: '意图结果'
     });
+
+    function formatProtocolLabel(value) {
+        return String(value || '')
+            .split('_')
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    }
+
+    function inferAnalystRole(content) {
+        const text = String(content || '');
+        if (text.includes('基本面') || text.includes('fundamental') || text.includes('Fundamental')) {
+            return { name: '基本面分析师', icon: '📊', class: 'stage-analysis' };
+        }
+        if (text.includes('技术') || text.includes('K 线') || text.includes('K线')
+                || text.includes('technical') || text.includes('Technical')) {
+            return { name: '技术分析师', icon: '📈', class: 'stage-analysis' };
+        }
+        if (text.includes('情绪') || text.includes('sentiment') || text.includes('Sentiment')) {
+            return { name: '情绪分析师', icon: '💬', class: 'stage-analysis' };
+        }
+        if (text.includes('新闻') || text.includes('news') || text.includes('News')) {
+            return { name: '新闻分析师', icon: '📰', class: 'stage-analysis' };
+        }
+        try {
+            const payload = JSON.parse(text);
+            if (payload && typeof payload === 'object') {
+                if ('rawData' in payload || 'keyFindings' in payload) {
+                    return { name: '基本面分析师', icon: '📊', class: 'stage-analysis' };
+                }
+                if ('trendSignal' in payload || 'keyPatterns' in payload || 'indicators' in payload) {
+                    return { name: '技术分析师', icon: '📈', class: 'stage-analysis' };
+                }
+                if ('sentimentScore' in payload || 'keySentiments' in payload) {
+                    return { name: '情绪分析师', icon: '💬', class: 'stage-analysis' };
+                }
+                if ('newsThemes' in payload || 'deduplicatedEvents' in payload || 'newsItems' in payload) {
+                    return { name: '新闻分析师', icon: '📰', class: 'stage-analysis' };
+                }
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function resolveStageInfo(type, subType, content) {
+        if (type === 'analyst') {
+            return inferAnalystRole(content) || stageTypeMap.analyst;
+        }
+        return tradingRoleMap[subType] || stageTypeMap[type]
+            || { name: formatProtocolLabel(type) || '事件', icon: '📝', class: 'stage-analysis' };
+    }
+
+    function resolveSubTypeName(subType) {
+        return subType ? (subTypeMap[subType] || formatProtocolLabel(subType)) : '';
+    }
 
     function formatTime(dateStr) {
         if (!dateStr) return '';
@@ -1914,8 +2015,8 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message';
 
-        const stageInfo = stageTypeMap[type] || { name: '未知事件', icon: '📝', class: 'stage-analysis' };
-        const subTypeName = subType ? (subTypeMap[subType] || '未知阶段') : '';
+        const stageInfo = resolveStageInfo(type, subType, content);
+        const subTypeName = resolveSubTypeName(subType);
         const safeStep = Number.isInteger(step) ? String(step) : '';
 
         const isError = type === 'error' || subType === 'error';

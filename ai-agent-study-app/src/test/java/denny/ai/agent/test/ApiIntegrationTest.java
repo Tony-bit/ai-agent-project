@@ -38,7 +38,7 @@ public class ApiIntegrationTest {
 
     @Test
     public void testDeepSeekChatClient() {
-        String apiKey = "sk-a0df0f93a5ac475e8c73c6e3495cfc05";
+        String apiKey = "xxxxxcfc05";
         assertNotNull("Please set the DEEPSEEK_API_KEY environment variable", apiKey);
         assertFalse("DEEPSEEK_API_KEY must not be blank", apiKey.isBlank());
 

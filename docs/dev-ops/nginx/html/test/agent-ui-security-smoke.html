@@ -149,6 +149,22 @@
         checks.push('trading terminal sequence');
 
         resetPanels();
+        const tradingRoleState = agentWindow.createStreamState('trading');
+        [
+            { type: 'analyst', subType: 'analyst_start', content: '基本面分析开始: AAPL', completed: false },
+            { type: 'analyst', subType: 'analyst_report', content: '{"trendSignal":"上涨","keyPatterns":[]}', completed: false },
+            { type: 'risk_debate', subType: 'neutral_opinion', content: '中性风险观点', completed: false },
+            { type: 'final', subType: 'portfolio_manager_start', content: '组合经理开始最终审批...', completed: false }
+        ].forEach((event) => agentWindow.handleRawSseEvent(tradingRoleState, event));
+        const roleText = `${thinking.textContent} ${result.textContent}`;
+        assert(roleText.includes('基本面分析师') && roleText.includes('技术分析师')
+                && roleText.includes('中立风控分析师') && roleText.includes('组合经理'),
+            'Trading node roles were not rendered as Chinese labels');
+        assert(!roleText.includes('未知事件') && !roleText.includes('未知阶段'),
+            'Trading node role labels regressed to unknown placeholders');
+        checks.push('trading role labels');
+
+        resetPanels();
         const errorState = agentWindow.createStreamState('general');
         agentWindow.handleRawSseEvent(errorState,
             { type: 'error', content: '任务失败', completed: true });
@@ -185,8 +201,8 @@
             type: '<img>', subType: 'error', step: '<svg>', content: 'unsafe', completed: false
         });
         assert(metadataState.protocolErrors === 1
-            && thinking.textContent.includes('未知事件')
-            && thinking.textContent.includes('未知阶段')
+            && thinking.textContent.includes('Future Event')
+            && thinking.textContent.includes('Future Stage')
             && !thinking.innerHTML.includes('future_event')
             && !thinking.innerHTML.includes('future_stage')
             && !thinking.querySelector('img,svg,[onerror]')
