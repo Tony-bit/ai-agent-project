@@ -186,8 +186,10 @@ public class TradingStateContext {
                 log.warn("SSE sender 或 dynamicContext 为空，跳过发送");
                 return;
             }
-            if (isSseDisconnected()) {
-                log.debug("SSE连接已断开，跳过发送: type={}, subType={}", type, subType);
+            // Terminal events must always be attempted, even if connection appears
+            // disconnected, to give the SSE session a chance to flush and complete.
+            if (!completed && isSseDisconnected()) {
+                log.debug("非终止事件，SSE连接已断开，跳过发送: type={}, subType={}", type, subType);
                 return;
             }
             AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
@@ -203,6 +205,34 @@ public class TradingStateContext {
             markSseDisconnected();
             log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
                     type, subType, e.getMessage());
+        }
+    }
+
+    /**
+     * Like sendSseResultBypassTerminalGuard but returns whether sending succeeded.
+     * Used by terminal events to allow the caller to handle send failures.
+     */
+    private boolean sendSseResultBypassTerminalGuardWithResult(String type, String subType, String content, boolean completed) {
+        try {
+            if (sseSender == null || dynamicContext == null) {
+                log.warn("SSE sender 或 dynamicContext 为空，跳过发送");
+                return false;
+            }
+            AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
+                    .type(type)
+                    .subType(subType)
+                    .step(dynamicContext.getStep())
+                    .content(content)
+                    .completed(completed)
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            sseSender.accept(type, event);
+            return true;
+        } catch (Exception e) {
+            markSseDisconnected();
+            log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
+                    type, subType, e.getMessage());
+            return false;
         }
     }
 

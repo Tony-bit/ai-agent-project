@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 public class TradingSseSession implements SseEventSink {
 
-    static final int DEFAULT_QUEUE_CAPACITY = 512;
+    static final int DEFAULT_QUEUE_CAPACITY = 2048;
     static final long BUSINESS_OFFER_TIMEOUT_MS = 200L;
     private static final long COMPLETE_OFFER_TIMEOUT_MS = 200L;
     private static final long WRITER_POLL_TIMEOUT_MS = 500L;
@@ -110,9 +110,18 @@ public class TradingSseSession implements SseEventSink {
                 lastBusinessAt.set(System.currentTimeMillis());
                 return true;
             }
+            // Queue full: drain stale heartbeat events to make room, then retry once.
             businessQueueFullCount.incrementAndGet();
+            log.warn("交易分析SSE队列背压: ticker={}, sessionId={}, queueSize={}, event={}",
+                    ticker, sessionId, queue.size(), eventName);
+            drainStaleHeartbeats();
+            offered = queue.offer(event, BUSINESS_OFFER_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS);
+            if (offered) {
+                lastBusinessAt.set(System.currentTimeMillis());
+                return true;
+            }
             sessionClosedDueToBackpressureCount.incrementAndGet();
-            transitionToFailed(new IllegalStateException("SSE queue full"), true);
+            transitionToFailed(new IllegalStateException("SSE queue full after retry"), true);
             log.warn("交易分析SSE队列背压关闭: ticker={}, sessionId={}, queueSize={}",
                     ticker, sessionId, queue.size());
             return false;
@@ -232,6 +241,24 @@ public class TradingSseSession implements SseEventSink {
         return lastHeartbeatAt.get();
     }
 
+
+    /**
+     * Drain stale heartbeat events from the queue to make room for business events.
+     * Heartbeat events are not critical; removing them avoids backpressure failures.
+     */
+    private void drainStaleHeartbeats() {
+        int drained = 0;
+        SseOutboundEvent peeked;
+        while ((peeked = queue.peek()) != null && peeked.type() == SseOutboundType.HEARTBEAT) {
+            queue.poll();
+            drained++;
+        }
+        if (drained > 0) {
+            heartbeatSkipCount.addAndGet(drained);
+            log.debug("交易分析SSE清理过期心跳: ticker={}, sessionId={}, drained={}",
+                    ticker, sessionId, drained);
+        }
+    }
     private void runWriterLoop() {
         try {
             while (true) {

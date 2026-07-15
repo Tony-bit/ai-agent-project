@@ -1787,8 +1787,14 @@
             await consumeSseResponse(response, streamState);
             if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
                 streamState.outcome = 'failed';
-                addStageMessage('error', 'stream_interrupted',
-                    '连接已结束，但未收到任务完成事件', null, 'thinking');
+                const hasResult = document.getElementById('resultMessages').children.length > 1;
+                if (hasResult) {
+                    addStageMessage('error', 'stream_interrupted',
+                        '分析已完成，但流式连接异常断开。结果面板中的内容仍然有效。', null, 'thinking');
+                } else {
+                    addStageMessage('error', 'stream_interrupted',
+                        '连接中断，未收到任务完成事件。请重试或检查网络连接。', null, 'thinking');
+                }
             }
         })
         .catch(error => {
@@ -2315,8 +2321,14 @@
             await consumeSseResponse(response, streamState);
             if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
                 streamState.outcome = 'failed';
-                addStageMessage('error', 'stream_interrupted',
-                    '连接已结束，但未收到任务完成事件', null, 'thinking');
+                const hasResult = document.getElementById('resultMessages').children.length > 1;
+                if (hasResult) {
+                    addStageMessage('error', 'stream_interrupted',
+                        '分析已完成，但流式连接异常断开。结果面板中的内容仍然有效。', null, 'thinking');
+                } else {
+                    addStageMessage('error', 'stream_interrupted',
+                        '连接中断，未收到任务完成事件。请重试或检查网络连接。', null, 'thinking');
+                }
             }
         })
         .catch(error => {

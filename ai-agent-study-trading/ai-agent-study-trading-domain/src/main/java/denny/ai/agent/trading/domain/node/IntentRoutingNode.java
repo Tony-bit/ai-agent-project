@@ -118,7 +118,9 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         if (tradingRequest != null) {
             try {
                 starter.start(tradingRequest, dynamicContext, (type, event) -> {
-                    // SSE 发送已由 TradingStateContext 处理，此处为空
+                    if (event instanceof AutoAgentExecuteResultEntity result) {
+                        sendSseResult(dynamicContext, result);
+                    }
                 });
             } catch (Exception e) {
                 log.error("交易分析执行异常: {}", e.getMessage(), e);

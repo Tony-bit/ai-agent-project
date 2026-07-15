@@ -83,7 +83,10 @@ public class TradingStarter {
             if (stateContext.getCurrentPhase() == TradingPhase.ERROR) {
                 stateContext.sendTerminalErrorOnce(stateContext.getErrorMessage());
             } else {
-                stateContext.sendTerminalCompleteOnce();
+                boolean sent = stateContext.sendTerminalCompleteOnce();
+                if (!sent) {
+                    log.warn("终止完成事件发送失败，SSE连接可能已断开，跳过完整关闭");
+                }
             }
         } catch (Exception e) {
             log.error("交易分析执行异常: ticker={}, error={}",
