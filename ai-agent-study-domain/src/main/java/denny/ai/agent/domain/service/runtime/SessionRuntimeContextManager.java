@@ -20,8 +20,8 @@ public class SessionRuntimeContextManager {
     @Resource
     private ChatMemoryPersistenceService chatMemoryPersistenceService;
 
-    @Value("${agent.runtime.session-context-cache.ttl-ms:0}")
-    private long ttlMs = 0L;
+    @Value("${agent.runtime.session-context-cache.ttl-ms:600000}")
+    private long ttlMs = 600_000L;
 
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
