@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
+import denny.ai.agent.domain.service.armory.AiStreamingProperties;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.service.compression.CompressionExhaustedException;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
@@ -11,12 +12,15 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class RetryChatModel implements ChatModel {
 
@@ -25,6 +29,7 @@ public class RetryChatModel implements ChatModel {
     private final CompressionPolicy compressionPolicy;
     private final PromptCompressionService compressionService;
     private final AiErrorCodeExtractor errorCodeExtractor;
+    private final AiStreamingProperties.StreamingTimeouts streamingTimeouts;
 
     public RetryChatModel(ChatModel delegate, RetryConfig retryConfig) {
         this(delegate, retryConfig, null, null, null);
@@ -35,11 +40,22 @@ public class RetryChatModel implements ChatModel {
                           CompressionPolicy compressionPolicy,
                           PromptCompressionService compressionService,
                           AiErrorCodeExtractor errorCodeExtractor) {
+        this(delegate, retryConfig, compressionPolicy, compressionService, errorCodeExtractor,
+                new AiStreamingProperties().resolve(null));
+    }
+
+    public RetryChatModel(ChatModel delegate,
+                          RetryConfig retryConfig,
+                          CompressionPolicy compressionPolicy,
+                          PromptCompressionService compressionService,
+                          AiErrorCodeExtractor errorCodeExtractor,
+                          AiStreamingProperties.StreamingTimeouts streamingTimeouts) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         this.retryConfig = Objects.requireNonNull(retryConfig, "retryConfig must not be null");
         this.compressionPolicy = compressionPolicy;
         this.compressionService = compressionService;
         this.errorCodeExtractor = errorCodeExtractor != null ? errorCodeExtractor : new AiErrorCodeExtractor();
+        this.streamingTimeouts = Objects.requireNonNull(streamingTimeouts, "streamingTimeouts must not be null");
     }
 
     @Override
@@ -59,7 +75,7 @@ public class RetryChatModel implements ChatModel {
             } catch (RuntimeException error) {
                 return Flux.error(error);
             }
-        });
+        }).timeout(streamingTimeouts.totalTimeout());
     }
 
     private Flux<ChatResponse> streamAttempt(StreamState state) {
@@ -67,11 +83,31 @@ public class RetryChatModel implements ChatModel {
             return Flux.error(new IllegalStateException("model call safety limit exhausted"));
         }
         state.modelCalls++;
-        AtomicBoolean emitted = new AtomicBoolean(false);
-        return Flux.defer(() -> delegate.stream(state.currentPrompt))
-                .doOnNext(response -> emitted.set(true))
+        AtomicReference<StreamPhase> phase = new AtomicReference<>(StreamPhase.AWAITING_RESPONSE);
+        AtomicLong lastContentAtNanos = new AtomicLong();
+        return Flux.defer(() -> {
+                    long attemptStartedAtNanos = schedulerNowNanos();
+                    lastContentAtNanos.set(attemptStartedAtNanos);
+                    return delegate.stream(state.currentPrompt)
+                            .timeout(Mono.delay(streamingTimeouts.firstContentTimeout()), response -> {
+                                long now = schedulerNowNanos();
+                                if (hasEffectiveContent(response)) {
+                                    phase.set(StreamPhase.CONTENT_OBSERVED);
+                                    lastContentAtNanos.set(now);
+                                    return Mono.delay(streamingTimeouts.idleTimeout());
+                                }
+                                phase.compareAndSet(StreamPhase.AWAITING_RESPONSE,
+                                        StreamPhase.RESPONSE_OBSERVED);
+                                Duration remaining = phase.get() == StreamPhase.CONTENT_OBSERVED
+                                        ? remaining(streamingTimeouts.idleTimeout(),
+                                                lastContentAtNanos.get(), now)
+                                        : remaining(streamingTimeouts.firstContentTimeout(),
+                                                attemptStartedAtNanos, now);
+                                return Mono.delay(remaining);
+                            });
+                })
                 .onErrorResume(error -> {
-                    if (emitted.get()) {
+                    if (phase.get() != StreamPhase.AWAITING_RESPONSE) {
                         return Flux.error(error);
                     }
                     Exception exception = error instanceof Exception value
@@ -102,6 +138,30 @@ public class RetryChatModel implements ChatModel {
                     }
                     return Flux.error(error);
                 });
+    }
+
+    private boolean hasEffectiveContent(ChatResponse response) {
+        if (response == null || response.getResult() == null
+                || response.getResult().getOutput() == null) {
+            return false;
+        }
+        String text = response.getResult().getOutput().getText();
+        return text != null && !text.isBlank();
+    }
+
+    private Duration remaining(Duration limit, long startedAtNanos, long nowNanos) {
+        long remainingNanos = limit.toNanos() - Math.max(0, nowNanos - startedAtNanos);
+        return Duration.ofNanos(Math.max(1, remainingNanos));
+    }
+
+    private long schedulerNowNanos() {
+        return Schedulers.parallel().now(TimeUnit.NANOSECONDS);
+    }
+
+    private enum StreamPhase {
+        AWAITING_RESPONSE,
+        RESPONSE_OBSERVED,
+        CONTENT_OBSERVED
     }
 
     private final class StreamState {

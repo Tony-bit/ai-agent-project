@@ -51,6 +51,15 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "technical_analysis_prepared";
+    }
+
+    public TechnicalReportVO prepare(TradingContextVO context,
+                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         StockInfoVO stockInfo = context.getStockInfo();
         String ticker = stockInfo.getTicker();
 
@@ -71,18 +80,9 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
         TechnicalReportVO report = generateReport(stockInfo, bars, indicators, dynamicContext);
 
-        sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
-
-        context.setTechnicalReport(report);
-
         log.info("技术分析完成: ticker={}, rating={}, trend={}",
                 ticker, report.getRating(), report.getTrendSignal());
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().analystComplete();
-        }
-
-        return "technical_analysis_completed";
+        return report;
     }
 
     @Override
@@ -131,7 +131,8 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过技术分析师LLM调用");
             return parseReport("", indicators);
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "TechnicalAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("技术分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

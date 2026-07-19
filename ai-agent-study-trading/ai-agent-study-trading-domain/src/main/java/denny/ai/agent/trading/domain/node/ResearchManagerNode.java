@@ -8,7 +8,6 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
-import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.DebatePromptTemplate;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +39,15 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
             return "error: no debate context";
         }
 
+        prepare(context, dynamicContext);
+        return "research_judgment_prepared";
+    }
+
+    public DebateEvaluation prepare(TradingContextVO context,
+                                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getInvestmentDebate() == null) {
+            throw new IllegalArgumentException("trading or debate context is missing");
+        }
         TradingContextVO.InvestmentDebateVO debate = context.getInvestmentDebate();
         String ticker = context.getStockInfo().getTicker();
 
@@ -48,11 +56,7 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
 
         String llmResponse = evaluateDebate(ticker, debate, dynamicContext);
 
-        parseAndUpdateDebate(debate, llmResponse);
-
-        decideDebateContinuation(debate);
-
-        return "research_judgment_completed";
+        return parseEvaluation(llmResponse);
     }
 
     @Override
@@ -60,29 +64,6 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
             ExecuteCommandEntity requestParameter,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return null;
-    }
-
-    private void decideDebateContinuation(TradingContextVO.InvestmentDebateVO debate) {
-        if (TradingDriver.getCurrent() == null) {
-            log.warn("No TradingDriver available for debate continuation");
-            return;
-        }
-
-        TradingDriver currentDriver = TradingDriver.getCurrent();
-        boolean roundExhausted = debate.getCurrentRound() >= debate.getMaxRounds();
-        boolean debateComplete = debate.isDebateComplete();
-        boolean needMore = debate.isNeedMoreDebate();
-
-        if (roundExhausted || debateComplete) {
-            currentDriver.debateFinish();
-            log.info("辩论结束判断: roundExhausted={}, debateComplete={}", roundExhausted, debateComplete);
-        } else if (needMore) {
-            currentDriver.debateContinue();
-            log.info("辩论继续: needMoreDebate=true");
-        } else {
-            currentDriver.debateFinish();
-            log.info("辩论结束（保守兜底）: needMoreDebate={}", needMore);
-        }
     }
 
     private String evaluateDebate(String ticker,
@@ -113,7 +94,8 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过研究主管LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "ResearchManagerNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("研究主管LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
@@ -122,29 +104,29 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         return response;
     }
 
-    private void parseAndUpdateDebate(TradingContextVO.InvestmentDebateVO debate, String llmResponse) {
+    private DebateEvaluation parseEvaluation(String llmResponse) {
         try {
             String jsonStr = extractJson(llmResponse);
             JSONObject json = JSON.parseObject(jsonStr);
-
-            if (json.containsKey("overallScore")) {
-                debate.setOverallScore(json.getDouble("overallScore"));
-            }
-            if (json.containsKey("conclusion")) {
-                debate.setConclusion(json.getString("conclusion"));
-                debate.setJudgeDecision(json.getString("conclusion"));
-            }
-            if (json.containsKey("needMoreDebate")) {
-                debate.setNeedMoreDebate(json.getBoolean("needMoreDebate"));
-            }
-
+            Double overallScore = json.containsKey("overallScore")
+                    ? json.getDouble("overallScore") : null;
+            String conclusion = json.containsKey("conclusion")
+                    ? json.getString("conclusion") : null;
+            boolean needMoreDebate = json.containsKey("needMoreDebate")
+                    && json.getBooleanValue("needMoreDebate");
             log.info("辩论评估结果: overallScore={}, conclusion={}, needMoreDebate={}",
-                    debate.getOverallScore(), debate.getConclusion(), debate.isNeedMoreDebate());
+                    overallScore, conclusion, needMoreDebate);
+            return new DebateEvaluation(overallScore, conclusion, needMoreDebate);
         } catch (Exception e) {
             log.error("解析研究主管评估响应失败: {}", llmResponse, e);
-            debate.setConclusion("综合评估：多空双方各有论据，建议进入下一阶段分析。");
-            debate.setNeedMoreDebate(false);
+            return new DebateEvaluation(null,
+                    "综合评估：多空双方各有论据，建议进入下一阶段分析。", false);
         }
+    }
+
+    public record DebateEvaluation(Double overallScore,
+                                   String conclusion,
+                                   boolean needMoreDebate) {
     }
 
     private String extractJson(String response) {

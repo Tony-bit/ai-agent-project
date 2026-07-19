@@ -42,8 +42,6 @@ import java.util.concurrent.TimeoutException;
 @Component
 public class TradingDispatcher {
 
-    private static final int NODE_TIMEOUT_SECONDS = 180;
-
     @Resource private FundamentalAnalystNode fundamentalAnalystNode;
     @Resource private TechnicalAnalystNode technicalAnalystNode;
     @Resource private SentimentAnalystNode sentimentAnalystNode;
@@ -71,6 +69,9 @@ public class TradingDispatcher {
 
     @Resource(name = "tradingTaskExecutor")
     private ThreadPoolExecutor tradingTaskExecutor;
+
+    @Resource
+    private TradingAgentProperties tradingAgentProperties;
 
     /**
      * 核心事件处理入口
@@ -322,7 +323,7 @@ public class TradingDispatcher {
             .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .orTimeout(NODE_TIMEOUT_SECONDS * analysts.size(), TimeUnit.SECONDS)
+            .orTimeout(nodeTimeoutMillis(), TimeUnit.MILLISECONDS)
             .whenComplete((result, ex) -> {
 
                 if (ex != null) {
@@ -369,7 +370,7 @@ public class TradingDispatcher {
                 stateContext.sendError("节点执行异常: " + e.getMessage());
             }
         }, tradingTaskExecutor)
-        .orTimeout(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .orTimeout(nodeTimeoutMillis(), TimeUnit.MILLISECONDS)
         .whenComplete((result, ex) -> {
 
             if (ex != null && !(ex.getCause() instanceof TimeoutException)) {
@@ -404,7 +405,7 @@ public class TradingDispatcher {
                     return null;
                 }
             }, tradingTaskExecutor);
-            future.get(NODE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            future.get(nodeTimeoutMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("节点执行被中断", e);
@@ -413,5 +414,12 @@ public class TradingDispatcher {
             log.error("节点执行超时或异常", e);
             stateContext.sendError("节点执行超时或异常: " + e.getMessage());
         }
+    }
+
+    private long nodeTimeoutMillis() {
+        TradingAgentProperties effective = tradingAgentProperties == null
+                ? new TradingAgentProperties() : tradingAgentProperties;
+        effective.validate();
+        return effective.getNodeTimeout().toMillis();
     }
 }

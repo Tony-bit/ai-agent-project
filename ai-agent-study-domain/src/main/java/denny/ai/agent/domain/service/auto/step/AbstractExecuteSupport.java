@@ -62,6 +62,9 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     @Resource
     private denny.ai.agent.domain.model.valobj.MemoryProperties memoryProperties;
 
+    @Resource
+    private StreamingChatResponseCollector streamingChatResponseCollector;
+
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
 
@@ -79,6 +82,15 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
         return chatClient;
     }
 
+    protected String collectStreamingResponse(ChatClient.ChatClientRequestSpec requestSpec,
+                                              String operationName,
+                                              SseEventSink sseEventSink) {
+        StreamingChatResponseCollector collector = streamingChatResponseCollector == null
+                ? new StreamingChatResponseCollector() : streamingChatResponseCollector;
+        return collector.collect(requestSpec.stream().content(), operationName,
+                sseEventSink == null ? null : sseEventSink.cancellationSignal());
+    }
+
     protected <T> T getBean(String beanName) {
         return (T) applicationContext.getBean(beanName);
     }
@@ -92,6 +104,11 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             return sink.shouldContinue();
         }
         return !isSseDisconnected(dynamicContext);
+    }
+
+    protected SseEventSink getSseEventSink(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        return dynamicContext == null ? null : dynamicContext.getValue(SSE_EVENT_SINK_KEY);
     }
 
     /**

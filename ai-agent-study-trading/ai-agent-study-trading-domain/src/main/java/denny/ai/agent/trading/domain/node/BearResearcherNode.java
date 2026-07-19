@@ -39,26 +39,23 @@ public class BearResearcherNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "bear_analysis_prepared";
+    }
+
+    public String prepare(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         sendDebateEvent(dynamicContext, "bear_start", "空头研究员开始分析...");
 
         String reportSummary = buildReportSummary(context);
 
         String bearThesis = generateBearThesis(context.getStockInfo().getTicker(), reportSummary, dynamicContext);
 
-        InvestmentDebateVO debate = context.getInvestmentDebate();
-        if (debate == null) {
-            debate = InvestmentDebateVO.createNew(2);
-            context.setInvestmentDebate(debate);
-        }
-
-        debate.addBearArgument(bearThesis);
-        debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] " + bearThesis);
-
-        sendDebateEvent(dynamicContext, "bear_thesis", bearThesis);
-
         log.info("空头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
-
-        return "bear_analysis_completed";
+        return bearThesis;
     }
 
     @Override
@@ -99,7 +96,8 @@ public class BearResearcherNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过空头研究员LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "BearResearcherNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("空头研究员LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

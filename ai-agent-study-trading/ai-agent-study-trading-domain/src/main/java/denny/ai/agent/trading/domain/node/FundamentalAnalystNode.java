@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
  * 2. 使用 ChatClient + System Prompt 生成分析报告
  * 3. 生成 FundamentalReportVO 并写入 TradingContextVO
  * 4. 通过 sendSseResult() 发送流式进度事件
- * 5. 末尾调用 TradingDriver.getCurrent().analystComplete() 驱动状态机
+ * 5. 返回强类型报告，由 Stage 统一提交
  */
 @Slf4j
 @Service
@@ -50,6 +50,15 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "fundamental_analysis_prepared";
+    }
+
+    public FundamentalReportVO prepare(TradingContextVO context,
+                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         StockInfoVO stockInfo = context.getStockInfo();
         String ticker = stockInfo.getTicker();
 
@@ -64,17 +73,8 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
         FundamentalReportVO report = generateReport(stockInfo, fundamentalData, dynamicContext);
 
-        sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
-
-        context.setFundamentalReport(report);
-
         log.info("基本面分析完成: ticker={}, rating={}", ticker, report.getRating());
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().analystComplete();
-        }
-
-        return "fundamental_analysis_completed";
+        return report;
     }
 
     @Override
@@ -110,7 +110,8 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过基本面分析师LLM调用");
             return parseReport("", data);
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "FundamentalAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("基本面分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

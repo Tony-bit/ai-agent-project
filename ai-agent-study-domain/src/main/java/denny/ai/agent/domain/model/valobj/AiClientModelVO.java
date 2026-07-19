@@ -53,6 +53,11 @@ public class AiClientModelVO {
      */
     private CompressionConfig compressionConfig;
 
+    /**
+     * Optional model-level streaming timeout overrides.
+     */
+    private StreamingTimeoutConfig streamingTimeoutConfig;
+
     @Data
     @Builder
     @AllArgsConstructor
@@ -134,6 +139,16 @@ public class AiClientModelVO {
          */
         @Builder.Default
         private int maxSummaryTokens = 2000;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class StreamingTimeoutConfig {
+        private Long firstContentTimeoutMs;
+        private Long idleTimeoutMs;
+        private Long totalTimeoutMs;
     }
 
 }

@@ -1,16 +1,21 @@
 package denny.ai.agent.trading.domain.pipeline;
 
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import com.alibaba.fastjson.JSON;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.config.TradingPhase;
 import denny.ai.agent.trading.domain.config.TradingStateContext;
+import denny.ai.agent.trading.domain.config.TradingAgentProperties;
 import denny.ai.agent.trading.domain.node.FundamentalAnalystNode;
 import denny.ai.agent.trading.domain.node.NewsAnalystNode;
 import denny.ai.agent.trading.domain.node.SentimentAnalystNode;
 import denny.ai.agent.trading.domain.node.TechnicalAnalystNode;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
+import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
+import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -19,18 +24,23 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Component
 @Order(10)
 public class AnalystCollectionStage implements TradingStage {
-
-    private static final int NODE_TIMEOUT_SECONDS = 180;
 
     private final FundamentalAnalystNode fundamentalAnalystNode;
     private final TechnicalAnalystNode technicalAnalystNode;
     private final SentimentAnalystNode sentimentAnalystNode;
     private final NewsAnalystNode newsAnalystNode;
     private final ExecutorService tradingTaskExecutor;
+
+    @jakarta.annotation.Resource
+    private TradingAgentProperties tradingAgentProperties;
+
+    @jakarta.annotation.Resource
+    private NodeResultCommitter nodeResultCommitter;
 
     public AnalystCollectionStage(FundamentalAnalystNode fundamentalAnalystNode,
                                   TechnicalAnalystNode technicalAnalystNode,
@@ -68,19 +78,33 @@ public class AnalystCollectionStage implements TradingStage {
         context.sendSseResult("trading", "trading_init", "交易分析开始", false);
 
         List<AnalystTypeEnum> analysts = context.getSelectedAnalysts();
-        List<CompletableFuture<Void>> futures = analysts.stream()
-                .map(analyst -> CompletableFuture.runAsync(
-                        () -> invokeAnalyst(analyst, context),
-                        tradingTaskExecutor))
+        List<AnalystTask> tasks = analysts.stream()
+                .map(analyst -> createTask(analyst, context))
                 .toList();
 
         try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .get((long) NODE_TIMEOUT_SECONDS * Math.max(1, analysts.size()), TimeUnit.SECONDS);
+            CompletableFuture.allOf(tasks.stream().map(AnalystTask::future)
+                            .toArray(CompletableFuture[]::new))
+                    .get(nodeTimeoutMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            tasks.forEach(task -> {
+                if (!task.future().isDone()) {
+                    task.scope().markTimedOut();
+                    task.future().cancel(true);
+                }
+            });
         } catch (Exception e) {
-            throw new TradingPipelineException("分析师阶段执行异常", e);
+            // Individual failures are represented as NodeExecutionResult and handled below.
         }
         if (!TradingPipelineSseGuard.shouldContinue(context)) {
+            return;
+        }
+
+        long committedCount = tasks.stream()
+                .filter(task -> commitAnalyst(task, context))
+                .count();
+        if (committedCount == 0) {
+            context.sendError("所有分析师均执行失败或超时");
             return;
         }
 
@@ -94,19 +118,86 @@ public class AnalystCollectionStage implements TradingStage {
         context.sendSseResult("debate", "debate_start", "辩论阶段开始", false);
     }
 
-    private void invokeAnalyst(AnalystTypeEnum analyst, TradingStateContext context) {
-        if (!TradingPipelineSseGuard.shouldContinue(context)) {
-            return;
-        }
+    private long nodeTimeoutMillis() {
+        TradingAgentProperties effective = tradingAgentProperties == null
+                ? new TradingAgentProperties() : tradingAgentProperties;
+        effective.validate();
+        return effective.getNodeTimeout().toMillis();
+    }
+
+    private AnalystTask createTask(AnalystTypeEnum analyst, TradingStateContext context) {
+        NodeExecutionScope scope = new NodeExecutionScope(
+                java.time.Instant.now().plusMillis(nodeTimeoutMillis()),
+                () -> !TradingPipelineSseGuard.shouldContinue(context));
+        CompletableFuture<NodeExecutionResult<?>> future = CompletableFuture.supplyAsync(
+                () -> prepareAnalyst(analyst, context, scope), tradingTaskExecutor);
+        return new AnalystTask(analyst, scope, future);
+    }
+
+    private NodeExecutionResult<?> prepareAnalyst(AnalystTypeEnum analyst,
+                                                   TradingStateContext context,
+                                                   NodeExecutionScope scope) {
         try {
-            switch (analyst) {
-                case FUNDAMENTAL -> fundamentalAnalystNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext());
-                case TECHNICAL -> technicalAnalystNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext());
-                case SENTIMENT -> sentimentAnalystNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext());
-                case NEWS -> newsAnalystNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext());
+            Object value = switch (analyst) {
+                case FUNDAMENTAL -> fundamentalAnalystNode.prepare(
+                        context.getTradingContext(), context.getDynamicContext());
+                case TECHNICAL -> technicalAnalystNode.prepare(
+                        context.getTradingContext(), context.getDynamicContext());
+                case SENTIMENT -> sentimentAnalystNode.prepare(
+                        context.getTradingContext(), context.getDynamicContext());
+                case NEWS -> newsAnalystNode.prepare(
+                        context.getTradingContext(), context.getDynamicContext());
+            };
+            if (scope.isDeadlineElapsed()) {
+                return NodeExecutionResult.timedOut(
+                        new TradingPipelineException("分析师执行超时: " + analyst), scope);
             }
+            if (scope.isRequestCancelled()) {
+                return NodeExecutionResult.cancelled(
+                        new TradingPipelineException("分析师执行取消: " + analyst), scope);
+            }
+            return NodeExecutionResult.success(value, scope);
         } catch (Exception e) {
-            throw new TradingPipelineException("分析师执行异常: " + analyst, e);
+            return NodeExecutionResult.failed(e, scope);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean commitAnalyst(AnalystTask task, TradingStateContext context) {
+        NodeExecutionResult<Object> result = (NodeExecutionResult<Object>) task.future().getNow(null);
+        if (result == null) {
+            return false;
+        }
+        boolean committed = committer().commit(result, TradingPhase.INIT,
+                context::getCurrentPhase,
+                value -> writeAnalystResult(task.analyst(), context.getTradingContext(), value));
+        if (committed) {
+            context.sendSseResult("analyst", "analyst_report", JSON.toJSONString(result.value()), false);
+        }
+        return committed;
+    }
+
+    private void writeAnalystResult(AnalystTypeEnum analyst,
+                                    TradingContextVO tradingContext,
+                                    Object value) {
+        switch (analyst) {
+            case FUNDAMENTAL -> tradingContext.setFundamentalReport(
+                    (denny.ai.agent.trading.api.vo.FundamentalReportVO) value);
+            case TECHNICAL -> tradingContext.setTechnicalReport(
+                    (denny.ai.agent.trading.api.vo.TechnicalReportVO) value);
+            case SENTIMENT -> tradingContext.setSentimentReport(
+                    (denny.ai.agent.trading.api.vo.SentimentReportVO) value);
+            case NEWS -> tradingContext.setNewsReport(
+                    (denny.ai.agent.trading.api.vo.NewsReportVO) value);
+        }
+    }
+
+    private NodeResultCommitter committer() {
+        return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
+    }
+
+    private record AnalystTask(AnalystTypeEnum analyst,
+                               NodeExecutionScope scope,
+                               CompletableFuture<NodeExecutionResult<?>> future) {
     }
 }

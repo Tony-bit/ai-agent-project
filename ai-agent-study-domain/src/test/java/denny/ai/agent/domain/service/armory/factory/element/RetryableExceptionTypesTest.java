@@ -80,6 +80,13 @@ public class RetryableExceptionTypesTest {
     }
 
     @Test
+    public void testJdkHttpConnectTimeoutException() {
+        java.net.http.HttpConnectTimeoutException e =
+                new java.net.http.HttpConnectTimeoutException("connect timed out");
+        assertTrue(RetryableExceptionTypes.isRetryable(e));
+    }
+
+    @Test
     public void testRestClientExceptionWithSocketTimeoutCauseIsRetryable() {
         org.springframework.web.client.RestClientException e =
                 new org.springframework.web.client.RestClientException(

@@ -22,6 +22,7 @@ public final class RetryableExceptionTypes {
 
     public static final Set<String> TIMEOUT_PREFIXES = Set.of(
             "SocketTimeoutException",
+            "HttpConnectTimeoutException",
             "TimeoutException"
     );
     public static final Set<String> CONNECTION_PREFIXES = Set.of(

@@ -12,10 +12,24 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class TradingSseSessionTest {
+
+    @Test
+    void cancellationSignalCompletesExactlyOnceWhenDisconnected() {
+        TradingSseSession session = new TradingSseSession(
+                new RecordingEmitter(0), "req-1", "session-1", "000001", 8);
+        AtomicInteger completions = new AtomicInteger();
+        session.cancellationSignal().doOnSuccess(ignored -> completions.incrementAndGet()).subscribe();
+
+        session.markDisconnected(new IOException("Broken pipe"));
+        session.markDisconnected(new IOException("duplicate"));
+
+        assertEquals(1, completions.get());
+    }
 
     @Test
     void sendBusinessIsSerializedByWriterAndKeepsPayloadShape() throws Exception {

@@ -66,18 +66,26 @@ class TradingStageFlowTest {
         assertEquals(List.of(
                 "sse:trading",
                 "fundamental",
+                "sse:analyst",
                 "sse:debate",
                 "bull",
+                "sse:debate",
                 "bear",
+                "sse:debate",
                 "research_manager",
                 "sse:debate",
                 "recommendation",
+                "sse:recommendation",
                 "sse:risk",
                 "aggressive",
+                "sse:risk_debate",
                 "conservative",
+                "sse:risk_debate",
                 "neutral",
+                "sse:risk_debate",
                 "sse:final",
-                "portfolio"
+                "portfolio",
+                "sse:final"
         ), calls);
         assertEquals(TradingPhase.FINAL_REPORT, context.getCurrentPhase());
         assertNotNull(context.getTradingContext().getFinalDecision());
@@ -116,11 +124,12 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public denny.ai.agent.trading.api.vo.FundamentalReportVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("fundamental");
-            return "fundamental_done";
+            return denny.ai.agent.trading.api.vo.FundamentalReportVO.builder().rating(3).build();
         }
     }
 
@@ -132,10 +141,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public denny.ai.agent.trading.api.vo.TechnicalReportVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             calls.add("technical");
-            return "technical_done";
+            return denny.ai.agent.trading.api.vo.TechnicalReportVO.builder().rating(3).build();
         }
     }
 
@@ -147,10 +157,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public denny.ai.agent.trading.api.vo.SentimentReportVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             calls.add("sentiment");
-            return "sentiment_done";
+            return denny.ai.agent.trading.api.vo.SentimentReportVO.builder().rating(3).build();
         }
     }
 
@@ -162,10 +173,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public denny.ai.agent.trading.api.vo.NewsReportVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             calls.add("news");
-            return "news_done";
+            return denny.ai.agent.trading.api.vo.NewsReportVO.builder().rating(3).build();
         }
     }
 
@@ -177,13 +189,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
+        public String prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("bull");
-            TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getInvestmentDebate().addBullArgument("bull opinion");
-            return "bull_done";
+            return "bull opinion";
         }
     }
 
@@ -195,13 +205,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
+        public String prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("bear");
-            TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getInvestmentDebate().addBearArgument("bear opinion");
-            return "bear_done";
+            return "bear opinion";
         }
     }
 
@@ -213,14 +221,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public DebateEvaluation prepare(TradingContextVO context,
+                                        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("research_manager");
-            TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getInvestmentDebate().setNeedMoreDebate(false);
-            context.getInvestmentDebate().setConclusion("debate conclusion");
-            return "research_done";
+            return new DebateEvaluation(3.0, "debate conclusion", false);
         }
     }
 
@@ -232,13 +237,12 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public TradingContextVO.InvestmentPlanVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("recommendation");
-            TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.setInvestmentPlan(new TradingContextVO.InvestmentPlanVO());
-            return "recommendation_done";
+            return new TradingContextVO.InvestmentPlanVO();
         }
     }
 
@@ -250,11 +254,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
+        public String prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("aggressive");
-            return "aggressive_done";
+            return "aggressive opinion";
         }
     }
 
@@ -266,11 +270,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
+        public String prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("conservative");
-            return "conservative_done";
+            return "conservative opinion";
         }
     }
 
@@ -282,11 +286,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
+        public String prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("neutral");
-            return "neutral_done";
+            return "neutral opinion";
         }
     }
 
@@ -298,17 +302,16 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String doApply(ExecuteCommandEntity requestParameter,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public TradingContextVO.FinalTradeDecisionVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("portfolio");
-            TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.setFinalDecision(TradingContextVO.FinalTradeDecisionVO.builder()
+            return TradingContextVO.FinalTradeDecisionVO.builder()
                     .decision("HOLD")
                     .confidence("MEDIUM")
                     .reasoning("stub")
-                    .build());
-            return "portfolio_done";
+                    .build();
         }
     }
 }

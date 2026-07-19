@@ -39,33 +39,19 @@ public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "conservative_risk_prepared";
+    }
+
+    public String prepare(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null) {
+            throw new IllegalArgumentException("trading context is missing");
+        }
         sendRiskEvent(dynamicContext, "conservative_start", "保守风控分析师开始分析...");
-
-        TradingContextVO.RiskDebateVO riskDebate = context.getRiskDebate();
-        if (riskDebate == null) {
-            riskDebate = TradingContextVO.RiskDebateVO.builder()
-                    .riskItems(new ArrayList<>())
-                    .mitigations(new ArrayList<>())
-                    .build();
-            context.setRiskDebate(riskDebate);
-        }
-
         String opinion = generateRiskOpinion(context, dynamicContext);
-
-        if (riskDebate.getConservativeHistory() == null) {
-            riskDebate.setConservativeHistory(new ArrayList<>());
-        }
-        riskDebate.getConservativeHistory().add(opinion);
-
-        sendRiskEvent(dynamicContext, "conservative_opinion", opinion);
-
         log.info("保守风控分析师分析完成");
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().riskDebateComplete();
-        }
-
-        return "conservative_risk_completed";
+        return opinion;
     }
 
     @Override
@@ -91,7 +77,8 @@ public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过保守风控分析师LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "ConservativeRiskAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("保守风控分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

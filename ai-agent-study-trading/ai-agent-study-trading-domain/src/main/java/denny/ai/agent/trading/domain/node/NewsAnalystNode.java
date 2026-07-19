@@ -49,6 +49,15 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "news_analysis_prepared";
+    }
+
+    public NewsReportVO prepare(TradingContextVO context,
+                                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         StockInfoVO stockInfo = context.getStockInfo();
         String ticker = stockInfo.getTicker();
 
@@ -62,18 +71,9 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         NewsReportVO report = generateReport(stockInfo, newsItems, dynamicContext);
 
-        sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
-
-        context.setNewsReport(report);
-
         log.info("新闻分析完成: ticker={}, rating={}, sentiment={}, confidence={}",
                 ticker, report.getRating(), report.getOverallSentiment(), report.getConfidence());
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().analystComplete();
-        }
-
-        return "news_analysis_completed";
+        return report;
     }
 
     @Override
@@ -100,7 +100,8 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过新闻分析师LLM调用");
             return structuredProcessor.parseReport("", newsItems);
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "NewsAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("新闻分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

@@ -41,7 +41,8 @@ public class AgentRepositoryCompressionConfigTest {
         AiClientModelVO model = load("""
                 {"retryConfig":{"enabled":true,"maxAttempts":2},
                  "compressionConfig":{"proactiveThresholdTokens":4096,
-                 "maxCompressionAttempts":2,"maxSummaryTokens":1000}}
+                 "maxCompressionAttempts":2,"maxSummaryTokens":1000},
+                 "streamingTimeout":{"firstContentTimeoutMs":60000}}
                 """);
 
         assertTrue(model.getRetryConfig().isEnabled());
@@ -49,6 +50,7 @@ public class AgentRepositoryCompressionConfigTest {
         assertEquals(4096, model.getCompressionConfig().getProactiveThresholdTokens());
         assertEquals(2, model.getCompressionConfig().getMaxCompressionAttempts());
         assertEquals(1000, model.getCompressionConfig().getMaxSummaryTokens());
+        assertEquals(Long.valueOf(60000), model.getStreamingTimeoutConfig().getFirstContentTimeoutMs());
     }
 
     @Test
@@ -72,6 +74,11 @@ public class AgentRepositoryCompressionConfigTest {
     public void should_reject_explicit_invalid_compression_values() {
         load("{\"compressionConfig\":{\"proactiveThresholdTokens\":1024,"
                 + "\"maxCompressionAttempts\":3,\"maxSummaryTokens\":1}}");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void should_reject_explicit_invalid_streaming_timeout() {
+        load("{\"streamingTimeout\":{\"idleTimeoutMs\":0}}");
     }
 
     private AiClientModelVO load(String extParam) {

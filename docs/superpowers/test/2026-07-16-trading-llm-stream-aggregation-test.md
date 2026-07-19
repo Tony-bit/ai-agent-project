@@ -21,7 +21,8 @@
 - `AbstractExecuteSupport` 流式聚合入口
 - `SseEventSink` cancellation signal 与 `TradingSseSession` 断连传播
 - 12 个 Trading Agent 文本生成节点
-- `TradingNodeInvoker`、`AnalystCollectionStage` 和 legacy `TradingDispatcher` 时限
+- `NodeExecutionResult`、`NodeExecutionScope`、`NodeResultCommitter` 的提交门禁
+- `TradingNodeInvoker`、所有 Trading Stage 和 legacy `TradingDispatcher` 的时限与 phase 推进
 
 ### 1.4 不在本次测试范围
 
@@ -94,6 +95,10 @@
 | TC-110 | 工具信息后首内容超时 | 第一个 `ChatResponse` 只有工具信息 | 工具信息后无文本 | 锁定重试，超时后不重复工具副作用 | append |
 | TC-111 | 取消后禁止部分结果 | 已聚合至少一个文本 chunk | 触发请求级取消信号 | 丢弃 StringBuilder，不返回或解析部分报告 | append |
 | TC-112 | SSE writer 写失败传播取消 | writer 遇到 IOException | 模拟 heartbeat/业务事件写失败 | session 标记断连并触发一次 cancellation signal | append |
+| TC-113 | 失败结果禁止提交 | 节点返回 `FAILED` | 调用统一 Committer | context、最终 SSE 和 phase 均不改变 | append |
+| TC-114 | 超时后的完整迟到结果 | scope 已切换到 `TIMED_OUT` | 后台节点返回合法完整 ReportVO | Committer 拒绝提交，不产生 late context/SSE/phase | append |
+| TC-115 | 取消后的完整迟到结果 | scope 已切换到 `CANCELLED` | 后台节点返回合法完整 ReportVO | Committer 拒绝提交且状态不可恢复为成功 | append |
+| TC-116 | Commit 后最终 SSE 入队失败 | context 已提交且 scope 为 `COMMITTED` | Stage 将最终报告事件入队时 sink 已关闭 | context 不回滚；请求触发取消，phase 不推进且后续 Stage 不执行 | append |
 
 ### 3.3 边界场景
 
@@ -113,6 +118,9 @@
 | TC-212 | 同请求并发流统一取消 | 四个节点共享同一 SseEventSink | 四个 Flux 同时在途后触发取消 | 四个订阅全部取消且各自丢弃部分结果 | append |
 | TC-213 | 跨请求取消隔离 | 两个请求各自持有 cancellation signal | 取消请求 A | 仅 A 的模型流取消，请求 B 继续执行 | append |
 | TC-214 | 无 SSE 调用不误取消 | 子任务/后台调用没有 SseEventSink | 正常模型 Flux | 使用永不触发信号，模型调用正常完成 | append |
+| TC-215 | 提交与超时同时竞争 | scope 初始为 `RUNNING` | 两线程同时执行 commit 和 timeout CAS | 只有一个终态成功，不会同时记录提交与超时 | append |
+| TC-216 | deadline 后提交 | 尚未调度 timeout 回调但 deadline 已经过期 | `SUCCESS` 结果调用 Committer | Committer 主动检查 deadline 并拒绝提交 | append |
+| TC-217 | Commit 临界区不包含 SSE | sink 模拟慢写或阻塞 | 提交合法 ReportVO | Commit 只完成 context 写入和状态转换，不调用或等待 SSE writer | append |
 
 ### 3.4 回归场景
 
@@ -126,6 +134,9 @@
 | TC-306 | legacy 与 pipeline 时限一致 | 分别走两个入口 | 相同慢节点 | 使用相同配置值和超时语义 | append |
 | TC-307 | 重试预算回归 | DB RetryConfig 不变 | 429/5xx/timeout | 最大尝试次数和退避策略不被聚合器重复执行 | append |
 | TC-308 | 并行节点 deadline 回归 | 四个分析师同时提交 | 三个完成、一个超过 180 秒 | 阶段不乘节点数量，只取消超时分析师并形成 partial success | append |
+| TC-309 | 分析师全部失败不推进 | 四个分析师均失败、超时或取消 | 执行分析师 Stage | 不创建辩论上下文，phase 进入 `ERROR`，后续 Stage 不执行 | append |
+| TC-310 | 串行必需节点失败不推进 | 当前 Stage 的必需节点失败 | 执行 Pipeline | 不调用 `transitionTo(nextPhase)`，后续 Stage 不执行 | append |
+| TC-311 | Role 无真实上下文写入 | 12 个 Role 执行 Prepare | 返回合法强类型结果 | 提交前真实 context 和最终报告 SSE 均无变化 | append |
 
 ---
 
@@ -149,8 +160,18 @@
 | TC-212 | `should_cancel_all_inflight_streams_for_disconnected_request()` | collector + `SseEventSink` | 取消/并发 |
 | TC-213 | `should_not_cancel_other_request_when_one_request_disconnects()` | collector + `SseEventSink` | 隔离 |
 | TC-214 | `should_complete_without_sse_cancellation_signal_for_background_call()` | collector | 边界 |
+| TC-113 | `should_reject_commit_when_result_is_failed()` | `NodeResultCommitter#commit` | 异常 |
+| TC-114 | `should_reject_late_success_after_node_timeout()` | `NodeExecutionScope` + Committer | 超时/迟到 |
+| TC-115 | `should_reject_late_success_after_request_cancel()` | `NodeExecutionScope` + Committer | 取消/迟到 |
+| TC-116 | `should_cancel_without_rollback_when_post_commit_sse_enqueue_fails()` | Trading Stage + `SseEventSink` | Post-Commit 异常 |
+| TC-215 | `should_allow_only_one_terminal_transition_when_commit_races_timeout()` | `NodeExecutionScope` | 并发/边界 |
+| TC-216 | `should_reject_commit_when_deadline_elapsed_before_timeout_callback()` | `NodeResultCommitter#commit` | deadline 边界 |
+| TC-217 | `should_not_invoke_sse_writer_inside_commit_critical_section()` | `NodeResultCommitter#commit` | 职责边界 |
 | TC-303 | `should_continue_with_partial_success_when_one_analyst_stream_fails()` | `AnalystCollectionStage` | 回归 |
 | TC-308 | `should_not_multiply_parallel_stage_timeout_by_analyst_count()` | `AnalystCollectionStage` | 回归 |
+| TC-309 | `should_enter_error_when_all_analysts_fail()` | `AnalystCollectionStage` | 回归/失败策略 |
+| TC-310 | `should_not_run_next_stage_when_required_node_fails()` | `TradingPipeline` | 回归/phase |
+| TC-311 | `should_not_mutate_real_context_during_prepare()` | 代表 Role + Committer | 架构约束 |
 
 12 个节点不为相同调用替换重复创建 12 套低价值 mock 测试。通过公共聚合器测试、代表节点解析测试、静态调用检查和完整 pipeline 回归共同覆盖。
 
@@ -163,6 +184,8 @@
 - chunk 顺序、字符和 JSON 边界保持不变。
 - 失败尝试和成功尝试的内容不能混合。
 - 只有正常 complete 的完整字符串可以进入报告解析。
+- Prepare 只生成强类型结果；统一 Committer 提交前真实 context 和最终报告 SSE 不变。
+- Committer 只同步强类型结果到 context 并标记 `COMMITTED`，不发送 SSE 或推进 phase。
 
 ### 5.2 状态与生命周期
 
@@ -170,9 +193,13 @@
 - SSE 断连使用主动 cancellation signal，不依赖下一个模型 chunk 到达后轮询。
 - 请求取消以异常结束并丢弃部分聚合内容，不能转换为正常 complete。
 - 节点取消后不能产生 late context write、late SSE 或 phase transition。
+- `NodeExecutionResult` 为 `SUCCESS` 只是必要条件；scope 仍须处于 `RUNNING`，且 deadline 和 phase 校验通过。
+- scope 只能从 `RUNNING` 单向进入提交或终止路径，提交与超时竞争不能产生双终态。
 - 并行分析师的聚合缓冲区彼此隔离。
 - 每次逻辑 LLM 调用拥有独立 `StreamState`；每次 attempt 拥有独立 `StreamPhase`。
 - 并行分析师各自使用独立节点 deadline，阶段等待时间不乘分析师数量。
+- 分析师至少一个提交成功才允许 partial success；全部失败以及串行必需节点失败均不得推进后续 Stage。
+- 最终 SSE 只对 `COMMITTED` 结果异步入队；入队/写出失败不回滚 context，但必须触发请求取消并阻止后续 Stage。
 
 ### 5.3 异常与重试
 
@@ -195,12 +222,12 @@
 
 | 步骤 | 内容 | 预期结果 | status |
 |------|------|----------|--------|
-| 1 | 编写 RetryChatModel 状态机、聚合器和配置单元测试 | 正常、异常和边界用例可重复执行 | append |
-| 2 | 执行 RetryChatModel streaming 专项测试 | attempt 三状态、45/30/150 和重试契约通过 | append |
-| 3 | 执行 trading-domain 模块测试 | 节点和 pipeline 回归通过 | append |
-| 4 | 执行 domain 模块测试 | 公共能力与 GeneralChat 无回归 | append |
-| 5 | 全项目编译 | `BUILD SUCCESS` | append |
-| 6 | 静态搜索 12 个目标节点 | 无 `.call().content()` 遗留 | append |
+| 1 | 编写 RetryChatModel 状态机、聚合器和配置单元测试 | 正常、异常和边界用例可重复执行 | pass |
+| 2 | 执行 RetryChatModel streaming 专项测试 | attempt 三状态、45/30/150 和重试契约通过 | pass |
+| 3 | 执行 trading-domain 模块测试 | 节点和 pipeline 回归通过 | pass |
+| 4 | 执行 domain 模块测试 | 公共能力与 GeneralChat 无回归 | pass |
+| 5 | 全项目编译 | `BUILD SUCCESS` | pass |
+| 6 | 静态搜索 12 个目标节点 | 无 `.call().content()` 遗留 | pass |
 
 建议命令在实现计划中根据新增测试类最终包名确定，至少包含：
 
@@ -228,16 +255,19 @@ mvn clean compile -DskipTests
 
 | 编号 | 验收项 | 标准 | status |
 |------|--------|------|--------|
-| AC-001 | 公共聚合与调用隔离正确 | TC-001~TC-003、TC-201~TC-214 通过 | append |
-| AC-002 | 异常和取消正确 | TC-101~TC-112 通过 | append |
+| AC-001 | 公共聚合与调用隔离正确 | TC-001~TC-003、TC-201~TC-217 通过 | append |
+| AC-002 | 异常和取消正确 | TC-101~TC-116 通过 | append |
 | AC-003 | 既有重试契约保持 | TC-006、TC-102、TC-109、TC-110、TC-307 通过 | append |
-| AC-004 | 12 个节点迁移完成 | 静态检查和代表节点测试通过 | append |
+| AC-004 | 12 个节点迁移完成 | 静态检查和代表节点测试通过 | pass |
 | AC-005 | 前端协议无变化 | TC-302、云端步骤 4 通过 | append |
 | AC-006 | 慢响应问题解决 | TC-003、云端步骤 3 通过 | append |
-| AC-007 | pipeline 生命周期无回归 | TC-303、TC-306、TC-308 通过 | append |
-| AC-008 | GeneralChat 无回归 | TC-304 通过 | append |
-| AC-009 | 构建质量门槛 | 专项测试、模块测试和全项目编译通过 | append |
+| AC-007 | pipeline 生命周期无回归 | TC-303、TC-306、TC-308~TC-311 通过 | append |
+| AC-008 | GeneralChat 无回归 | TC-304 通过 | pass |
+| AC-009 | 构建质量门槛 | 专项测试、模块测试和全项目编译通过 | pass |
 | AC-010 | SSE 主动取消可靠 | TC-106、TC-111、TC-112、TC-212~TC-214 通过 | append |
+| AC-011 | 两阶段式提交可靠 | TC-113~TC-116、TC-215~TC-217、TC-311 通过 | append |
+| AC-012 | Stage 成功策略正确 | TC-303、TC-308~TC-310 通过 | append |
+| AC-013 | Post-Commit SSE 隔离 | TC-112、TC-116、TC-217 通过 | append |
 
 ---
 
@@ -256,19 +286,19 @@ mvn clean compile -DskipTests
 
 | 项目 | 结果 |
 |------|------|
-| 单元测试 | append |
-| 模块集成测试 | append |
-| 接口/SSE 回归 | append |
+| 单元测试 | pass |
+| 模块集成测试 | pass |
+| 接口/SSE 回归 | pass |
 | 云端手工验证 | append |
-| 全项目编译 | append |
+| 全项目编译 | pass |
 
 ### 问题记录
 
 | 编号 | 问题描述 | 影响范围 | 状态 |
 |------|----------|----------|------|
-| - | 当前无，实施和验证阶段补充 | - | append |
+| - | 本地自动化与编译未发现阻塞问题；云端慢响应验收待执行 | 云端验收 | append |
 
 ### 结论
 
-- 是否达到实现完成条件：否，当前仅完成 Story 与测试设计。
-- 是否达到提测/合并条件：否，待代码实现及全部 `append` 项验证为 `pass`。
+- 是否达到实现完成条件：是，本地代码实现、自动化测试和全项目编译已完成。
+- 是否达到提测/合并条件：本地质量门禁已满足；云端慢响应、真实 SSE 和断连验收仍为 `append`。

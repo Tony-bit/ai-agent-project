@@ -39,26 +39,23 @@ public class BullResearcherNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "bull_analysis_prepared";
+    }
+
+    public String prepare(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         sendDebateEvent(dynamicContext, "bull_start", "多头研究员开始分析...");
 
         String reportSummary = buildReportSummary(context);
 
         String bullThesis = generateBullThesis(context.getStockInfo().getTicker(), reportSummary, dynamicContext);
 
-        InvestmentDebateVO debate = context.getInvestmentDebate();
-        if (debate == null) {
-            debate = InvestmentDebateVO.createNew(2);
-            context.setInvestmentDebate(debate);
-        }
-
-        debate.addBullArgument(bullThesis);
-        debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] " + bullThesis);
-
-        sendDebateEvent(dynamicContext, "bull_thesis", bullThesis);
-
         log.info("多头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
-
-        return "bull_analysis_completed";
+        return bullThesis;
     }
 
     @Override
@@ -99,7 +96,8 @@ public class BullResearcherNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过多头研究员LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "BullResearcherNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("多头研究员LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

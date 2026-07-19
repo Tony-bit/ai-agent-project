@@ -7,6 +7,9 @@ import denny.ai.agent.trading.domain.node.BearResearcherNode;
 import denny.ai.agent.trading.domain.node.BullResearcherNode;
 import denny.ai.agent.trading.domain.node.ResearchManagerNode;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
+import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
+import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +21,9 @@ public class InvestmentDebateStage implements TradingStage {
     private final BearResearcherNode bearResearcherNode;
     private final ResearchManagerNode researchManagerNode;
     private final TradingNodeInvoker nodeInvoker;
+
+    @jakarta.annotation.Resource
+    private NodeResultCommitter nodeResultCommitter;
 
     public InvestmentDebateStage(BullResearcherNode bullResearcherNode,
                                  BearResearcherNode bearResearcherNode,
@@ -58,18 +64,21 @@ public class InvestmentDebateStage implements TradingStage {
             }
             debate.setLatestSpeaker("BULL");
             context.setLatestDebateSpeaker("BULL");
-            nodeInvoker.invokeIfOpen(context, "BullResearcherNode",
-                    () -> bullResearcherNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext()));
+            if (!executeBull(context, debate)) {
+                return;
+            }
 
             debate.setLatestSpeaker("BEAR");
             context.setLatestDebateSpeaker("BEAR");
-            nodeInvoker.invokeIfOpen(context, "BearResearcherNode",
-                    () -> bearResearcherNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext()));
+            if (!executeBear(context, debate)) {
+                return;
+            }
 
             debate.setLatestSpeaker("RESEARCH_MANAGER");
             context.setLatestDebateSpeaker("RESEARCH_MANAGER");
-            nodeInvoker.invokeIfOpen(context, "ResearchManagerNode",
-                    () -> researchManagerNode.doApply(new ExecuteCommandEntity(), context.getDynamicContext()));
+            if (!executeResearchManager(context, debate)) {
+                return;
+            }
 
             debate.setCurrentRound(completedRounds + 1);
             if (!debate.isNeedMoreDebate()) {
@@ -82,5 +91,66 @@ public class InvestmentDebateStage implements TradingStage {
 
         context.transitionTo(TradingPhase.RECOMMENDATION_DECISION);
         context.sendSseResult("debate", "debate_complete", "辩论结束，进入推荐决策", false);
+    }
+
+    private boolean executeBull(TradingStateContext context,
+                                TradingContextVO.InvestmentDebateVO debate) {
+        NodeExecutionScope scope = nodeInvoker.newScope(context);
+        NodeExecutionResult<String> result = nodeInvoker.invokeScoped("BullResearcherNode", scope,
+                () -> bullResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
+        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
+                context::getCurrentPhase, thesis -> {
+                    debate.addBullArgument(thesis);
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] " + thesis);
+                });
+        if (!committed) {
+            context.sendError("多头研究员执行失败");
+            return false;
+        }
+        context.sendSseResult("debate", "bull_thesis", result.value(), false);
+        return TradingPipelineSseGuard.shouldContinue(context);
+    }
+
+    private boolean executeBear(TradingStateContext context,
+                                TradingContextVO.InvestmentDebateVO debate) {
+        NodeExecutionScope scope = nodeInvoker.newScope(context);
+        NodeExecutionResult<String> result = nodeInvoker.invokeScoped("BearResearcherNode", scope,
+                () -> bearResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
+        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
+                context::getCurrentPhase, thesis -> {
+                    debate.addBearArgument(thesis);
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] " + thesis);
+                });
+        if (!committed) {
+            context.sendError("空头研究员执行失败");
+            return false;
+        }
+        context.sendSseResult("debate", "bear_thesis", result.value(), false);
+        return TradingPipelineSseGuard.shouldContinue(context);
+    }
+
+    private boolean executeResearchManager(TradingStateContext context,
+                                           TradingContextVO.InvestmentDebateVO debate) {
+        NodeExecutionScope scope = nodeInvoker.newScope(context);
+        NodeExecutionResult<ResearchManagerNode.DebateEvaluation> result =
+                nodeInvoker.invokeScoped("ResearchManagerNode", scope,
+                        () -> researchManagerNode.prepare(
+                                context.getTradingContext(), context.getDynamicContext()));
+        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
+                context::getCurrentPhase, evaluation -> {
+                    debate.setOverallScore(evaluation.overallScore());
+                    debate.setConclusion(evaluation.conclusion());
+                    debate.setJudgeDecision(evaluation.conclusion());
+                    debate.setNeedMoreDebate(evaluation.needMoreDebate());
+                });
+        if (!committed) {
+            context.sendError("研究主管执行失败");
+            return false;
+        }
+        return TradingPipelineSseGuard.shouldContinue(context);
+    }
+
+    private NodeResultCommitter committer() {
+        return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
     }
 }

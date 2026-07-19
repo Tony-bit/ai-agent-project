@@ -149,6 +149,7 @@ public class AgentRepository implements IAgentRepository {
                                 .toolMcpIds(toolMcpIds)
                                 .retryConfig(runtimeConfig.retryConfig())
                                 .compressionConfig(runtimeConfig.compressionConfig())
+                                .streamingTimeoutConfig(runtimeConfig.streamingTimeoutConfig())
                                 .build();
 
                         // 避免重复添加相同的模型配置
@@ -626,12 +627,13 @@ public class AgentRepository implements IAgentRepository {
         AiClientModelVO.CompressionConfig defaults = AiClientModelVO.CompressionConfig.builder().build();
         if (modelPO.getExtParam() == null || modelPO.getExtParam().trim().isEmpty()) {
             log.warn("extparam is null, modelId: {}", modelPO.getModelId());
-            return new ModelRuntimeConfig(null, defaults);
+            return new ModelRuntimeConfig(null, defaults, null);
         }
         String extParam = modelPO.getExtParam();
         try {
             JSONObject root = JSON.parseObject(extParam);
-            boolean composite = root.containsKey("retryConfig") || root.containsKey("compressionConfig");
+            boolean composite = root.containsKey("retryConfig") || root.containsKey("compressionConfig")
+                    || root.containsKey("streamingTimeout");
             AiClientModelVO.RetryConfig retryConfig = composite
                     ? root.getObject("retryConfig", AiClientModelVO.RetryConfig.class)
                     : root.toJavaObject(AiClientModelVO.RetryConfig.class);
@@ -641,15 +643,19 @@ public class AgentRepository implements IAgentRepository {
             if (compressionConfig == null) {
                 compressionConfig = defaults;
             }
+            AiClientModelVO.StreamingTimeoutConfig streamingTimeoutConfig = composite
+                    ? root.getObject("streamingTimeout", AiClientModelVO.StreamingTimeoutConfig.class)
+                    : null;
             validateCompressionConfig(compressionConfig, modelPO.getModelId());
-            return new ModelRuntimeConfig(retryConfig, compressionConfig);
+            validateStreamingTimeoutConfig(streamingTimeoutConfig, modelPO.getModelId());
+            return new ModelRuntimeConfig(retryConfig, compressionConfig, streamingTimeoutConfig);
         } catch (Exception e) {
             log.warn("解析模型运行配置失败，modelId={}, error={}", modelPO.getModelId(), e.getMessage());
             if (JSON.isValidObject(extParam)) {
                 throw new IllegalArgumentException("Invalid model runtime config, modelId="
                         + modelPO.getModelId() + ", error=" + e.getMessage(), e);
             }
-            return new ModelRuntimeConfig(null, defaults);
+            return new ModelRuntimeConfig(null, defaults, null);
         }
     }
 
@@ -668,7 +674,25 @@ public class AgentRepository implements IAgentRepository {
         }
     }
 
+    private void validateStreamingTimeoutConfig(AiClientModelVO.StreamingTimeoutConfig config,
+                                                String modelId) {
+        if (config == null) {
+            return;
+        }
+        validatePositive(config.getFirstContentTimeoutMs(),
+                "streamingTimeout.firstContentTimeoutMs", modelId);
+        validatePositive(config.getIdleTimeoutMs(), "streamingTimeout.idleTimeoutMs", modelId);
+        validatePositive(config.getTotalTimeoutMs(), "streamingTimeout.totalTimeoutMs", modelId);
+    }
+
+    private void validatePositive(Long value, String property, String modelId) {
+        if (value != null && value <= 0) {
+            throw new IllegalArgumentException(property + " must be positive, modelId=" + modelId);
+        }
+    }
+
     private record ModelRuntimeConfig(AiClientModelVO.RetryConfig retryConfig,
-                                      AiClientModelVO.CompressionConfig compressionConfig) {
+                                      AiClientModelVO.CompressionConfig compressionConfig,
+                                      AiClientModelVO.StreamingTimeoutConfig streamingTimeoutConfig) {
     }
 }

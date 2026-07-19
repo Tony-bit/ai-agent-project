@@ -39,6 +39,16 @@ public class RecommendationNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "recommendation_plan_prepared";
+    }
+
+    public TradingContextVO.InvestmentPlanVO prepare(
+            TradingContextVO context,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         String ticker = context.getStockInfo().getTicker();
 
         sendRecommendationEvent(dynamicContext, "recommendation_start", "推荐节点开始生成投资建议...");
@@ -47,18 +57,9 @@ public class RecommendationNode extends AbstractExecuteSupport {
 
         String planJson = generateInvestmentPlan(ticker, analysisSummary, dynamicContext);
 
-        parseAndUpdatePlan(context, planJson);
-
-        sendRecommendationEvent(dynamicContext, "recommendation_plan", JSON.toJSONString(context.getInvestmentPlan()));
-
-        log.info("推荐节点执行完成: ticker={}, action={}",
-                ticker, context.getInvestmentPlan() != null ? context.getInvestmentPlan().getAction() : "N/A");
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().recommendationComplete();
-        }
-
-        return "recommendation_plan_completed";
+        TradingContextVO.InvestmentPlanVO plan = parsePlan(planJson);
+        log.info("推荐节点执行完成: ticker={}, action={}", ticker, plan.getAction());
+        return plan;
     }
 
     @Override
@@ -124,7 +125,8 @@ public class RecommendationNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过推荐节点LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "RecommendationNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("推荐节点LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
@@ -133,7 +135,7 @@ public class RecommendationNode extends AbstractExecuteSupport {
         return response;
     }
 
-    private void parseAndUpdatePlan(TradingContextVO context, String llmResponse) {
+    private TradingContextVO.InvestmentPlanVO parsePlan(String llmResponse) {
         try {
             String jsonStr = extractJson(llmResponse);
             com.alibaba.fastjson.JSONObject json = JSON.parseObject(jsonStr);
@@ -148,15 +150,14 @@ public class RecommendationNode extends AbstractExecuteSupport {
                     .riskRewardRatio(getDoubleOrDefault(json, "riskRewardRatio", 0.0))
                     .build();
 
-            context.setInvestmentPlan(plan);
             log.info("投资计划解析成功: action={}, positionRatio={}", plan.getAction(), plan.getPositionRatio());
+            return plan;
         } catch (Exception e) {
             log.error("解析投资计划失败: {}", llmResponse, e);
-            TradingContextVO.InvestmentPlanVO fallbackPlan = TradingContextVO.InvestmentPlanVO.builder()
+            return TradingContextVO.InvestmentPlanVO.builder()
                     .action("HOLD")
                     .positionRatio(0.0)
                     .build();
-            context.setInvestmentPlan(fallbackPlan);
         }
     }
 

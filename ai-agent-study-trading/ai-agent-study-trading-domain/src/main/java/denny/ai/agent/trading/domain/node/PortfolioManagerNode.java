@@ -46,6 +46,16 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "portfolio_manager_prepared";
+    }
+
+    public TradingContextVO.FinalTradeDecisionVO prepare(
+            TradingContextVO context,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         String ticker = context.getStockInfo().getTicker();
 
         sendFinalEvent(dynamicContext, "portfolio_manager_start", "组合经理开始最终审批...");
@@ -54,23 +64,9 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
         String decisionJson = generateFinalDecision(ticker, context, riskSummary, dynamicContext);
 
-        parseAndUpdateFinalDecision(context, decisionJson);
-
-        sendFinalEvent(dynamicContext, "final_decision", JSON.toJSONString(context.getFinalDecision()));
-
-        log.info("组合经理决策完成: ticker={}, decision={}",
-                ticker, context.getFinalDecision() != null ? context.getFinalDecision().getDecision() : "N/A");
-
-        dynamicContext.setValue("tradingFinalDecision", JSON.toJSONString(context.getFinalDecision()));
-        tradingResultExportService.export(TradingResultVO.from(context));
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().sendSseResult("final", "final_completed",
-                    "交易分析完成，最终决策: " +
-                    (context.getFinalDecision() != null ? context.getFinalDecision().getDecision() : "N/A"), true);
-        }
-
-        return "portfolio_manager_completed";
+        TradingContextVO.FinalTradeDecisionVO decision = parseFinalDecision(decisionJson);
+        log.info("组合经理决策完成: ticker={}, decision={}", ticker, decision.getDecision());
+        return decision;
     }
 
     @Override
@@ -117,7 +113,8 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过组合经理LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "PortfolioManagerNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("组合经理LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
@@ -126,7 +123,7 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         return response;
     }
 
-    private void parseAndUpdateFinalDecision(TradingContextVO context, String llmResponse) {
+    private TradingContextVO.FinalTradeDecisionVO parseFinalDecision(String llmResponse) {
         try {
             String jsonStr = extractJson(llmResponse);
             JSONObject json = JSON.parseObject(jsonStr);
@@ -138,18 +135,17 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
                     .reasoning(getStringOrDefault(json, "reasoning", ""))
                     .build();
 
-            context.setFinalDecision(decision);
             log.info("最终决策解析成功: decision={}, confidence={}, overallRating={}",
                     decision.getDecision(), decision.getConfidence(), decision.getOverallRating());
+            return decision;
         } catch (Exception e) {
             log.error("解析最终决策失败: {}", llmResponse, e);
-            TradingContextVO.FinalTradeDecisionVO fallback = TradingContextVO.FinalTradeDecisionVO.builder()
+            return TradingContextVO.FinalTradeDecisionVO.builder()
                     .decision("HOLD")
                     .confidence("LOW")
                     .overallRating(3.0)
                     .reasoning("分析失败，降级为持有")
                     .build();
-            context.setFinalDecision(fallback);
         }
     }
 

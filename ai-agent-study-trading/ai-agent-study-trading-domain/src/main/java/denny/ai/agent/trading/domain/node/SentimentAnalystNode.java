@@ -46,6 +46,15 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "sentiment_analysis_prepared";
+    }
+
+    public SentimentReportVO prepare(TradingContextVO context,
+                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null || context.getStockInfo() == null) {
+            throw new IllegalArgumentException("trading context or stock info is missing");
+        }
         StockInfoVO stockInfo = context.getStockInfo();
         String ticker = stockInfo.getTicker();
 
@@ -60,18 +69,9 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
         SentimentReportVO report = generateReport(stockInfo, sentimentData, dynamicContext);
 
-        sendAnalystEvent(dynamicContext, "analyst_report", JSON.toJSONString(report));
-
-        context.setSentimentReport(report);
-
         log.info("情绪分析完成: ticker={}, rating={}, sentimentScore={}",
                 ticker, report.getRating(), report.getSentimentScore());
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().analystComplete();
-        }
-
-        return "sentiment_analysis_completed";
+        return report;
     }
 
     @Override
@@ -106,7 +106,8 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过情绪分析师LLM调用");
             return parseReport("", sentimentData);
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "SentimentAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("情绪分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

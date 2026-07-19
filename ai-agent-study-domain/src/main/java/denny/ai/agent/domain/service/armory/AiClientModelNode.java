@@ -9,6 +9,7 @@ import denny.ai.agent.domain.service.armory.factory.DynamicContext;
 import denny.ai.agent.domain.model.entity.ArmoryCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.StreamingTimeoutConfig;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodeExtractor;
@@ -44,6 +45,9 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     @Resource
     private PromptCompressionService promptCompressionService;
+
+    @Resource
+    private AiStreamingProperties aiStreamingProperties;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -87,7 +91,7 @@ public class AiClientModelNode extends AbstractArmorySupport{
             CompressionPolicy compressionPolicy = toCompressionPolicy(
                     modelVO.getCompressionConfig(), systemPromptMap);
             ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig(),
-                    compressionPolicy);
+                    compressionPolicy, modelVO.getStreamingTimeoutConfig());
             registerBean(getBeanName(modelVO.getModelId()), ChatModel.class, registeredModel);
         }
 
@@ -96,6 +100,12 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
                                   CompressionPolicy compressionPolicy) {
+        return applyRetryDecorator(chatModel, retryConfig, compressionPolicy, null);
+    }
+
+    ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
+                                  CompressionPolicy compressionPolicy,
+                                  StreamingTimeoutConfig streamingTimeoutConfig) {
         boolean retryEnabled = retryConfig != null && retryConfig.isEnabled();
         RetryConfig effectiveRetryConfig = retryEnabled
                 ? retryConfig
@@ -107,8 +117,11 @@ public class AiClientModelNode extends AbstractArmorySupport{
                 effectiveRetryConfig.getMaxAttempts(),
                 effectiveRetryConfig.getInitialIntervalMs(),
                 effectiveRetryConfig.getMultiplier());
+        AiStreamingProperties properties = aiStreamingProperties == null
+                ? new AiStreamingProperties() : aiStreamingProperties;
         return new RetryChatModel(chatModel, effectiveRetryConfig, compressionPolicy,
-                promptCompressionService, new AiErrorCodeExtractor());
+                promptCompressionService, new AiErrorCodeExtractor(),
+                properties.resolve(streamingTimeoutConfig));
     }
 
     private CompressionPolicy toCompressionPolicy(CompressionConfig config,

@@ -39,33 +39,19 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
             return "error: no trading context";
         }
 
+        prepare(context, dynamicContext);
+        return "neutral_risk_prepared";
+    }
+
+    public String prepare(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        if (context == null) {
+            throw new IllegalArgumentException("trading context is missing");
+        }
         sendRiskEvent(dynamicContext, "neutral_start", "中性风控分析师开始分析...");
-
-        TradingContextVO.RiskDebateVO riskDebate = context.getRiskDebate();
-        if (riskDebate == null) {
-            riskDebate = TradingContextVO.RiskDebateVO.builder()
-                    .riskItems(new ArrayList<>())
-                    .mitigations(new ArrayList<>())
-                    .build();
-            context.setRiskDebate(riskDebate);
-        }
-
         String opinion = generateRiskOpinion(context, dynamicContext);
-
-        if (riskDebate.getNeutralHistory() == null) {
-            riskDebate.setNeutralHistory(new ArrayList<>());
-        }
-        riskDebate.getNeutralHistory().add(opinion);
-
-        sendRiskEvent(dynamicContext, "neutral_opinion", opinion);
-
         log.info("中性风控分析师分析完成");
-
-        if (TradingDriver.getCurrent() != null) {
-            TradingDriver.getCurrent().riskDebateComplete();
-        }
-
-        return "neutral_risk_completed";
+        return opinion;
     }
 
     @Override
@@ -91,7 +77,8 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
             log.info("SSE已关闭，跳过中性风控分析师LLM调用");
             return "";
         }
-        String response = chatClient.prompt().user(prompt).call().content();
+        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+                "NeutralRiskAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("中性风控分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

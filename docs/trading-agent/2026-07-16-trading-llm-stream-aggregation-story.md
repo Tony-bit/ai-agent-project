@@ -44,8 +44,9 @@ chatClient.prompt().user(prompt).call().content();
 
 - 将 12 个 Trading Agent 文本生成节点从 `.call().content()` 改为 `.stream().content()`。
 - 在后端内存中按顺序聚合所有 chunk，完成后返回一个完整 `String`。
-- 保持现有 JSON 解析、`TradingContextVO` 写入和 SSE 事件协议不变。
+- 保持现有报告 JSON 和 SSE 事件协议不变；将 `TradingContextVO` 写入收口到统一提交门禁。
 - 统一封装流式聚合逻辑，避免 12 个节点重复实现。
+- 12 个节点先生成强类型业务结果，只有未取消、未超时的成功结果才允许提交并推进 Stage。
 - 区分连接超时、首个有效文本超时、文本 chunk 空闲超时、模型调用总超时和节点总超时。
 - 保持现有 `RetryChatModel` 的压缩和重试语义。
 - 增加可执行的单元测试、回归测试和云端手工验收步骤。
@@ -93,7 +94,7 @@ chatClient.prompt().user(prompt).call().content();
 
 ### 5.2 方案 B：在 `AbstractExecuteSupport` 统一封装（采用）
 
-在公共执行基类提供受保护的流式聚合入口，由独立、可测试的聚合组件处理 Flux。12 个节点只替换调用方式，原有报告解析不动。
+在公共执行基类提供受保护的流式聚合入口，由独立、可测试的聚合组件处理 Flux。12 个节点复用原有报告解析规则，但调整为返回强类型结果；真实 context 写入和最终 SSE 统一移到提交门禁。
 
 采用原因：
 
@@ -111,16 +112,23 @@ chatClient.prompt().user(prompt).call().content();
 ## 6. 目标数据流
 
 ```text
-Trading Node
+Trading Role / Node (Prepare)
   -> ChatClient.stream().content()
   -> RetryChatModel.stream()
   -> WebClient 持续读取模型 SSE/chunk
   -> StreamingChatResponseCollector 按序追加到 StringBuilder
   -> 模型流正常完成
   -> 返回完整 String
-  -> 节点解析 JSON / 构建 ReportVO
+  -> 节点解析 JSON / 校验并构建强类型业务结果
+  -> 返回 NodeExecutionResult.success(value)
+Stage / NodeResultCommitter (Commit)
+  -> 校验 result=SUCCESS、scope=RUNNING、deadline 未过期且 phase 正确
+  -> 原子取得提交权
   -> 写入 TradingContextVO
-  -> 发送现有 analyst_report / debate / risk / recommendation SSE 事件
+  -> 标记 scope=COMMITTED
+Stage (Post-Commit)
+  -> 将现有 analyst_report / debate / risk / recommendation SSE 事件异步入队
+  -> 根据已提交结果和阶段成功策略推进 phase
 ```
 
 聚合内容只存在当前方法调用的局部 `StringBuilder` 中：
@@ -128,6 +136,7 @@ Trading Node
 - 每次 LLM 调用独立，不共享可变状态。
 - 正常完成后由现有业务对象持有解析结果。
 - 超时、取消或异常时丢弃不完整字符串。
+- 节点在 Prepare 阶段不写真实 `DynamicContext`；迟到的完整结果同样会被提交门禁丢弃。
 - JVM 退出时不保证恢复，这是本次明确接受的行为。
 
 ---
@@ -142,7 +151,7 @@ Trading Node
 protected String collectStreamingResponse(
         ChatClient.ChatClientRequestSpec requestSpec,
         String operationName,
-        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext)
+        SseEventSink sseEventSink)
 ```
 
 职责：
@@ -150,8 +159,10 @@ protected String collectStreamingResponse(
 - 调用 `requestSpec.stream().content()`。
 - 将 Flux 交给聚合组件。
 - 记录操作名、首个有效文本耗时、总耗时、chunk 数和响应长度。
-- 在每个 chunk 到达时检查 SSE/任务是否仍允许继续；关闭后取消订阅。
+- 通过只读的 `SseEventSink` cancellation signal 检查请求是否仍允许继续；关闭后取消订阅。
 - 正常完成后返回完整字符串，异常时不返回部分结果。
+
+该公共入口不接收 Trading 模块的 `NodeExecutionScope` 或可写 `DynamicContext`，避免 domain 公共能力反向依赖 trading。Stage 在调用 Role 前从 context 提取只读业务输入和 sink；节点 deadline/提交资格继续由 trading 层 scope 管理。
 
 ### 7.2 聚合规则
 
@@ -263,6 +274,60 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 
 取消通过关闭现有模型 streaming 连接实现。大多数 OpenAI 兼容供应商会在连接关闭后停止生成，但是否立即停止服务端计算和计费取决于供应商；本次不假设存在额外的任务 ID 取消 API。
 
+### 7.8 节点结果、提交门禁与 Stage 推进
+
+本次采用轻量的两阶段式提交，但不引入数据库事务或分布式 2PC：
+
+1. **Prepare**：Role 完成取数、LLM 流式聚合、JSON 解析和业务校验，只生成强类型结果，不修改真实 `DynamicContext`，不发送最终报告 SSE。
+2. **Commit**：Stage 调用统一 `NodeResultCommitter` 校验结果状态和执行作用域，取得提交权后只把强类型结果写入 `TradingContextVO` 并标记 `COMMITTED`。
+3. **Discard**：失败、超时、取消或超过 deadline 后才返回的完整结果均被丢弃，不能推进 phase。
+4. **Post-Commit**：Stage 只对 `COMMITTED` 结果发送最终报告 SSE 并计算 phase；SSE 异步入队，不属于 CAS 临界区。
+
+核心对象：
+
+```java
+NodeExecutionResult<T> {
+    NodeExecutionStatus status; // SUCCESS / FAILED / TIMED_OUT / CANCELLED
+    T value;
+    Throwable error;
+    NodeExecutionScope scope;
+}
+
+NodeExecutionScope {
+    Instant deadline;
+    AtomicReference<NodeExecutionState> state;
+    CancellationSignal cancellationSignal;
+}
+```
+
+`NodeExecutionResult` 判断是否存在通过解析和校验的成功结果；`NodeExecutionScope` 判断该结果当前是否仍有提交资格。仅检查 `result.isSuccess()` 不足以阻止超时后返回的完整迟到结果。
+
+提交状态遵循以下单向转换：
+
+```text
+RUNNING -> COMMITTING -> COMMITTED
+RUNNING -> FAILED
+RUNNING -> TIMED_OUT
+RUNNING -> CANCELLED
+```
+
+- `NodeResultCommitter` 只接受 `SUCCESS`，并通过 CAS 从 `RUNNING` 取得 `COMMITTING`。
+- 取得提交权前必须再次检查 deadline、请求取消信号和 Stage 当前 phase。
+- 超时处理必须先把 scope 从 `RUNNING` 切到 `TIMED_OUT`，再执行 `future.cancel(true)`；因此后台任务即使不响应中断，也无法提交迟到结果。
+- 如果提交与超时同时竞争，只有一个状态转换能够成功：超时先成功则丢弃结果；截止时间内提交先成功则完成短小的原子提交，外层按成功处理。
+- Commit 区域只包含一次 context 结果赋值和 `COMMITTED` 状态记录，不包含 SSE、phase 推进、LLM、网络、解析或其他业务计算。
+- Role 不再拥有真实上下文的写权限。执行所需数据在调用前提取为只读输入；进度 SSE 通过带 scope 检查的通道发送，最终报告 SSE 仅在 Commit 成功后由 Stage 异步入队。
+- SSE 入队成功不代表浏览器已经收到，Committer 不等待 writer 确认，因此不会把客户端网络时延引入业务主链路。
+- 最终 SSE 入队失败或稍后 writer 写出失败时，触发请求级 cancellation signal 并停止后续 Stage；已经提交的 context 不回滚。
+
+Stage 是后续业务是否继续的唯一决策点：
+
+- 四个分析师并行阶段：至少一个 `COMMITTED` 时允许 partial success 并进入 `INVESTMENT_DEBATE`；全部失败、超时或取消时进入 `ERROR`，不创建辩论上下文。
+- 其他串行 Stage：当前必需节点提交成功后才能推进；失败、超时或取消时进入 `ERROR`，后续 Stage 不执行。
+- `TradingPipeline` 继续通过 `expectedPhase()` / `nextPhase()` 校验阶段顺序，但各 Stage 不得再无条件调用 `transitionTo(nextPhase)`。
+
+该方案借鉴 Codex 的任务级 cancellation token、明确 interrupted 终态和 abort 收尾，以及 OpenCode 的显式 aborted/error 状态与统一 finalization。两者的 snapshot/patch 用于记录副作用，并不等价于复制整份上下文；结合本工程的内存业务上下文，采用强类型结果加受控提交比深拷贝 `DynamicContext` 更直接。
+
 ---
 
 ## 8. 文件变更设计
@@ -274,6 +339,9 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 | `ai-agent-study-domain/.../AiStreamingProperties.java` | streaming 全局默认超时配置与关系校验 | append |
 | `ai-agent-study-domain/.../StreamingChatResponseCollector.java` | chunk 聚合、请求取消和指标日志 | append |
 | `ai-agent-study-domain/.../ClientDisconnectedException.java` | 区分请求主动取消与模型/业务失败，禁止部分结果落地 | append |
+| `ai-agent-study-trading-domain/.../NodeExecutionResult.java` | 承载节点强类型结果、失败原因和执行作用域 | append |
+| `ai-agent-study-trading-domain/.../NodeExecutionScope.java` | 节点级 deadline、取消信号和原子提交状态机 | append |
+| `ai-agent-study-trading-domain/.../NodeResultCommitter.java` | 统一校验提交资格，只同步强类型结果到真实 context 并标记终态 | append |
 | `ai-agent-study-domain/src/test/.../StreamingChatResponseCollectorTest.java` | 聚合组件单元测试 | append |
 | `docs/superpowers/test/2026-07-16-trading-llm-stream-aggregation-test.md` | 配套验证设计 | append |
 
@@ -289,11 +357,12 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 | `SseEventSink.java` | 增加请求级 cancellation signal 契约 | append |
 | `AbstractExecuteSupport.java` | 注入聚合组件并提供统一受保护入口 | append |
 | `TradingAgentProperties.java` | 增加可配置的节点总时限并校验 | append |
-| `TradingNodeInvoker.java` | 使用配置化的单节点 180 秒 deadline 替换硬编码常量 | append |
-| `AnalystCollectionStage.java` | 每个并行节点独立 deadline，移除 `timeout * analysts.size()` | append |
+| `TradingNodeInvoker.java` | 创建节点 scope，使用配置化 180 秒 deadline；超时先关闭提交门禁再取消 Future | append |
+| 所有 Trading Stage | 根据 `NodeExecutionResult` 执行统一提交；成功后异步发送最终 SSE，并按已提交结果推进 phase | append |
+| `AnalystCollectionStage.java` | 收集每个分析师的独立结果/deadline，移除超时乘算并实现 partial success 提交策略 | append |
 | `TradingDispatcher.java` | legacy 路径与配置化时限对齐 | append |
 | `TradingSseSession.java` | 使用 Reactor Sink 在断连/失败时触发一次性请求取消信号 | append |
-| 上述 12 个 Trading Node | `.call().content()` 替换为统一流式聚合入口 | append |
+| 上述 12 个 Trading Node | 使用统一流式聚合入口并返回强类型结果，移除对真实 `DynamicContext` 的直接写入和最终 SSE 发送 | append |
 | `application.yml` | 增加默认配置和环境变量覆盖入口 | append |
 | `RetryChatModelStreamTest.java` | 增加 attempt 三状态、首内容/空闲/总超时和状态隔离用例 | append |
 
@@ -328,10 +397,12 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 | Task 2 | 配置 WebClient 连接保护，补齐连接超时异常识别 | append |
 | Task 3 | 在 `RetryChatModel` 实现并测试统一的 streaming 超时状态机 | append |
 | Task 4 | 在 `AbstractExecuteSupport` 暴露统一入口 | append |
-| Task 5 | 改造 12 个 Trading Node，保持解析和 SSE 协议不变 | append |
-| Task 6 | 配置化 Trading 节点总时限并统一新旧 pipeline | append |
-| Task 7 | 补齐重试、取消、超时和节点回归测试 | append |
-| Task 8 | 执行模块测试、全量编译和云端慢响应验收 | append |
+| Task 5 | 新增 `NodeExecutionResult`、`NodeExecutionScope` 和统一 `NodeResultCommitter` | append |
+| Task 6 | 改造 12 个 Trading Node 为 Prepare-only 强类型结果生产者，保持报告 JSON 和 SSE 协议不变 | append |
+| Task 7 | 改造 Invoker 与所有 Stage，按提交结果和阶段成功策略推进 phase | append |
+| Task 8 | 配置化 Trading 节点总时限并统一新旧 pipeline | append |
+| Task 9 | 补齐重试、取消、提交竞争、partial success 和 phase 回归测试 | append |
+| Task 10 | 执行模块测试、全量编译和云端慢响应验收 | append |
 
 ---
 
@@ -344,6 +415,11 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 | 聚合器未响应线程中断 | 节点超时后继续消耗模型资源 | 测试取消订阅和中断传播 |
 | SSE 静默期间断连未被模型流感知 | 浏览器离开后继续生成和计费 | heartbeat 发现断连后触发请求级 cancellation signal，主动取消全部在途模型流 |
 | 取消被当成正常 complete | 残缺文本进入报告解析 | 使用明确取消异常结束，不允许返回部分 `StringBuilder` |
+| 迟到完整结果被误判为成功 | 超时后污染 context 或推进后续 Stage | 结果状态与 scope 提交资格双重校验；超时先关闭门禁再取消 Future |
+| 提交与超时发生竞争 | 同一节点同时被记录为成功和超时 | CAS 单向状态机；只有 `RUNNING` 能转换到提交或终止状态 |
+| Role 仍直接写真实上下文 | 提交门禁被绕过 | 12 个 Role 只返回强类型结果，真实 context 仅由 Committer 修改 |
+| SSE 网络写出进入 CAS 临界区 | 慢客户端扩大竞争窗口并拖慢 Pipeline | Commit 只写 context；最终 SSE 在成功后异步入队，不等待浏览器确认 |
+| context 提交后 SSE 失败 | 前端未收到已生成报告 | 保留请求级 context，不做回滚；触发取消并停止后续 Stage，记录失败指标 |
 | 并发任务累积响应文本 | JVM 内存上涨 | 本次接受残余风险；文本只保留请求局部变量，并依赖模型输出 token 和 150 秒总时限 |
 | streaming 超时策略影响 GeneralChat | 改变聊天首字体验或超时 | 统一策略进入 `RetryChatModel`，增加 GeneralChat 回归并支持模型级覆盖 |
 | 空流或残缺 JSON | 报告解析失败 | 空流沿用节点兜底；异常流不返回部分报告 |
@@ -366,6 +442,10 @@ CONTENT_OBSERVED   -> 已收到至少一个非空文本 delta
 | AC-009 | 取消无 late side effect | 超时/断连后不再写 context、发 late SSE 或推进 phase | append |
 | AC-010 | 回归通过 | domain/trading 相关测试通过且全项目编译成功 | append |
 | AC-011 | SSE 断连主动取消 | 断连信号触发后，该请求全部在途模型订阅被取消且不返回部分结果 | append |
+| AC-012 | 节点结果受控提交 | 12 个节点 Prepare 阶段不直接写真实 context；仅 `SUCCESS + RUNNING + deadline/phase 合法` 能同步结果并标记 `COMMITTED` | append |
+| AC-013 | 迟到结果无副作用 | 超时/取消先取得终止状态后，迟到的完整结果不能写 context、发送最终 SSE 或推进 phase | append |
+| AC-014 | Stage 成功策略正确 | 分析师至少一个提交时 partial success；全部失败或串行必需节点失败时进入 ERROR 且后续 Stage 不执行 | append |
+| AC-015 | Post-Commit SSE 隔离 | Commit 不等待 SSE 网络写出；入队/写出失败不回滚 context，但会取消请求并停止后续 Stage | append |
 
 ---
 

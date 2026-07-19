@@ -5,6 +5,8 @@ import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.domain.service.sse.SseSessionState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -42,6 +44,7 @@ public class TradingSseSession implements SseEventSink {
     private final AtomicLong sendFailureCount = new AtomicLong(0L);
     private final AtomicLong clientDisconnectedCount = new AtomicLong(0L);
     private final AtomicLong sessionClosedDueToBackpressureCount = new AtomicLong(0L);
+    private final Sinks.One<Void> cancellation = Sinks.one();
 
     private final String requestId;
     private final String sessionId;
@@ -178,6 +181,7 @@ public class TradingSseSession implements SseEventSink {
         SseSessionState current = state.get();
         while (current == SseSessionState.OPEN || current == SseSessionState.CLOSING) {
             if (state.compareAndSet(current, SseSessionState.DISCONNECTED)) {
+                cancellation.tryEmitEmpty();
                 clientDisconnectedCount.incrementAndGet();
                 cleanup(true, true);
                 if (cause != null) {
@@ -203,6 +207,11 @@ public class TradingSseSession implements SseEventSink {
     @Override
     public SseSessionState state() {
         return state.get();
+    }
+
+    @Override
+    public Mono<Void> cancellationSignal() {
+        return cancellation.asMono();
     }
 
     public int queueSize() {
@@ -337,6 +346,7 @@ public class TradingSseSession implements SseEventSink {
         SseSessionState current = state.get();
         while (current == SseSessionState.OPEN || current == SseSessionState.CLOSING) {
             if (state.compareAndSet(current, SseSessionState.FAILED)) {
+                cancellation.tryEmitEmpty();
                 cleanup(true, true);
                 if (completeEmitter) {
                     try {
@@ -356,6 +366,7 @@ public class TradingSseSession implements SseEventSink {
         SseSessionState current = state.get();
         while (current == SseSessionState.OPEN || current == SseSessionState.CLOSING) {
             if (state.compareAndSet(current, SseSessionState.DISCONNECTED)) {
+                cancellation.tryEmitEmpty();
                 clientDisconnectedCount.incrementAndGet();
                 cleanup(false, true);
                 log.warn("交易分析SSE写出失败，标记断连: ticker={}, sessionId={}, error={}, exClass={}",
