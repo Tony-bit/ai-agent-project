@@ -340,6 +340,9 @@
 | 4 | 执行真实主链路 TC-001～TC-008、TC-301～TC-307 | 无阻塞回归；外部阻塞被如实记录 | blocked（核心链路通过；记忆同步受 402 余额限制，分页/清空未执行） |
 | 5 | 执行 `mvn clean test` | 默认测试无本轮新增失败 | pass（11/11 reactor modules） |
 | 6 | 执行 `git diff --check` | 无空白错误 | pass |
+| 7 | 执行 `TradingNodeInvokerTest` 与 SSE 终态定向套件 | 配置化构造器由 Spring 注入元数据唯一选中，相关协议测试通过 | pass（17/17） |
+| 8 | 构建并启动当前分支可执行 jar | 应用上下文创建成功并监听 8090 | pass |
+| 9 | 对 `auto_agent` 与独立 trading 入口执行真实 SSE 请求 | 两个成功响应都包含 `trading_complete` | append（已只读加载主工作区配置复验；`auto_agent` 仍缺少 INTENT_ROUTING 客户端配置，独立 trading 仍网络请求超时） |
 
 ### 9.2 手工验证顺序
 

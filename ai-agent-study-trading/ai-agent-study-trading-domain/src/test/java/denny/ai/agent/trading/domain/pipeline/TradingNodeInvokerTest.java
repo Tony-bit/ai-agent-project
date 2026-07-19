@@ -6,15 +6,21 @@ import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeExecutionState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
+import java.lang.reflect.Constructor;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TradingNodeInvokerTest {
@@ -24,6 +30,22 @@ class TradingNodeInvokerTest {
     @AfterEach
     void tearDown() {
         executor.shutdownNow();
+    }
+
+    @Test
+    void should_expose_single_configured_constructor_for_spring() {
+        Constructor<?>[] candidates = Arrays.stream(TradingNodeInvoker.class.getDeclaredConstructors())
+                .filter(constructor -> constructor.isAnnotationPresent(Autowired.class))
+                .toArray(Constructor<?>[]::new);
+
+        assertNotNull(candidates);
+        assertEquals(1, candidates.length);
+        assertArrayEquals(
+                new Class<?>[]{ExecutorService.class, TradingAgentProperties.class},
+                candidates[0].getParameterTypes());
+        Qualifier executorQualifier = candidates[0].getParameters()[0].getAnnotation(Qualifier.class);
+        assertNotNull(executorQualifier);
+        assertEquals("tradingTaskExecutor", executorQualifier.value());
     }
 
     @Test

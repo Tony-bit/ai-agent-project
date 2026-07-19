@@ -466,6 +466,52 @@ git add docs/superpowers/test/2026-06-21-frontend-product-polish-test.md docs/su
 git commit -m "test: verify SSE terminal state handling"
 ```
 
+### Task 4A: Repair TradingNodeInvoker constructor injection
+
+| Task | status |
+|---|---|
+| Task 4A: Repair TradingNodeInvoker constructor injection | pass |
+
+**Files:**
+- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvoker.java`
+- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvokerTest.java`
+- Modify: `docs/superpowers/plans/2026-07-19-sse-terminal-state.md`
+- Modify: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
+
+- [x] **Step 1: Add a failing Spring constructor-selection test**
+
+status: pass
+
+Inspect the constructor injection metadata and assert that exactly one constructor is marked `@Autowired`, with parameter types `ExecutorService` and `TradingAgentProperties`, and that the executor parameter carries `@Qualifier("tradingTaskExecutor")`. Run only `TradingNodeInvokerTest` and confirm the current two-constructor implementation fails because no constructor is explicitly selected.
+
+- [x] **Step 2: Make the configured constructor explicit for Spring**
+
+status: pass
+
+Use constructor injection on the two-argument constructor, qualify the executor parameter, and retain the one-argument constructor only as a test convenience. The production path must use the configured `TradingAgentProperties` bean.
+
+- [x] **Step 3: Run focused constructor and protocol tests**
+
+status: pass
+
+Run `TradingNodeInvokerTest` plus the Task 4 focused backend suite. Expected: all selected tests pass.
+
+- [x] **Step 4: Package and start the application**
+
+status: pass
+
+Build the executable app jar, start it from this worktree, and verify port 8090 listens. Only after the constructor test passes and the application listens may Task 4A change to `pass`.
+
+#### Task 4A execution report
+
+| Verification item | Result | Evidence | status |
+|---|---|---|---|
+| Constructor-selection red test | Failed as expected before the fix: expected one `@Autowired` constructor, found zero | `TradingNodeInvokerTest#should_expose_single_configured_constructor_for_spring` | pass |
+| Constructor-selection green test | 3/3 `TradingNodeInvokerTest` tests passed | Focused trading-domain Maven run | pass |
+| Focused protocol regression | 17 selected tests passed, 0 failed/errors; 11-module Reactor build succeeded | Task 4A Step 3 Maven run | pass |
+| Package | Executable jar rebuilt successfully | `mvn -pl ai-agent-study-app -am -Dmaven.test.skip=true package`, `BUILD SUCCESS` | pass |
+| Application startup | Spring context created `TradingNodeInvoker`; application started and listened on port 8090 | `Tomcat started on port 8090`, PID 36880 | pass |
+
 #### Task 4 execution report
 
 | Verification item | Result | Evidence | status |
@@ -474,8 +520,8 @@ git commit -m "test: verify SSE terminal state handling"
 | Frontend focused suite | 28 tests passed, 0 failed | `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | pass |
 | Backend focused suite | 14 selected tests passed, 0 failed/errors; Reactor build succeeded | Focused Maven command from Step 2 | pass |
 | Broader module regression | 11/11 Reactor modules succeeded | Maven command from Step 3, `BUILD SUCCESS` | pass |
-| Application startup | Executable jar built, but Spring context failed before port 8090 listened: `TradingNodeInvoker` has no default constructor selected | `target/task4-app.out.log`, root cause `NoSuchMethodException: TradingNodeInvoker.<init>()` | append |
-| `auto_agent` raw SSE | Could not connect because application startup failed; no terminal frame captured | `curl: (7) Failed to connect to localhost port 8090` | append |
-| Dedicated trading raw SSE | Could not connect because application startup failed; no terminal frame captured | `curl: (7) Failed to connect to localhost port 8090` | append |
+| Application startup | Constructor injection blocker repaired; executable jar started and listened on port 8090 | `target/task4a-app.out.log`, `Tomcat started on port 8090` | pass |
+| `auto_agent` raw SSE | Request reached SSE endpoint but returned explicit error before trading execution; no `trading_complete` frame | Final read-only main-workspace config verification in `target/task4-main-config-auto.sse`: `Missing INTENT_ROUTING client configuration` | append |
+| Dedicated trading raw SSE | Request reached SSE endpoint but returned explicit trading error; no `trading_complete` frame | Final read-only main-workspace config verification in `target/task4-main-config-trading.sse`: `subType:error`, network request timeout | append |
 
-Task 4 remains `append`. The automated suites provide protocol-level coverage, but they do not replace the required raw SSE verification through both running application entry points. After fixing the Spring constructor injection blocker, restart the current branch artifact and rerun both Step 4 curl commands; only then may TC-102, Task 4, and the document-level statuses be considered for `pass`.
+Task 4 remains `append`. The constructor injection blocker is fixed, but the automated suites do not replace successful raw SSE verification through both running application entry points. A final attempt loaded the main workspace `application.yml` read-only through Spring's external config location; the application listened on 8090, but both endpoints still returned the explicit errors above. Restore valid database/client configuration for `auto_agent` and network/model availability for the dedicated trading route, then rerun both Step 4 curl commands. Only after both responses contain `trading_complete` may TC-102, Task 4, and the document-level statuses be considered for `pass`.

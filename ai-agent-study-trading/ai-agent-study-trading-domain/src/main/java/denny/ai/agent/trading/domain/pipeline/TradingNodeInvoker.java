@@ -5,6 +5,7 @@ import denny.ai.agent.trading.domain.config.TradingAgentProperties;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.domain.service.sse.SseEventSink;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -21,11 +22,12 @@ public class TradingNodeInvoker {
     private final ExecutorService tradingTaskExecutor;
     private final TradingAgentProperties properties;
 
-    public TradingNodeInvoker(@Qualifier("tradingTaskExecutor") ExecutorService tradingTaskExecutor) {
+    public TradingNodeInvoker(ExecutorService tradingTaskExecutor) {
         this(tradingTaskExecutor, new TradingAgentProperties());
     }
 
-    public TradingNodeInvoker(ExecutorService tradingTaskExecutor,
+    @Autowired
+    public TradingNodeInvoker(@Qualifier("tradingTaskExecutor") ExecutorService tradingTaskExecutor,
                               TradingAgentProperties properties) {
         this.tradingTaskExecutor = tradingTaskExecutor;
         this.properties = properties;
