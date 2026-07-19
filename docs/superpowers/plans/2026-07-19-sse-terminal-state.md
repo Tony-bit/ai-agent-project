@@ -393,7 +393,9 @@ git commit -m "fix: centralize auto agent SSE closure"
 - Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
 - Test: `ai-agent-study-trigger/src/test/java/denny/ai/agent/trading/trigger/http/TradingSseSessionTest.java`
 
-- [ ] **Step 1: Update the regression expectation for missing terminal events**
+- [x] **Step 1: Update the regression expectation for missing terminal events**
+
+status: pass
 
 Keep `disconnect-before-terminal` as non-success, but change its expected UI from a red failure to an indeterminate warning:
 
@@ -402,7 +404,9 @@ Keep `disconnect-before-terminal` as non-success, but change its expected UI fro
 已有结果保留，按钮和 Loading 恢复。
 ```
 
-- [ ] **Step 2: Run the focused frontend and backend suites**
+- [x] **Step 2: Run the focused frontend and backend suites**
+
+status: pass
 
 Run:
 
@@ -413,7 +417,9 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain,ai-agent-study-trig
 
 Expected: all selected tests PASS.
 
-- [ ] **Step 3: Run the broader module regression**
+- [x] **Step 3: Run the broader module regression**
+
+status: pass
 
 Run:
 
@@ -424,6 +430,8 @@ mvn -pl ai-agent-study-domain,ai-agent-study-trading/ai-agent-study-trading-doma
 Expected: BUILD SUCCESS.
 
 - [ ] **Step 4: Verify the raw SSE terminal sequence**
+
+status: append
 
 With the application running, invoke both entry points using valid local request payloads:
 
@@ -438,6 +446,8 @@ Expected for each successful trading request: a visible `data:` frame containing
 
 - [ ] **Step 5: Update document-level status after all tasks pass**
 
+status: append
+
 Only when Tasks 1-4 all show `pass`:
 
 - change this plan's top-level `status: append` to `status: pass`;
@@ -447,9 +457,25 @@ Only when Tasks 1-4 all show `pass`:
 
 - [ ] **Step 6: Mark Task 4 pass and commit**
 
+status: append
+
 After Steps 1-5 and all acceptance checks pass, change only the Task 4 table to `pass`, then run:
 
 ```powershell
 git add docs/superpowers/test/2026-06-21-frontend-product-polish-test.md docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md docs/superpowers/plans/2026-07-19-sse-terminal-state.md
 git commit -m "test: verify SSE terminal state handling"
 ```
+
+#### Task 4 execution report
+
+| Verification item | Result | Evidence | status |
+|---|---|---|---|
+| TC-102 expectation | Updated to `indeterminate`; explicitly neither success nor failure | `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md` | pass |
+| Frontend focused suite | 28 tests passed, 0 failed | `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | pass |
+| Backend focused suite | 14 selected tests passed, 0 failed/errors; Reactor build succeeded | Focused Maven command from Step 2 | pass |
+| Broader module regression | 11/11 Reactor modules succeeded | Maven command from Step 3, `BUILD SUCCESS` | pass |
+| Application startup | Executable jar built, but Spring context failed before port 8090 listened: `TradingNodeInvoker` has no default constructor selected | `target/task4-app.out.log`, root cause `NoSuchMethodException: TradingNodeInvoker.<init>()` | append |
+| `auto_agent` raw SSE | Could not connect because application startup failed; no terminal frame captured | `curl: (7) Failed to connect to localhost port 8090` | append |
+| Dedicated trading raw SSE | Could not connect because application startup failed; no terminal frame captured | `curl: (7) Failed to connect to localhost port 8090` | append |
+
+Task 4 remains `append`. The automated suites provide protocol-level coverage, but they do not replace the required raw SSE verification through both running application entry points. After fixing the Spring constructor injection blocker, restart the current branch artifact and rerun both Step 4 curl commands; only then may TC-102, Task 4, and the document-level statuses be considered for `pass`.

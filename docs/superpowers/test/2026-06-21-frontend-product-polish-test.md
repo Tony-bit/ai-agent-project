@@ -172,7 +172,7 @@
 | 编号 | 优先级 | 场景名称 | 前置条件 | 操作 | 预期结果 | 执行链路 | status |
 |---|---|---|---|---|---|---|---|
 | TC-101 | P0 | SSE 非法 JSON | 使用 `malformed-json` | 发起请求并读到非法事件 | 显示“协议异常”或等价友好错误；不泄露完整响应；状态只收口一次且控件恢复 | 可控 | blocked（解析器单测通过，缺少浏览器 fixture） |
-| TC-102 | P0 | 业务完成前网络断流 | 使用 `disconnect-before-terminal` | 发起请求并等待连接被关闭 | 标记“连接中断/未完成”，不得包装成成功；按钮和 Loading 恢复 | 可控 | pass |
+| TC-102 | P0 | 业务完成前网络断流 | 使用 `disconnect-before-terminal` | 发起请求并等待连接被关闭 | 进入 `indeterminate`，显示“状态未确认/连接已结束”中性警告；既不得包装成成功，也不得显示“操作失败”；已有结果保留，按钮和 Loading 恢复 | 可控 | append |
 | TC-103 | P0 | HTTP 与响应协议异常 | 使用 `http-contract-errors` | 依次返回 500、204、200 JSON、空 body | 每次只出现一个友好错误；不得进入永久 Loading；可继续下一请求 | 可控 | pass |
 | TC-104 | P0 | XSS 与危险协议注入 | 设置安全哨兵并使用 `xss-payloads` | 覆盖用户输入、实时正文、历史正文、type/subType/step/model | 脚本、事件属性和危险 URL 均不执行；元数据按纯文本或固定标签展示；哨兵保持 `false` | 可控 + 浏览器 | pass |
 | TC-105 | P1 | SSE 单事件缓冲超限 | 使用 `oversized-event` | 读取超过 1 MiB 且无边界的事件 | 立即失败并释放缓冲和请求状态；诊断被截断；页面可继续使用 | 可控 | pass |
@@ -334,7 +334,7 @@
 
 | 步骤 | 内容 | 预期结果 | status |
 |---|---|---|---|
-| 1 | 执行 `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | 全部通过，0 失败 | pass（25/25） |
+| 1 | 执行 `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | 全部通过，0 失败 | pass（28/28，包含缺少终态时解析为 `indeterminate`） |
 | 2 | 打开 `agent-ui-security-smoke.html` 执行真实 DOM 清洗冒烟 | 全部安全载荷不执行 | pass（14/14） |
 | 3 | 执行可控 SSE 场景 TC-101～TC-210 | 所有协议、异常、竞态场景有确定结果 | blocked（缺少专用长流/断流 fixture；已完成现有单测和冒烟覆盖） |
 | 4 | 执行真实主链路 TC-001～TC-008、TC-301～TC-307 | 无阻塞回归；外部阻塞被如实记录 | blocked（核心链路通过；记忆同步受 402 余额限制，分页/清空未执行） |
