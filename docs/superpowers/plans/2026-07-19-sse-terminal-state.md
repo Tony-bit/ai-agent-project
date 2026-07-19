@@ -22,7 +22,7 @@ created_at: 2026-07-19
 
 | Task | status |
 |------|------|
-| Task 1: Add frontend terminal-state resolution and indeterminate presentation | append |
+| Task 1: Add frontend terminal-state resolution and indeterminate presentation | pass |
 
 **Files:**
 - Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js:147-167`
@@ -34,7 +34,7 @@ created_at: 2026-07-19
 - Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 - Test: `docs/dev-ops/nginx/html/test/agent-ui-security-smoke.html`
 
-- [ ] **Step 1: Write failing EOF-resolution tests**
+- [x] **Step 1: Write failing EOF-resolution tests**
 
 Import `resolveStreamEnd` from `agent-ui-core.js` and add these cases:
 
@@ -70,7 +70,7 @@ test('resolveStreamEnd does not replace protocol failure', () => {
 });
 ```
 
-- [ ] **Step 2: Run the frontend unit test and verify it fails**
+- [x] **Step 2: Run the frontend unit test and verify it fails**
 
 Run:
 
@@ -80,7 +80,7 @@ node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 
 Expected: FAIL because `resolveStreamEnd` is not exported.
 
-- [ ] **Step 3: Implement the pure EOF resolver**
+- [x] **Step 3: Implement the pure EOF resolver**
 
 Add and export:
 
@@ -109,7 +109,7 @@ if (streamEnd.notice) {
 }
 ```
 
-- [ ] **Step 4: Add a warning presentation that is distinct from failure**
+- [x] **Step 4: Add a warning presentation that is distinct from failure**
 
 Add `warning` to `stageTypeMap`, add an amber `.bubble-warning`, and make `addStageMessage` select warning styling without the “操作失败” header or retry footer:
 
@@ -126,7 +126,7 @@ const statusIndicator = isError
 
 Use stable amber classes for the avatar, title, body, and border. Do not change successful result rendering.
 
-- [ ] **Step 5: Add browser smoke assertions**
+- [x] **Step 5: Add browser smoke assertions**
 
 Feed a result event without a terminal event, resolve EOF, render the returned notice, and assert:
 
@@ -136,7 +136,7 @@ assert(thinking.textContent.includes('状态未确认'), 'Indeterminate warning 
 assert(!thinking.textContent.includes('操作失败'), 'Indeterminate warning was rendered as failure');
 ```
 
-- [ ] **Step 6: Run frontend tests and perform acceptance checks**
+- [x] **Step 6: Run frontend tests and perform acceptance checks**
 
 Run:
 
@@ -153,7 +153,7 @@ Acceptance checks:
 - EOF without a terminal becomes `indeterminate` regardless of result presence.
 - the warning does not contain the red “操作失败” heading.
 
-- [ ] **Step 7: Mark Task 1 pass and commit**
+- [x] **Step 7: Mark Task 1 pass and commit**
 
 Change only the Task 1 table from `append` to `pass`, then run:
 

@@ -591,6 +591,10 @@
             background: linear-gradient(135deg, #fef2f2, #fee2e2);
             border: 1px solid rgba(239, 68, 68, 0.2);
         }
+        .bubble-warning {
+            background: linear-gradient(135deg, #fffbeb, #fef3c7);
+            border: 1px solid rgba(217, 119, 6, 0.25);
+        }
 
         .status-pulse {
             animation: statusPulse 2s ease-in-out infinite;
@@ -1021,6 +1025,7 @@
         sanitizeMarkdown,
         normalizeAgentEvent,
         classifyAgentEvent,
+        resolveStreamEnd,
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl: joinApiUrl,
@@ -1141,6 +1146,7 @@
         'supervision': { name: '监督阶段', icon: '🔍', class: 'stage-supervision' },
         'summary': { name: '总结阶段', icon: '📊', class: 'stage-summary' },
         'error': { name: '错误信息', icon: '❌', class: 'stage-error' },
+        'warning': { name: '状态提醒', icon: '!', class: 'stage-supervision' },
         'complete': { name: '完成', icon: '✅', class: 'stage-summary' },
         'trading': { name: '交易分析', icon: '📈', class: 'stage-analysis' },
         'final': { name: '最终决策', icon: '🎯', class: 'stage-summary' }
@@ -1785,16 +1791,11 @@
             resultChildren.slice(1).forEach(child => child.remove());
 
             await consumeSseResponse(response, streamState);
-            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
-                streamState.outcome = 'failed';
-                const hasResult = document.getElementById('resultMessages').children.length > 1;
-                if (hasResult) {
-                    addStageMessage('error', 'stream_interrupted',
-                        '分析已完成，但流式连接异常断开。结果面板中的内容仍然有效。', null, 'thinking');
-                } else {
-                    addStageMessage('error', 'stream_interrupted',
-                        '连接中断，未收到任务完成事件。请重试或检查网络连接。', null, 'thinking');
-                }
+            const hasResult = document.getElementById('resultMessages').children.length > 1;
+            const streamEnd = resolveStreamEnd(streamState, hasResult);
+            streamState.outcome = streamEnd.outcome;
+            if (streamEnd.notice) {
+                addStageMessage('warning', 'stream_interrupted', streamEnd.notice, null, 'thinking');
             }
         })
         .catch(error => {
@@ -1809,8 +1810,7 @@
         })
         .finally(() => {
             if (requestLifecycle.isActive(request)) {
-                requestLifecycle.finish(request,
-                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+                requestLifecycle.finish(request, streamState.outcome || 'failed');
             }
             if (activeRequest && activeRequest.id === request.id) activeRequest = null;
         });
@@ -2026,6 +2026,7 @@
         const safeStep = Number.isInteger(step) ? String(step) : '';
 
         const isError = type === 'error' || subType === 'error';
+        const isWarning = type === 'warning';
 
         let indicators = `<span class="stage-indicator ${stageInfo.class}">${escapeHtml(stageInfo.icon)} ${escapeHtml(stageInfo.name)}</span>`;
         if (subTypeName) {
@@ -2037,23 +2038,36 @@
 
         const renderedContent = plainText ? '' : renderMarkdown(content);
 
-        const bubbleClass = isError ? 'bubble-error' : 'bubble-ai';
-        const errorIndicator = isError ? `
+        const bubbleClass = isError ? 'bubble-error' : (isWarning ? 'bubble-warning' : 'bubble-ai');
+        const statusIndicator = isError ? `
             <div class="flex items-center gap-2 mb-2 text-red-600 font-semibold text-xs">
                 <span class="text-base">⚠️</span>
                 <span>操作失败</span>
             </div>
-        ` : '';
+        ` : (isWarning ? `
+            <div class="flex items-center gap-2 mb-2 text-amber-700 font-semibold text-xs">
+                <span class="text-base">!</span>
+                <span>状态未确认</span>
+            </div>
+        ` : '');
+
+        const avatarClass = isError
+            ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-red-500/20'
+            : (isWarning
+                ? 'bg-gradient-to-br from-amber-500 to-amber-600 shadow-amber-500/20'
+                : 'bg-gradient-to-br from-primary-500 to-primary-600 shadow-primary-500/20');
+        const bodyClass = isError ? 'text-red-800' : (isWarning ? 'text-amber-900' : 'text-primary-800');
+        const title = isError ? '系统提示:' : (isWarning ? '状态提示:' : 'AI助手:');
 
         messageDiv.innerHTML = `
-            <div class="w-9 h-9 ${isError ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-primary-500 to-primary-600'} rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${isError ? 'shadow-red-500/20' : 'shadow-primary-500/20'} avatar-hover">
-                <span class="text-white font-bold text-xs">${isError ? '!' : 'AI'}</span>
+            <div class="w-9 h-9 ${avatarClass} rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg avatar-hover">
+                <span class="text-white font-bold text-xs">${isError || isWarning ? '!' : 'AI'}</span>
             </div>
             <div class="flex-1 ${bubbleClass} rounded-xl p-3 shadow-sm">
-                <div class="text-sm ${isError ? 'text-red-800' : 'text-primary-800'}">
-                    ${errorIndicator}
-                    <strong class="${isError ? 'font-semibold' : 'font-semibold'}">${isError ? '系统提示:' : 'AI助手:'} </strong>${indicators}
-                    <div class="markdown-content ${isError ? 'text-red-700' : ''}">${renderedContent}</div>
+                <div class="text-sm ${bodyClass}">
+                    ${statusIndicator}
+                    <strong class="font-semibold">${title} </strong>${indicators}
+                    <div class="markdown-content ${isError ? 'text-red-700' : (isWarning ? 'text-amber-800' : '')}">${renderedContent}</div>
                     ${isError ? `
                         <div class="mt-2 text-[10px] text-red-500 flex items-center gap-1">
                             💡 提示：请检查输入是否正确，或稍后重试
@@ -2319,16 +2333,11 @@
             resultChildren.slice(1).forEach(child => child.remove());
 
             await consumeSseResponse(response, streamState);
-            if (!streamState.terminalSeen && streamState.protocolErrors === 0) {
-                streamState.outcome = 'failed';
-                const hasResult = document.getElementById('resultMessages').children.length > 1;
-                if (hasResult) {
-                    addStageMessage('error', 'stream_interrupted',
-                        '分析已完成，但流式连接异常断开。结果面板中的内容仍然有效。', null, 'thinking');
-                } else {
-                    addStageMessage('error', 'stream_interrupted',
-                        '连接中断，未收到任务完成事件。请重试或检查网络连接。', null, 'thinking');
-                }
+            const hasResult = document.getElementById('resultMessages').children.length > 1;
+            const streamEnd = resolveStreamEnd(streamState, hasResult);
+            streamState.outcome = streamEnd.outcome;
+            if (streamEnd.notice) {
+                addStageMessage('warning', 'stream_interrupted', streamEnd.notice, null, 'thinking');
             }
         })
         .catch(error => {
@@ -2343,8 +2352,7 @@
         })
         .finally(() => {
             if (requestLifecycle.isActive(request)) {
-                requestLifecycle.finish(request,
-                    streamState.outcome === 'completed' ? 'completed' : 'failed');
+                requestLifecycle.finish(request, streamState.outcome || 'failed');
             }
             if (activeRequest && activeRequest.id === request.id) activeRequest = null;
         });

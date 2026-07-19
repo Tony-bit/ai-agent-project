@@ -166,6 +166,18 @@
         };
     }
 
+    function resolveStreamEnd(streamState, hasResult) {
+        if (streamState.terminalSeen || streamState.protocolErrors > 0) {
+            return { outcome: streamState.outcome || 'failed', notice: null };
+        }
+        return {
+            outcome: 'indeterminate',
+            notice: hasResult
+                ? '连接已结束，未确认任务状态。已收到的结果仍然保留。'
+                : '连接已结束，未收到任务完成状态。请稍后重试。'
+        };
+    }
+
     function validateSseResponse(response) {
         if (!response || !response.ok) {
             const status = response && response.status != null ? response.status : 'unknown';
@@ -305,6 +317,7 @@
         sanitizeMarkdown,
         normalizeAgentEvent,
         classifyAgentEvent,
+        resolveStreamEnd,
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl,

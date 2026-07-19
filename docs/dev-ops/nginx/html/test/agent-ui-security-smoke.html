@@ -226,10 +226,25 @@
             headers: { 'Content-Type': 'application/json' }
         }), 'json-response');
         await runFailedResponse(new agentWindow.Response(null, { status: 204 }), 'empty-response');
-        await runFailedResponse(createSseResponse(agentWindow, [
-            'data: {"type":"content","content":"partial","completed":false}\n\n'
-        ]), 'interrupted-stream');
-        checks.push('invalid and interrupted responses');
+        checks.push('invalid responses');
+
+        resetPanels();
+        const incompleteState = agentWindow.createStreamState('general');
+        agentWindow.handleRawSseEvent(incompleteState, {
+            type: 'summary', content: '已收到的分析结果', completed: false
+        });
+        const streamEnd = agentWindow.AgentUiCore.resolveStreamEnd(incompleteState, true);
+        incompleteState.outcome = streamEnd.outcome;
+        agentWindow.addStageMessage(
+            'warning', 'stream_interrupted', streamEnd.notice, null, 'thinking'
+        );
+        assert(streamEnd.outcome === 'indeterminate', 'Missing terminal must be indeterminate');
+        assert(thinking.textContent.includes('状态未确认'), 'Indeterminate warning was not rendered');
+        assert(!thinking.textContent.includes('操作失败'), 'Indeterminate warning was rendered as failure');
+        assert(thinking.querySelectorAll('.bubble-warning').length === 1
+            && thinking.querySelectorAll('.bubble-error').length === 0,
+            'Indeterminate warning did not use its distinct presentation');
+        checks.push('indeterminate stream warning');
 
         resetPanels();
         let fetchCalls = 0;

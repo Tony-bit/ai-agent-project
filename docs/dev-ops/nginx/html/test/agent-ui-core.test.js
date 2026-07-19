@@ -8,12 +8,43 @@ const {
     sanitizeMarkdown,
     normalizeAgentEvent,
     classifyAgentEvent,
+    resolveStreamEnd,
     validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl,
     createRequestLifecycle,
     isNearBottom
 } = require('../js/agent-ui-core.js');
+
+test('resolveStreamEnd preserves explicit terminal outcomes', () => {
+    assert.deepEqual(resolveStreamEnd({
+        terminalSeen: true, outcome: 'completed', protocolErrors: 0
+    }, true), { outcome: 'completed', notice: null });
+    assert.deepEqual(resolveStreamEnd({
+        terminalSeen: true, outcome: 'failed', protocolErrors: 0
+    }, true), { outcome: 'failed', notice: null });
+});
+
+test('resolveStreamEnd marks EOF without a terminal event as indeterminate', () => {
+    assert.deepEqual(resolveStreamEnd({
+        terminalSeen: false, outcome: null, protocolErrors: 0
+    }, true), {
+        outcome: 'indeterminate',
+        notice: '连接已结束，未确认任务状态。已收到的结果仍然保留。'
+    });
+    assert.deepEqual(resolveStreamEnd({
+        terminalSeen: false, outcome: null, protocolErrors: 0
+    }, false), {
+        outcome: 'indeterminate',
+        notice: '连接已结束，未收到任务完成状态。请稍后重试。'
+    });
+});
+
+test('resolveStreamEnd does not replace protocol failure', () => {
+    assert.deepEqual(resolveStreamEnd({
+        terminalSeen: false, outcome: 'failed', protocolErrors: 1
+    }, true), { outcome: 'failed', notice: null });
+});
 
 function memoryStorage(initial = {}) {
     const values = new Map(Object.entries(initial));
