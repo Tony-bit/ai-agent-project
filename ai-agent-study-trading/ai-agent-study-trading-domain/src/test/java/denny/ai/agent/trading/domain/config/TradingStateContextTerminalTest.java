@@ -2,11 +2,13 @@ package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -43,6 +45,23 @@ class TradingStateContextTerminalTest {
         assertEquals("trading", events.get(0).getType());
         assertEquals("error", events.get(0).getSubType());
         assertTrue(events.get(0).getCompleted());
+    }
+
+    @Test
+    void failedTerminalDeliveryReturnsFalseAndCanBeRetried() {
+        AtomicInteger attempts = new AtomicInteger();
+        StockAnalysisRequestVO request = new StockAnalysisRequestVO();
+        request.setTicker("000001");
+        SseEventSender sender = (type, event) -> attempts.incrementAndGet() > 1;
+        TradingStateContext context = new TradingStateContext(
+                request,
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
+                sender
+        );
+
+        assertFalse(context.sendTerminalCompleteOnce());
+        assertTrue(context.sendTerminalCompleteOnce());
+        assertEquals(2, attempts.get());
     }
 
     private TradingStateContext createContext(List<AutoAgentExecuteResultEntity> events) {

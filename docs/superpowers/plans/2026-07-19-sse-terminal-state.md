@@ -168,7 +168,7 @@ git commit -m "fix: distinguish indeterminate SSE completion"
 
 | Task | status |
 |------|------|
-| Task 2: Return real backend SSE delivery results | append |
+| Task 2: Return real backend SSE delivery results | pass |
 
 **Files:**
 - Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/sse/SseEventSender.java`
@@ -181,7 +181,7 @@ git commit -m "fix: distinguish indeterminate SSE completion"
 - Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
 - Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/IntentRoutingNodeSseForwardingTest.java`
 
-- [ ] **Step 1: Write failing terminal-delivery tests**
+- [x] **Step 1: Write failing terminal-delivery tests**
 
 Add tests proving a rejected sender returns false and permits a later retry:
 
@@ -199,7 +199,7 @@ void failedTerminalDeliveryReturnsFalseAndCanBeRetried() {
 
 Update the intent-routing forwarding test so its capturing override returns `true`, and assert that the callback supplied to `TradingStarter` returns the forwarding result.
 
-- [ ] **Step 2: Run targeted trading-domain tests and verify they fail**
+- [x] **Step 2: Run targeted trading-domain tests and verify they fail**
 
 Run:
 
@@ -209,7 +209,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain -am -Dtest=TradingS
 
 Expected: FAIL because the sender and `sendSseResult` currently return `void`.
 
-- [ ] **Step 3: Add the result-bearing sender contract**
+- [x] **Step 3: Add the result-bearing sender contract**
 
 Create:
 
@@ -224,7 +224,7 @@ public interface SseEventSender {
 
 Change `AbstractExecuteSupport.sendSseResult(...)` to return `boolean`: return the sink acceptance result, `true` after a successful emitter send, and `false` for missing emitters, disconnected sessions, rejected sinks, and caught exceptions.
 
-- [ ] **Step 4: Propagate the sender result through trading paths**
+- [x] **Step 4: Propagate the sender result through trading paths**
 
 Replace `BiConsumer<String, Object>` with `SseEventSender` in `TradingStarter` and `TradingStateContext`.
 
@@ -251,7 +251,7 @@ starter.start(tradingRequest, dynamicContext, (type, event) -> {
 });
 ```
 
-- [ ] **Step 5: Make terminal methods report real delivery and allow retry after rejection**
+- [x] **Step 5: Make terminal methods report real delivery and allow retry after rejection**
 
 Use the existing atomic guard, but reopen it when delivery fails:
 
@@ -271,11 +271,11 @@ public boolean sendTerminalCompleteOnce() {
 
 Apply the same result handling to `sendTerminalErrorOnce`. Remove the duplicate void terminal sender after all callers use the boolean implementation.
 
-- [ ] **Step 6: Add accepted/rejected terminal logs**
+- [x] **Step 6: Add accepted/rejected terminal logs**
 
 Log one INFO entry for accepted terminal delivery and WARN for rejected or failed delivery. Include `sessionId`, `type`, `subType`, and whether the route uses a sink or raw emitter. Do not log “sent” before the sender returns `true`.
 
-- [ ] **Step 7: Run targeted tests and acceptance checks**
+- [x] **Step 7: Run targeted tests and acceptance checks**
 
 Run the Maven command from Step 2.
 
@@ -288,7 +288,7 @@ Acceptance checks:
 - successful terminal delivery remains at-most-once.
 - both dedicated and embedded trading adapters return actual delivery results.
 
-- [ ] **Step 8: Mark Task 2 pass and commit**
+- [x] **Step 8: Mark Task 2 pass and commit**
 
 Change only the Task 2 table to `pass`, then stage the listed Java files and plan file:
 

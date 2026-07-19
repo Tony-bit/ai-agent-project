@@ -10,7 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiConsumer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -37,10 +37,11 @@ class IntentRoutingNodeSseForwardingTest {
                 .content("交易分析完成")
                 .completed(true)
                 .build();
+        AtomicBoolean forwardingResult = new AtomicBoolean();
 
         doAnswer(invocation -> {
-            BiConsumer<String, Object> sender = invocation.getArgument(2);
-            sender.accept("trading", terminalEvent);
+            denny.ai.agent.domain.service.sse.SseEventSender sender = invocation.getArgument(2);
+            forwardingResult.set(sender.send("trading", terminalEvent));
             return null;
         }).when(starter).start(any(), any(), any());
 
@@ -48,15 +49,17 @@ class IntentRoutingNodeSseForwardingTest {
 
         assertEquals(1, node.forwardedEvents.size());
         assertSame(terminalEvent, node.forwardedEvents.get(0));
+        assertEquals(true, forwardingResult.get());
     }
 
     private static final class CapturingIntentRoutingNode extends IntentRoutingNode {
         private final List<AutoAgentExecuteResultEntity> forwardedEvents = new ArrayList<>();
 
         @Override
-        protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                     AutoAgentExecuteResultEntity result) {
+        protected boolean sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                        AutoAgentExecuteResultEntity result) {
             forwardedEvents.add(result);
+            return true;
         }
     }
 }

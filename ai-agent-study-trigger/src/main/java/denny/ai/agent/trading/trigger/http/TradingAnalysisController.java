@@ -3,6 +3,7 @@ package denny.ai.agent.trading.trigger.http;
 import com.alibaba.fastjson.JSON;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStarter;
@@ -163,11 +164,11 @@ public class TradingAnalysisController {
             dynamicContext.setValue("sessionId", sessionId);
             dynamicContext.setValue(SSE_EVENT_SINK_KEY, sseSession);
 
-            java.util.function.BiConsumer<String, Object> sseSender = (type, event) -> {
+            SseEventSender sseSender = (type, event) -> {
                 if (event instanceof AutoAgentExecuteResultEntity entity) {
                     entity.setStep(dynamicContext.getValue("step") != null ? (Integer) dynamicContext.getValue("step") : 0);
                 }
-                sseSession.sendBusiness(type, event);
+                return sseSession.sendBusiness(type, event);
             };
             tradingStarter.start(tradingRequest, dynamicContext, sseSender);
         } catch (Exception e) {

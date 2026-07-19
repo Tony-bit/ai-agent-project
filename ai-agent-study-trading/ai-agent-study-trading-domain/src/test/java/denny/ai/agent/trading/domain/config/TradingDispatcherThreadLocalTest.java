@@ -44,7 +44,7 @@ public class TradingDispatcherThreadLocalTest {
         TradingDriver.clear();
 
         sseEvents = Collections.synchronizedList(new ArrayList<>());
-        java.util.function.BiConsumer<String, Object> sseSender = (type, data) ->
+        denny.ai.agent.domain.service.sse.SseEventSender sseSender = (type, data) ->
                 sseEvents.add(type + ":" + data);
 
         stateContext = new TradingStateContext(createRequest(),

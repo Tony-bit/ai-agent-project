@@ -2,6 +2,7 @@ package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext;
+import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
@@ -12,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
 
 /**
  * 交易状态机请求级上下文。
@@ -31,7 +31,7 @@ public class TradingStateContext {
 
     private final StockAnalysisRequestVO request;
     private final DynamicContext dynamicContext;
-    private final BiConsumer<String, Object> sseSender;
+    private final SseEventSender sseSender;
     private final TradingContextVO tradingContext;
     private final List<AnalystTypeEnum> selectedAnalysts;
 
@@ -46,7 +46,7 @@ public class TradingStateContext {
 
     public TradingStateContext(StockAnalysisRequestVO request,
                                DynamicContext dynamicContext,
-                               BiConsumer<String, Object> sseSender) {
+                               SseEventSender sseSender) {
         this.request = request;
         this.dynamicContext = dynamicContext;
         this.sseSender = sseSender;
@@ -89,8 +89,13 @@ public class TradingStateContext {
             log.debug("终态完成事件已发送，跳过重复发送");
             return false;
         }
-        sendSseResultBypassTerminalGuard("trading", "trading_complete", "交易分析完成", true);
-        return true;
+        boolean sent = sendSseResultBypassTerminalGuardWithResult(
+                "trading", "trading_complete", "交易分析完成", true);
+        if (!sent) {
+            terminal.compareAndSet(true, false);
+        }
+        logTerminalDelivery(sent, "trading", "trading_complete");
+        return sent;
     }
 
     public boolean sendTerminalErrorOnce(String msg) {
@@ -104,8 +109,13 @@ public class TradingStateContext {
         }
 
         String friendlyMessage = getFriendlyErrorMessage(msg);
-        sendSseResultBypassTerminalGuard("trading", "error", friendlyMessage, true);
-        return true;
+        boolean sent = sendSseResultBypassTerminalGuardWithResult(
+                "trading", "error", friendlyMessage, true);
+        if (!sent) {
+            terminal.compareAndSet(true, false);
+        }
+        logTerminalDelivery(sent, "trading", "error");
+        return sent;
     }
 
     /**
@@ -177,35 +187,7 @@ public class TradingStateContext {
             log.debug("交易流程已终态，丢弃 late SSE: type={}, subType={}", type, subType);
             return;
         }
-        sendSseResultBypassTerminalGuard(type, subType, content, completed);
-    }
-
-    private void sendSseResultBypassTerminalGuard(String type, String subType, String content, boolean completed) {
-        try {
-            if (sseSender == null || dynamicContext == null) {
-                log.warn("SSE sender 或 dynamicContext 为空，跳过发送");
-                return;
-            }
-            // Terminal events must always be attempted, even if connection appears
-            // disconnected, to give the SSE session a chance to flush and complete.
-            if (!completed && isSseDisconnected()) {
-                log.debug("非终止事件，SSE连接已断开，跳过发送: type={}, subType={}", type, subType);
-                return;
-            }
-            AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
-                    .type(type)
-                    .subType(subType)
-                    .step(dynamicContext.getStep())
-                    .content(content)
-                    .completed(completed)
-                    .timestamp(System.currentTimeMillis())
-                    .build();
-            sseSender.accept(type, event);
-        } catch (Exception e) {
-            markSseDisconnected();
-            log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
-                    type, subType, e.getMessage());
-        }
+        sendSseResultBypassTerminalGuardWithResult(type, subType, content, completed);
     }
 
     /**
@@ -218,6 +200,10 @@ public class TradingStateContext {
                 log.warn("SSE sender 或 dynamicContext 为空，跳过发送");
                 return false;
             }
+            if (!completed && isSseDisconnected()) {
+                log.debug("非终止事件，SSE连接已断开，跳过发送: type={}, subType={}", type, subType);
+                return false;
+            }
             AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
                     .type(type)
                     .subType(subType)
@@ -226,13 +212,25 @@ public class TradingStateContext {
                     .completed(completed)
                     .timestamp(System.currentTimeMillis())
                     .build();
-            sseSender.accept(type, event);
-            return true;
+            return sseSender.send(type, event);
         } catch (Exception e) {
             markSseDisconnected();
             log.warn("SSE 发送失败，断连或客户端异常: type={}, subType={}, error={}",
                     type, subType, e.getMessage());
             return false;
+        }
+    }
+
+    private void logTerminalDelivery(boolean sent, String type, String subType) {
+        String sessionId = request != null ? request.getSessionId() : null;
+        String route = dynamicContext != null && dynamicContext.getValue(SSE_EVENT_SINK_KEY) != null
+                ? "sink" : "raw_emitter";
+        if (sent) {
+            log.info("SSE terminal delivery accepted: sessionId={}, type={}, subType={}, route={}",
+                    sessionId, type, subType, route);
+        } else {
+            log.warn("SSE terminal delivery rejected or failed: sessionId={}, type={}, subType={}, route={}",
+                    sessionId, type, subType, route);
         }
     }
 

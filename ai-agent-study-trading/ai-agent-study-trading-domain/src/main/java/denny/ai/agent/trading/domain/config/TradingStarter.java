@@ -1,6 +1,7 @@
 package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext;
+import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
@@ -17,7 +18,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.Lock;
-import java.util.function.BiConsumer;
 
 /**
  * 交易状态机请求入口。
@@ -60,7 +60,7 @@ public class TradingStarter {
      */
     public void start(StockAnalysisRequestVO request,
                       DynamicContext dynamicContext,
-                      BiConsumer<String, Object> sseSender) {
+                      SseEventSender sseSender) {
         // 1. 创建请求级上下文
         TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, sseSender);
 
@@ -226,9 +226,7 @@ public class TradingStarter {
                 .build();
 
         StringBuilder resultBuilder = new StringBuilder();
-        BiConsumer<String, Object> noOpSseSender = (type, event) -> {
-            // 不发送任何 SSE
-        };
+        SseEventSender noOpSseSender = (type, event) -> true;
 
         TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, noOpSseSender);
 

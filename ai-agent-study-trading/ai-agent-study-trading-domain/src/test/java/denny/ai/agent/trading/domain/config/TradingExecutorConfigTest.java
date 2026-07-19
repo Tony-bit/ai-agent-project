@@ -51,6 +51,7 @@ class TradingExecutorConfigTest {
                 createRequest(),
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 (type, event) -> {
+                    return true;
                 }
         );
         TradingDriver driver = new TradingDriver(stateContext, new TradingDispatcher());

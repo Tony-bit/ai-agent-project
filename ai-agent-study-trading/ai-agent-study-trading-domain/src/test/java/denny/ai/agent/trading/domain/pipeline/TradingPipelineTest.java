@@ -79,6 +79,7 @@ class TradingPipelineTest {
                 request,
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 (type, event) -> {
+                    return true;
                 }
         );
     }

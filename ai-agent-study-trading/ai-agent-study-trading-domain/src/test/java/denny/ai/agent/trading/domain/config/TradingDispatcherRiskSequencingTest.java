@@ -127,6 +127,7 @@ class TradingDispatcherRiskSequencingTest {
                 createRequest(),
                 dynamicContext,
                 (type, event) -> {
+                    return true;
                 }
         );
 

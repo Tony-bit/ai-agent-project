@@ -116,27 +116,30 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      * @param dynamicContext 动态上下文
      * @param result 要发送的结果实体
      */
-    protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                AutoAgentExecuteResultEntity result) {
+    protected boolean sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                    AutoAgentExecuteResultEntity result) {
+        if (dynamicContext == null) {
+            return false;
+        }
         SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
         if (sink != null) {
             if (!sink.shouldContinue()) {
                 log.debug("SSE sink 已关闭，跳过发送: type={}, subType={}, state={}",
                         result.getType(), result.getSubType(), sink.state());
-                return;
+                return false;
             }
             boolean accepted = sink.sendBusiness(result.getType(), result);
             if (!accepted) {
                 log.debug("SSE sink 拒绝业务事件: type={}, subType={}, state={}",
                         result.getType(), result.getSubType(), sink.state());
             }
-            return;
+            return accepted;
         }
 
         if (isSseDisconnected(dynamicContext)) {
             log.debug("SSE连接已断开，跳过发送: type={}, subType={}",
                     result.getType(), result.getSubType());
-            return;
+            return false;
         }
 
         ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
@@ -144,19 +147,24 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             log.error("【SSE致命错误】emitter为空！type={}, subType={}, sessionId={}",
                     result.getType(), result.getSubType(), result.getSessionId());
             log.error("【SSE致命错误】dynamicContext.dataObjects内容: {}", dynamicContext.getDataObjects());
-            return;
+            return false;
         }
 
         try {
             String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
             Object sendLock = dynamicContext.getValue(SSE_SEND_LOCK_KEY);
+            boolean sent;
             if (sendLock == null) {
                 emitter.send(sseData);
+                sent = true;
             } else if (sendLock instanceof Lock lock) {
                 lock.lock();
                 try {
                     if (!isSseDisconnected(dynamicContext)) {
                         emitter.send(sseData);
+                        sent = true;
+                    } else {
+                        sent = false;
                     }
                 } finally {
                     lock.unlock();
@@ -165,19 +173,27 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
                 synchronized (sendLock) {
                     if (!isSseDisconnected(dynamicContext)) {
                         emitter.send(sseData);
+                        sent = true;
+                    } else {
+                        sent = false;
                     }
                 }
             }
+            if (!sent) {
+                return false;
+            }
             log.debug("<<< SSE数据发送成功: type={}, subType={}", result.getType(), result.getSubType());
+            return true;
         } catch (Exception e) {
             if (isClientDisconnect(e)) {
                 markSseDisconnected(dynamicContext);
                 log.warn("SSE连接已断开，停止继续推送: type={}, subType={}, sessionId={}, error={}, exClass={}",
                         result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName());
-                return;
+                return false;
             }
             log.error("【SSE发送错误】发送SSE结果失败：type={}, subType={}, sessionId={}, error={}, exClass={}",
                     result.getType(), result.getSubType(), result.getSessionId(), e.getMessage(), e.getClass().getName(), e);
+            return false;
         }
     }
 

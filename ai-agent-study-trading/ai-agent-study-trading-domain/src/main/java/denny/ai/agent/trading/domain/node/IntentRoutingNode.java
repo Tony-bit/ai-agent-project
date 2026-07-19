@@ -5,6 +5,7 @@ import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.trading.api.vo.ConfidenceEnum;
 import denny.ai.agent.trading.api.vo.IntentEnumVO;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
@@ -117,11 +118,13 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         StockAnalysisRequestVO tradingRequest = dynamicContext.getValue(TRADING_REQUEST_KEY);
         if (tradingRequest != null) {
             try {
-                starter.start(tradingRequest, dynamicContext, (type, event) -> {
+                SseEventSender sender = (type, event) -> {
                     if (event instanceof AutoAgentExecuteResultEntity result) {
-                        sendSseResult(dynamicContext, result);
+                        return sendSseResult(dynamicContext, result);
                     }
-                });
+                    return false;
+                };
+                starter.start(tradingRequest, dynamicContext, sender);
             } catch (Exception e) {
                 log.error("交易分析执行异常: {}", e.getMessage(), e);
             }

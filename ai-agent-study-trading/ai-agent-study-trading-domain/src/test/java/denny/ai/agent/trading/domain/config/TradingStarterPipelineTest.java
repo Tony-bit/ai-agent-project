@@ -64,6 +64,7 @@ class TradingStarterPipelineTest {
         dynamicContext.setValue("taskLatch", new CountDownLatch(1));
 
         starter.start(createRequest(), dynamicContext, (type, event) -> {
+            return true;
         });
 
         assertEquals(1L, ((CountDownLatch) dynamicContext.getValue("taskLatch")).getCount(),
