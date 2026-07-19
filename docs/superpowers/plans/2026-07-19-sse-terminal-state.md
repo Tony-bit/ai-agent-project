@@ -302,7 +302,7 @@ git commit -m "fix: report SSE terminal delivery results"
 
 | Task | status |
 |------|------|
-| Task 3: Assign emitter closure to the outer request owner | append |
+| Task 3: Assign emitter closure to the outer request owner | pass |
 
 **Files:**
 - Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStarter.java:90-175`
@@ -310,7 +310,7 @@ git commit -m "fix: report SSE terminal delivery results"
 - Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStarterPipelineTest.java`
 - Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/service/auto/AutoAgentStrategyTest.java`
 
-- [ ] **Step 1: Change the ownership test expectation and verify failure**
+- [x] **Step 1: Change the ownership test expectation and verify failure**
 
 Rename the pipeline test to `embeddedTradingDoesNotCompleteOuterEmitter` and assert:
 
@@ -330,7 +330,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain -am -Dtest=TradingS
 
 Expected: FAIL because `TradingStarter` currently completes the raw emitter.
 
-- [ ] **Step 2: Close only a sink owned by the dedicated trading route**
+- [x] **Step 2: Close only a sink owned by the dedicated trading route**
 
 Replace the raw-emitter fallback in `TradingStarter` with sink-only closure:
 
@@ -348,11 +348,11 @@ private void completeOwnedSseSession(DynamicContext dynamicContext) {
 
 Call this method from synchronous and legacy trading-finally paths. Do not call `ResponseBodyEmitter.complete()` from `TradingStarter.start(...)`.
 
-- [ ] **Step 3: Verify the outer strategy remains the single raw-emitter closer**
+- [x] **Step 3: Verify the outer strategy remains the single raw-emitter closer**
 
 Keep `AutoAgentExecuteStrategy.safeComplete(...)` as the outer owner. Add or update a test that exercises a successful strategy execution and verifies `emitter.complete()` exactly once after the node chain returns. Add an INFO log containing `owner=auto_agent` at the successful close point.
 
-- [ ] **Step 4: Run ownership tests**
+- [x] **Step 4: Run ownership tests**
 
 Run:
 
@@ -369,7 +369,7 @@ Acceptance checks:
 - `AutoAgentExecuteStrategy` closes its emitter exactly once.
 - no raw emitter close remains in `TradingStarter`.
 
-- [ ] **Step 5: Mark Task 3 pass and commit**
+- [x] **Step 5: Mark Task 3 pass and commit**
 
 Change only the Task 3 table to `pass`, stage the listed files and plan file, then commit:
 

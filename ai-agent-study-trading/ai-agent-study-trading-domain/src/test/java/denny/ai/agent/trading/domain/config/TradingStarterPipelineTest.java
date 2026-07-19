@@ -2,6 +2,8 @@ package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.sse.SseEventSink;
+import denny.ai.agent.domain.service.sse.SseSessionState;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
@@ -21,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class TradingStarterPipelineTest {
 
     @Test
-    void startUsesPipelineWithoutWaitingLegacyLatchAndCompletesEmitterOnce() {
+    void embeddedTradingDoesNotCompleteOuterEmitter() {
         TradingStarter starter = createStarter(new CompletingPipeline(true));
         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
@@ -32,10 +34,27 @@ class TradingStarterPipelineTest {
         starter.start(createRequest(), dynamicContext, (type, event) -> events.add((AutoAgentExecuteResultEntity) event));
 
         assertNull(dynamicContext.getValue("taskLatch"), "pipeline path must not create legacy taskLatch");
-        assertEquals(1, emitter.completeCount);
+        assertEquals(0, emitter.completeCount,
+                "TradingStarter must not complete an outer auto_agent emitter");
         assertEquals(1, events.stream().filter(event -> "trading_complete".equals(event.getSubType())).count());
         assertNotNull(((TradingContextVO) dynamicContext.getValue("trading_context")).getFinalDecision());
         assertNull(TradingDriver.getCurrent());
+    }
+
+    @Test
+    void dedicatedTradingCompletesOwnedSinkButNotRawEmitter() {
+        TradingStarter starter = createStarter(new CompletingPipeline(true));
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        CountingEmitter emitter = new CountingEmitter();
+        CountingSink sink = new CountingSink();
+        dynamicContext.setValue("emitter", emitter);
+        dynamicContext.setValue("sseEventSink", sink);
+
+        starter.start(createRequest(), dynamicContext, (type, event) -> true);
+
+        assertEquals(1, sink.completeCount);
+        assertEquals(0, emitter.completeCount);
     }
 
     @Test
@@ -114,6 +133,44 @@ class TradingStarterPipelineTest {
         @Override
         public synchronized void complete() {
             completeCount++;
+        }
+    }
+
+    private static class CountingSink implements SseEventSink {
+        private int completeCount;
+
+        @Override
+        public boolean sendBusiness(String eventName, Object payload) {
+            return true;
+        }
+
+        @Override
+        public boolean trySendHeartbeat() {
+            return true;
+        }
+
+        @Override
+        public void complete() {
+            completeCount++;
+        }
+
+        @Override
+        public void markDisconnected(Throwable cause) {
+        }
+
+        @Override
+        public boolean isDisconnected() {
+            return false;
+        }
+
+        @Override
+        public boolean shouldContinue() {
+            return true;
+        }
+
+        @Override
+        public SseSessionState state() {
+            return SseSessionState.OPEN;
         }
     }
 

@@ -13,11 +13,9 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.locks.Lock;
 
 /**
  * 交易状态机请求入口。
@@ -34,7 +32,6 @@ import java.util.concurrent.locks.Lock;
 @Service
 public class TradingStarter {
 
-    private static final String SSE_SEND_LOCK_KEY = "sseSendLock";
     private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
 
     @Resource
@@ -94,7 +91,7 @@ public class TradingStarter {
             stateContext.sendTerminalErrorOnce("交易分析执行异常: " + e.getMessage());
         } finally {
             TradingDriver.clear();
-            completeEmitterSafely(dynamicContext);
+            completeOwnedSseSession(dynamicContext);
         }
     }
 
@@ -145,42 +142,17 @@ public class TradingStarter {
             log.warn("发送完成事件异常，不影响 emitter 关闭: {}", e.getMessage());
         }
 
-        completeEmitterSafely(dynamicContext);
+        completeOwnedSseSession(dynamicContext);
     }
 
-    private void completeEmitterSafely(DynamicContext dynamicContext) {
+    private void completeOwnedSseSession(DynamicContext dynamicContext) {
         SseEventSink sink = dynamicContext.getValue(SSE_EVENT_SINK_KEY);
         if (sink != null) {
             sink.complete();
-            log.info("SSE sink 关闭请求已提交: state={}", sink.state());
+            log.info("SSE sink close requested: state={}", sink.state());
             return;
         }
-
-        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-        if (emitter != null) {
-            try {
-                Object sendLock = dynamicContext.getValue(SSE_SEND_LOCK_KEY);
-                if (sendLock == null) {
-                    emitter.complete();
-                } else if (sendLock instanceof Lock lock) {
-                    lock.lock();
-                    try {
-                        emitter.complete();
-                    } finally {
-                        lock.unlock();
-                    }
-                } else {
-                    synchronized (sendLock) {
-                        emitter.complete();
-                    }
-                }
-                log.info("emitter 关闭完成");
-            } catch (IllegalStateException e) {
-                log.info("emitter 已关闭，跳过重复关闭: {}", e.getMessage());
-            } catch (Exception e) {
-                log.warn("emitter 关闭异常: {}", e.getMessage());
-            }
-        }
+        log.info("SSE emitter close deferred to outer owner: owner=auto_agent");
     }
 
     private void populateStockInfo(TradingStateContext stateContext) {

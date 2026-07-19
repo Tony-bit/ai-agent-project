@@ -1,8 +1,11 @@
 package denny.ai.agent.test.service.auto;
 
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.model.valobj.runtime.TurnRuntimeContext;
 import denny.ai.agent.domain.service.auto.AutoAgentExecuteStrategy;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -85,6 +88,38 @@ public class AutoAgentStrategyTest {
         emitter.complete();
 
         verify(emitter, times(1)).complete();
+    }
+
+    @org.junit.jupiter.api.Test
+    public void successfulStrategyExecutionCompletesOwnedEmitterExactlyOnceAfterHandlerReturns() throws Exception {
+        AutoAgentExecuteStrategy strategy = new AutoAgentExecuteStrategy();
+        DefaultAutoAgentExecuteStrategyFactory localFactory = mock(DefaultAutoAgentExecuteStrategyFactory.class);
+        RuntimeContextAssembler localRuntimeContextAssembler = mock(RuntimeContextAssembler.class);
+        @SuppressWarnings("unchecked")
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> localHandler =
+                mock(StrategyHandler.class);
+        inject(strategy, "defaultAutoAgentExecuteStrategyFactory", localFactory);
+        inject(strategy, "runtimeContextAssembler", localRuntimeContextAssembler);
+        when(localFactory.armoryStrategyHandler()).thenReturn(localHandler);
+        when(localRuntimeContextAssembler.prepare(any(), any())).thenReturn(TurnRuntimeContext.builder()
+                .sessionId("test-session-123")
+                .traceId("trace-123")
+                .build());
+
+        CountingEmitter countingEmitter = new CountingEmitter();
+        when(localHandler.apply(any(), any())).thenAnswer(invocation -> {
+            assertEquals(0, countingEmitter.completeCount);
+            return "ok";
+        });
+
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("test-session-123")
+                .message("test message")
+                .userId("user-001")
+                .build();
+        strategy.execute(request, countingEmitter);
+
+        assertEquals(1, countingEmitter.completeCount);
     }
 
     /**
@@ -210,5 +245,20 @@ public class AutoAgentStrategyTest {
         context.setTraceId("trace-123");
 
         assertEquals("trace-123", context.getTraceId());
+    }
+
+    private void inject(AutoAgentExecuteStrategy target, String fieldName, Object value) throws Exception {
+        java.lang.reflect.Field field = AutoAgentExecuteStrategy.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static class CountingEmitter extends ResponseBodyEmitter {
+        private int completeCount;
+
+        @Override
+        public synchronized void complete() {
+            completeCount++;
+        }
     }
 }

@@ -101,6 +101,7 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
                 emitter.send(sseData);
             }
             emitter.complete();
+            log.info("SSE emitter close completed: owner=auto_agent");
         } catch (Exception e) {
             log.warn("SSE 流关闭异常: error={}, msg={}", e.getMessage(), errorMessage);
         }
