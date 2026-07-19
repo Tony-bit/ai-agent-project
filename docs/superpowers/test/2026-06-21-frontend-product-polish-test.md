@@ -14,7 +14,7 @@
 - 验证通用 Agent 与股票分析的 SSE 流在分包、断流、异常响应和重复终止事件下仍能正确收口。
 - 验证实时消息、历史消息、用户输入和协议元数据均经过安全渲染，不产生 XSS。
 - 验证请求从 `idle` 到 `running/completed/failed/cancelled` 的状态转换一致、可取消且幂等。
-- 验证 API Base URL、`userId` 的解析、校验、持久化和降级符合设计优先级。
+- 验证 API 基础地址（Base URL）、`userId` 的解析、校验、持久化和降级符合设计优先级。
 - 验证桌面端、窄屏、长内容、滚动控制、Toast 和可访问状态具备产品级可用性。
 - 验证改动未破坏意图路由、多任务、多 Agent 股票分析、会话历史和记忆同步等既有能力。
 
@@ -53,20 +53,20 @@
 
 采用两条互补链路：
 
-1. **可控链路**：使用固定 SSE fixture，保证异常分包、非法协议、断流、ABA 竞态和 XSS 可稳定复现。该链路负责确定性断言，不依赖模型输出。
+1. **可控链路**：使用固定 SSE 测试数据（fixture），保证异常分包、非法协议、断流、ABA 竞态和 XSS 可稳定复现。该链路负责确定性断言，不依赖模型输出。
 2. **真实链路**：使用本地真实服务和真实页面，验证浏览器、Nginx/同源代理、后端 Agent、会话与记忆的完整协作。第三方不可用时标记 `blocked`，不得伪造为通过。
 
 核心安全、状态和协议用例必须先通过可控链路；真实链路负责证明集成没有断点，两者不能相互替代。
 
-### 2.3 Mock 策略
+### 2.3 模拟策略
 
-| 依赖项 | 是否 Mock | Mock 方式 | 说明 |
+| 依赖项 | 是否模拟 | 模拟方式 | 说明 |
 |---|---|---|---|
-| SSE 字节流与 HTTP Response | 可控链路 Mock | 本地测试服务或浏览器 route fulfill | 控制 chunk 边界、延迟、响应头、断流和终止序列 |
-| AbortController | 单元测试 Stub，E2E 使用浏览器原生实现 | 可记录 `abort` 次数的 Stub | 同时验证状态机和真实网络取消 |
-| marked、DOMPurify | 单元测试 Stub，浏览器使用真实库 | 依赖注入与 vendored 脚本 | 验证纯函数接线和真实 DOM sink |
-| localStorage | 可控链路 Stub | 正常、抛异常、非法值三类存储对象 | 验证优先级和不可用降级 |
-| LLM、行情、Mem0 | 可控链路 Mock；真实链路不 Mock | 固定 fixture / 真实服务 | 不把第三方波动混入前端确定性断言 |
+| SSE 字节流与 HTTP 响应 | 可控链路模拟 | 本地测试服务或浏览器路由响应模拟 | 控制数据块边界、延迟、响应头、断流和终止序列 |
+| AbortController | 单元测试使用桩（Stub），E2E 使用浏览器原生实现 | 可记录 `abort` 次数的测试桩 | 同时验证状态机和真实网络取消 |
+| marked、DOMPurify | 单元测试使用桩（Stub），浏览器使用真实库 | 依赖注入与项目内置脚本 | 验证纯函数接线和真实 DOM 写入点 |
+| localStorage | 可控链路使用桩（Stub） | 正常、抛异常、非法值三类存储对象 | 验证优先级和不可用降级 |
+| LLM、行情、Mem0 | 可控链路使用模拟实现；真实链路不模拟 | 固定测试数据（fixture）/真实服务 | 不把第三方波动混入前端确定性断言 |
 
 ### 2.4 结果状态定义
 
@@ -87,7 +87,7 @@
 | 环境 | 用途 | 最低要求 | status |
 |---|---|---|---|
 | Node 测试环境 | 纯函数与状态机验证 | 项目支持的 Node.js，能够执行 `node --test` | pass |
-| 可控 SSE 环境 | 异常流与安全 E2E | 可设置响应头、chunk、延迟和主动断开 | blocked（现有安全冒烟可用，未提供长流/断流 fixture 服务） |
+| 可控 SSE 环境 | 异常流与安全 E2E | 可设置响应头、数据块、延迟和主动断开 | blocked（现有安全冒烟可用，未提供长流/断流测试服务） |
 | 本地真实环境 | 主链路 E2E | 前端可访问，后端及必要中间件已启动 | pass（应用、数据库、Redis、Mem0 均可访问；记忆写入受上游余额限制） |
 | 桌面浏览器 | 主流程与长内容 | Chromium，视口 `1280×720` | pass |
 | 窄屏浏览器 | 响应式与核心操作 | Chromium，视口 `390×844` | pass |
@@ -97,13 +97,13 @@
 - 测试用户：`frontend-polish-e2e`
 - 每条独立用例使用唯一 `sessionId`，格式为 `fpp-<TC编号>-<时间戳>`。
 - 同一用例需要验证跨会话行为时，保持 `userId` 不变并显式切换 `sessionId`。
-- 通用 Agent 输入应使用普通自然语言，不依赖前端硬编码或自动填充 Query。
+- 通用 Agent 输入应使用普通自然语言，不依赖前端硬编码或自动填充的查询内容（Query）。
 - 股票分析使用测试环境可识别的合法股票代码；若行情依赖不可用，用例记为 `blocked`。
 - 安全载荷仅在隔离测试环境使用，执行前设置 `window.__xssExecuted = false` 作为哨兵。
 
-### 3.3 可控 SSE fixture
+### 3.3 可控 SSE 测试数据
 
-| fixture | 响应行为 | 覆盖用例 |
+| 测试数据标识 | 响应行为 | 覆盖用例 |
 |---|---|---|
 | `normal-general` | 多个思考事件、`content completed=true`、`complete` | TC-001、TC-203 |
 | `normal-trading` | 分析师进度、`final_decision`、`trading_complete` | TC-002 |
@@ -141,7 +141,7 @@
 | Batch 1 | 通用流和交易流最终结果归类 | TC-001、TC-002 |
 | Batch 2 | 防重复提交、取消、统一收口 | TC-005、TC-202 |
 | Batch 2 | 请求 token 隔离与 ABA 竞态 | TC-205 |
-| Batch 2 | API Base URL 与 `userId` 优先级和校验 | TC-006、TC-107 |
+| Batch 2 | API 基础地址（Base URL）与 `userId` 优先级和校验 | TC-006、TC-107 |
 | Batch 2 | localStorage 不可用降级 | TC-106 |
 | Batch 2 | 新建/切换会话和业务入口时清理旧状态 | TC-208、TC-306 |
 | Batch 3 | 长流帧级合并、完成后 Markdown 渲染 | TC-206 |
@@ -163,21 +163,21 @@
 | TC-003 | P1 | 会话历史加载与恢复 | 当前用户存在多轮历史 | 选择历史会话并加载更早消息 | 顺序、角色和分页正确；历史正文使用与实时正文相同的安全渲染策略 | 真实 | pass（单页加载与恢复通过，分页另见 TC-305） |
 | TC-004 | P1 | 会话记忆同步 | 当前会话存在完整问答 | 点击同步记忆，等待接口结束 | 按钮只提交一次；显示非阻塞结果 Toast；成功或失败后按钮均恢复 | 真实 | blocked（前端失败恢复通过；Mem0 上游返回 402 余额不足） |
 | TC-005 | P0 | 主动取消并继续请求 | `slow-cancellable` 正在输出 | 点击取消，随后发起新请求 | reader 停止；状态为“已取消”而非“系统失败”；无需刷新即可成功发起下一请求 | 可控 + 真实 | pass |
-| TC-006 | P1 | 运行配置优先级 | 可设置 URL 参数和 localStorage | 分别使用默认值、存储值、URL 值打开页面并触发全部接口 | 所有 API 使用同一解析后的 Base URL；`userId` 遵循 URL → localStorage → 默认值 | 可控 | pass |
-| TC-007 | P1 | 桌面、窄屏和键盘操作 | 两种规定视口 | 完成模式切换、输入、发送、取消、会话选择和同步 | 核心按钮无遮挡；焦点可见；控件名称可识别；状态变化可通过 live region 获取 | 手工 | pass |
+| TC-006 | P1 | 运行配置优先级 | 可设置 URL 参数和 localStorage | 分别使用默认值、存储值、URL 值打开页面并触发全部接口 | 所有 API 使用同一解析后的基础地址（Base URL）；`userId` 遵循 URL → localStorage → 默认值 | 可控 | pass |
+| TC-007 | P1 | 桌面、窄屏和键盘操作 | 两种规定视口 | 完成模式切换、输入、发送、取消、会话选择和同步 | 核心按钮无遮挡；焦点可见；控件名称可识别；状态变化可通过实时播报区域（live region）获取 | 手工 | pass |
 | TC-008 | P1 | 长流中用户回看历史 | 长流持续输出，内容超过面板高度 | 保持底部观察，再向上滚动，最后回到底部 | 底部附近时自动跟随；向上回看后不抢滚动；回到底部后恢复跟随 | 可控 + 手工 | pass |
 
 ### 5.2 异常场景
 
 | 编号 | 优先级 | 场景名称 | 前置条件 | 操作 | 预期结果 | 执行链路 | status |
 |---|---|---|---|---|---|---|---|
-| TC-101 | P0 | SSE 非法 JSON | 使用 `malformed-json` | 发起请求并读到非法事件 | 显示“协议异常”或等价友好错误；不泄露完整响应；状态只收口一次且控件恢复 | 可控 | blocked（解析器单测通过，缺少浏览器 fixture） |
+| TC-101 | P0 | SSE 非法 JSON | 使用 `malformed-json` | 发起请求并读到非法事件 | 显示“协议异常”或等价友好错误；不泄露完整响应；状态只收口一次且控件恢复 | 可控 | blocked（解析器单测通过，缺少浏览器测试环境） |
 | TC-102 | P0 | 业务完成前网络断流 | 使用 `disconnect-before-terminal` | 发起请求并等待连接被关闭 | 进入 `indeterminate`，显示“状态未确认/连接已结束”中性警告；既不得包装成成功，也不得显示“操作失败”；已有结果保留，按钮和 Loading 恢复 | 可控 | append |
 | TC-103 | P0 | HTTP 与响应协议异常 | 使用 `http-contract-errors` | 依次返回 500、204、200 JSON、空 body | 每次只出现一个友好错误；不得进入永久 Loading；可继续下一请求 | 可控 | pass |
 | TC-104 | P0 | XSS 与危险协议注入 | 设置安全哨兵并使用 `xss-payloads` | 覆盖用户输入、实时正文、历史正文、type/subType/step/model | 脚本、事件属性和危险 URL 均不执行；元数据按纯文本或固定标签展示；哨兵保持 `false` | 可控 + 浏览器 | pass |
 | TC-105 | P1 | SSE 单事件缓冲超限 | 使用 `oversized-event` | 读取超过 1 MiB 且无边界的事件 | 立即失败并释放缓冲和请求状态；诊断被截断；页面可继续使用 | 可控 | pass |
 | TC-106 | P1 | localStorage 不可用 | 让 get/set 抛出异常 | 刷新页面并执行通用、会话和记忆操作 | 降级为页面内存与默认配置；无未捕获异常；核心操作不被阻塞 | 可控 | pass |
-| TC-107 | P1 | 非法运行配置 | URL/存储中放入超长或非法 `userId`、危险 Base URL | 打开页面并触发请求 | 非法值被拒绝；回退到下一合法来源；不得构造脚本协议或错误目标 URL | 可控 | pass |
+| TC-107 | P1 | 非法运行配置 | URL/存储中放入超长或非法 `userId`、危险基础地址（Base URL） | 打开页面并触发请求 | 非法值被拒绝；回退到下一合法来源；不得构造脚本协议或错误目标 URL | 可控 | pass |
 | TC-108 | P0 | Markdown 依赖缺失 | 阻止 marked 或 DOMPurify 加载 | 获取含 HTML 的正文 | 停止富文本渲染并安全降级为纯文本，不继续写入未清洗 HTML | 可控 + 浏览器 | blocked（纯函数降级通过，未执行浏览器依赖拦截） |
 | TC-109 | P0 | 业务 error 后仍有事件 | error 后继续发送 content/complete | 读取整个响应 | 首个 error 终止生效；后续事件不改变 DOM 和最终状态；只显示一次失败提示 | 可控 | pass |
 
@@ -187,10 +187,10 @@
 |---|---|---|---|---|---|---|---|
 | TC-201 | P0 | 任意 SSE 分包与边界 | 使用 `split-chunks` | 在 JSON 字段和 UTF-8 字符间拆包，混合 CR/LF/CRLF、多 data 行、注释与 `[DONE]` | 事件数量、顺序和正文不变；注释与 `[DONE]` 被忽略；流结束时剩余完整事件被冲刷 | 可控 | pass |
 | TC-202 | P0 | 快速重复提交 | 页面空闲 | 连续双击发送或快速按两次 Enter | 网络面板只有一个业务请求；运行中发送入口禁用，取消入口可用 | 可控 + 真实 | pass |
-| TC-203 | P0 | 消息完成不等于请求终止 | `normal-general` | 先发 `content completed=true`，延迟后再发 `complete` | 消息进入结果面板，但请求仍保持 running；只有 `complete` 才恢复控件 | 可控 | pass |
+| TC-203 | P0 | 消息完成不等于请求终止 | `normal-general` | 先发 `content completed=true`，延迟后再发 `complete` | 消息进入结果面板，但请求仍保持 `running`；只有 `complete` 才恢复控件 | 可控 | pass |
 | TC-204 | P0 | 重复终止与终止后事件 | 使用 `duplicate-terminal` | 发送首个终止事件后继续推送 | 首个终止事件只执行一次收口；最终结果、Toast、状态不重复；后续事件被忽略 | 可控 | pass |
-| TC-205 | P0 | 取消旧请求后立即启动新请求 | 请求 A 为慢流 | 取消 A，立即启动 B，让 A 的 `finally` 晚于 B 的 start | A 的迟到回调不能结束或修改 B；B 可独立完成；每个 token 只结束一次 | 可控 | pass |
-| TC-206 | P1 | 超长 Markdown 与帧级合并 | 使用 `long-markdown` | 记录渲染次数和 Performance，等待完成 | 流式阶段按帧合并纯文本更新；完成时统一清洗 Markdown 和高亮；长代码局部横向滚动 | 可控 + 浏览器 | blocked（真实金融长流完成并安全渲染，但未记录渲染次数与 Performance） |
+| TC-205 | P0 | 取消旧请求后立即启动新请求 | 请求 A 为慢流 | 取消 A，立即启动 B，让 A 的 `finally` 晚于 B 启动 | A 的迟到回调不能结束或修改 B；B 可独立完成；每个 token 只结束一次 | 可控 | pass |
+| TC-206 | P1 | 超长 Markdown 与帧级合并 | 使用 `long-markdown` | 记录渲染次数和性能指标，等待完成 | 流式阶段按帧合并纯文本更新；完成时统一清洗 Markdown 和高亮；长代码局部横向滚动 | 可控 + 浏览器 | blocked（真实金融长流完成并安全渲染，但未记录渲染次数与性能指标） |
 | TC-207 | P1 | 自动滚动阈值 | 面板已产生长内容 | 分别停在阈值内、阈值外并继续推流 | 仅阈值内自动跟随；阈值外保持用户位置；无明显跳动 | 可控 + 浏览器 | pass |
 | TC-208 | P1 | 请求中切换会话或业务模式 | 请求 A 正在运行 | 新建会话、选择历史会话或切换通用/交易模式 | A 被取消或隔离；新视图不残留旧 Loading、按钮文本、状态和流式缓存 | 可控 + 手工 | pass |
 | TC-209 | P1 | 未知但合法事件类型 | 返回合法未知 type/subType | 读取事件后继续发送已知终止事件 | 使用“未知事件/未知阶段”安全展示；不抛异常；后续事件继续处理 | 可控 | pass |
@@ -215,9 +215,9 @@
 ### 6.1 TC-201：任意 SSE 分包
 
 1. 将页面 API 指向可控 SSE 环境，启用 `split-chunks`。
-2. 确认 fixture 至少包含两个事件，其中一个 JSON 在 UTF-8 多字节字符中间拆分。
+2. 确认测试数据至少包含两个事件，其中一个 JSON 在 UTF-8 多字节字符中间拆分。
 3. 发起通用请求，等待流正常关闭。
-4. 对比 fixture 事件与页面解析结果的数量、顺序和完整正文。
+4. 对比测试数据中的事件与页面解析结果的数量、顺序和完整正文。
 5. 检查控制台、Loading、按钮与最终结果面板。
 
 通过断言：事件无丢失、无重复、无乱码；控制台无异常；结束后控件恢复。
@@ -230,7 +230,7 @@
 4. 检查 DOM 中不存在可执行危险属性或协议，并读取安全哨兵。
 5. 确认普通 Markdown、代码块和安全链接仍可读。
 
-通过断言：`window.__xssExecuted === false`；无弹窗、跳转或网络外带；正文被清洗，元数据不进入 HTML sink。
+通过断言：`window.__xssExecuted === false`；无弹窗、跳转或网络外带；正文被清洗，元数据不进入 HTML 写入点。
 
 ### 6.3 TC-203/TC-204：完成语义与幂等
 
@@ -259,7 +259,7 @@
 4. 分别提供非法、超长和危险协议值，验证逐级回退。
 5. 触发通用、交易、会话列表、会话消息和记忆同步请求。
 
-通过断言：所有接口使用同一 Base URL；`userId` 优先级一致；非法值不进入请求；默认测试用户仍可兼容现有数据。
+通过断言：所有接口使用同一基础地址（Base URL）；`userId` 优先级一致；非法值不进入请求；默认测试用户仍可兼容现有数据。
 
 ### 6.6 TC-206/TC-207：长流渲染与滚动
 
@@ -278,7 +278,7 @@
 |---|---|---|---|
 | TC-101、TC-105、TC-201 | `createSseParser ...` 系列测试 | `AgentUiCore#createSseParser` | 单元 |
 | TC-103 | `validateSseResponse rejects ...` | `AgentUiCore#validateSseResponse` | 单元 |
-| TC-104、TC-108 | `sanitizeMarkdown ...` + `agent-ui-security-smoke.html` | `sanitizeMarkdown`、浏览器 DOM sink | 单元/浏览器 |
+| TC-104、TC-108 | `sanitizeMarkdown ...` + `agent-ui-security-smoke.html` | `sanitizeMarkdown`、浏览器 DOM 写入点 | 单元/浏览器 |
 | TC-203、TC-204、TC-209 | `classifyAgentEvent separates ...` 及事件矩阵 | `AgentUiCore#classifyAgentEvent` | 单元 |
 | TC-006、TC-106、TC-107 | `resolveRuntimeConfig ...` 系列测试 | `resolveRuntimeConfig`、`buildApiUrl` | 单元 |
 | TC-202、TC-205、TC-208 | `request lifecycle ...` 系列测试 | `AgentUiCore#createRequestLifecycle` | 单元/可控 E2E |
@@ -303,7 +303,7 @@
 - 任意合法 chunk 组合不改变事件数量、顺序、UTF-8 字符和 `content`。
 - 历史消息与实时消息使用相同的正文清洗策略。
 - 最终结果只出现一次，并进入正确面板。
-- `userId` 和 session 必须与当前视图及请求一致，不跨用户串数据。
+- `userId` 和会话必须与当前视图及请求一致，不跨用户串数据。
 
 ### 8.2 状态流转正确性
 
@@ -323,8 +323,8 @@
 
 - 原始协议诊断最多记录 200 字符，不记录完整模型响应、用户历史或敏感凭据。
 - `content` 是唯一允许进入 Markdown 清洗链路的协议字段；其他字段按纯文本处理。
-- 浏览器控制台不出现未处理 Promise rejection 或 DOM 异常。
-- 若系统接入 Langfuse/日志平台，应能按 session 或请求标识关联异常，但本测试不要求记录原始思维链。
+- 浏览器控制台不出现未处理的 Promise 拒绝或 DOM 异常。
+- 若系统接入 Langfuse/日志平台，应能按会话或请求标识关联异常，但本测试不要求记录原始思维链。
 
 ---
 
@@ -336,9 +336,9 @@
 |---|---|---|---|
 | 1 | 执行 `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | 全部通过，0 失败 | pass（28/28，包含缺少终态时解析为 `indeterminate`） |
 | 2 | 打开 `agent-ui-security-smoke.html` 执行真实 DOM 清洗冒烟 | 全部安全载荷不执行 | pass（14/14） |
-| 3 | 执行可控 SSE 场景 TC-101～TC-210 | 所有协议、异常、竞态场景有确定结果 | blocked（缺少专用长流/断流 fixture；已完成现有单测和冒烟覆盖） |
+| 3 | 执行可控 SSE 场景 TC-101～TC-210 | 所有协议、异常、竞态场景有确定结果 | blocked（缺少专用长流/断流测试服务；已完成现有单测和冒烟覆盖） |
 | 4 | 执行真实主链路 TC-001～TC-008、TC-301～TC-307 | 无阻塞回归；外部阻塞被如实记录 | blocked（核心链路通过；记忆同步受 402 余额限制，分页/清空未执行） |
-| 5 | 执行 `mvn clean test` | 默认测试无本轮新增失败 | pass（11/11 reactor modules） |
+| 5 | 执行 `mvn clean test` | 默认测试无本轮新增失败 | pass（11/11 Reactor 模块） |
 | 6 | 执行 `git diff --check` | 无空白错误 | pass |
 | 7 | 执行 `TradingNodeInvokerTest` 与 SSE 终态定向套件 | 配置化构造器由 Spring 注入元数据唯一选中，相关协议测试通过 | pass（17/17） |
 | 8 | 构建并启动当前分支可执行 jar | 应用上下文创建成功并监听 8090 | pass |
@@ -380,8 +380,8 @@
 |---|---|---|
 | 外部模型、行情或记忆服务不可用 | 真实 E2E 无法完成 | 标记 `blocked` 并保留证据；先完成可控链路，环境恢复后补测 |
 | 模型输出非确定 | 最终文本无法精确比对 | 断言事件、状态、面板和结构，不断言固定回答全文 |
-| 浏览器时序导致 ABA 难复现 | 旧请求可能误结束新请求 | 可控 fixture 固定回调顺序，浏览器再执行取消后立即重试 |
-| 超长 Markdown 受设备性能影响 | 性能数据波动 | 固定浏览器、视口、fixture 长度；验收渲染策略和交互可用性 |
+| 浏览器时序导致 ABA 难复现 | 旧请求可能误结束新请求 | 使用可控测试数据固定回调顺序，浏览器再执行取消后立即重试 |
+| 超长 Markdown 受设备性能影响 | 性能数据波动 | 固定浏览器、视口和测试数据长度；验收渲染策略和交互可用性 |
 | 真实后端协议与计划不一致 | 前端结果可能误判 | 保存原始事件类型与有限摘要，按需求契约提 BUG，不私自放宽标准 |
 | Mem0 上游模型账户余额不足 | 记忆同步与跨会话记忆无法完成 | 保留 402 响应证据；账户恢复后补跑 TC-004、TC-304 |
 | 股票输入提示与后端契约不一致 | 用户按示例输入 AAPL/NVDA 必然失败 | 将 placeholder 和前端校验统一为 6 位 A 股代码 |
@@ -397,27 +397,27 @@
 |---|---|---|---|
 | Node 单元测试 | pass | 25/25 | `agent-ui-core.test.js` 控制台输出 |
 | 浏览器安全冒烟 | pass | 14/14 | `agent-ui-security-smoke.html` 页面 PASS 汇总 |
-| 可控 SSE E2E | blocked | 0/1 完整 fixture 服务 | 未提供长流、主动断流与重复终止 fixture；已有单测/冒烟结果见上 |
+| 可控 SSE E2E | blocked | 0/1 完整测试服务 | 未提供长流、主动断流与重复终止测试数据；已有单测/冒烟结果见上 |
 | 真实后端 E2E | blocked（部分通过） | 7/11 核心场景 | 通用完成、金融完成、取消重试、长流滚动、会话恢复；记忆/分页/清空仍阻塞 |
 | 桌面与窄屏手工验证 | pass（可执行部分） | 7/7 检查点 | Chromium `1280×720`、`390×844` DOM/交互记录 |
-| Maven 回归 | pass | 11/11 reactor modules | `mvn clean test`：BUILD SUCCESS |
+| Maven 回归 | pass | 11/11 Reactor 模块 | `mvn clean test`：BUILD SUCCESS |
 
 ### 12.2 用例执行记录
 
 | 用例编号 | 环境/视口 | userId/sessionId | 结果 | 请求与 DOM 证据 | 备注 |
 |---|---|---|---|---|---|
-| TC-005/205 | Chromium 390×844 | demo-user/运行时 session | pass | A 取消后状态为“已取消”；B 独立进入“思考中”，再次取消后控件恢复 | 浏览器真实 AbortController |
-| TC-007 | Chromium 1280×720、390×844 | demo-user/运行时 session | pass | 窄屏 workspace/panels 为 column，0 横向溢出，交易控件全部可见，live log 可识别 | 模式按钮均为 `type=button` |
-| TC-104 | Chromium 390×844 | test-user/冒烟 session | pass | 安全冒烟页面显示 PASS 14/14 | 覆盖 Markdown、用户/历史和协议元数据 XSS |
-| TC-208 | Chromium 390×844 | demo-user/运行时 session | pass | 运行中切到金融模式后 Loading 隐藏、按钮恢复、两面板状态均为“已取消” | 无旧请求视觉残留 |
-| TC-210 | Chromium 1280×720 | demo-user/运行时 session | pass | 连续空提交仅存在 1 个 `#activeToast`，内容为“请输入消息内容” | 页面保持可操作 |
-| TC-307 | Chromium 1280×720 | frontend-polish-e2e/运行时 session | fail | 按 placeholder 输入 `AAPL` 后请求被发送，后端返回“非 A股 ticker” | BUG-001 |
+| TC-005/205 | Chromium 390×844 | demo-user/运行时会话 | pass | A 取消后状态为“已取消”；B 独立进入“思考中”，再次取消后控件恢复 | 浏览器真实 AbortController |
+| TC-007 | Chromium 1280×720、390×844 | demo-user/运行时会话 | pass | 窄屏工作区和面板采用纵向排列（`column`），无横向溢出，交易控件全部可见，实时日志可识别 | 模式按钮均为 `type=button` |
+| TC-104 | Chromium 390×844 | test-user/冒烟会话 | pass | 安全冒烟页面显示 PASS 14/14 | 覆盖 Markdown、用户/历史和协议元数据 XSS |
+| TC-208 | Chromium 390×844 | demo-user/运行时会话 | pass | 运行中切到金融模式后 Loading 隐藏、按钮恢复、两面板状态均为“已取消” | 无旧请求视觉残留 |
+| TC-210 | Chromium 1280×720 | demo-user/运行时会话 | pass | 连续空提交仅存在 1 个 `#activeToast`，内容为“请输入消息内容” | 页面保持可操作 |
+| TC-307 | Chromium 1280×720 | frontend-polish-e2e/运行时会话 | fail | 按占位提示（placeholder）输入 `AAPL` 后请求被发送，后端返回“非 A 股代码” | BUG-001 |
 | TC-001/301 | Chromium 1280×720 | frontend-polish-e2e/session_1782095841725_gw56noy06 | pass | 通用请求返回“1加1等于2。”，结果状态“已完成”，按钮与 Loading 恢复 | 真实模型、Redis 与数据库链路 |
-| TC-002/303 | Chromium 1280×720 | frontend-polish-e2e/运行时 session | pass | `600519` 完成分析师、辩论、风控和最终决策，最终状态“已完成”、决策 HOLD | 存在 BUG-002 展示问题 |
-| TC-005/205 | Chromium 1280×720 | frontend-polish-e2e/同一 session | pass | 真实请求取消后状态“已取消”，立即发起请求 B 并返回“重试成功” | 旧请求未覆盖 B 状态 |
+| TC-002/303 | Chromium 1280×720 | frontend-polish-e2e/运行时会话 | pass | `600519` 完成分析师、辩论、风控和最终决策，最终状态“已完成”、决策 HOLD | 存在 BUG-002 展示问题 |
+| TC-005/205 | Chromium 1280×720 | frontend-polish-e2e/同一会话 | pass | 真实请求取消后状态“已取消”，立即发起请求 B 并返回“重试成功” | 旧请求未覆盖 B 状态 |
 | TC-008/207 | Chromium 1280×720 | frontend-polish-e2e/金融长流 | pass | 回看后 `scrollTop` 保持 3001.6，内容增长 1398px；回到底部后距离保持约 0 | 用户滚动意图得到保留 |
 | TC-003 | Chromium 1280×720 | frontend-polish-e2e/session_1782095841725_gw56noy06 | pass | 新建会话后选择旧会话，恢复 2 轮、4 条消息，角色和顺序正确 | 分页未覆盖 |
-| TC-004/304 | Chromium 1280×720 | frontend-polish-e2e/运行时 session | blocked | Toast 显示“同步失败”且按钮恢复；服务端 Mem0 `/memories` 返回 402 Insufficient Balance | 外部账户阻塞 |
+| TC-004/304 | Chromium 1280×720 | frontend-polish-e2e/运行时会话 | blocked | Toast 显示“同步失败”且按钮恢复；服务端 Mem0 `/memories` 返回 402 `Insufficient Balance` | 外部账户阻塞 |
 
 ### 12.3 问题记录
 

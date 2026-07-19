@@ -1,42 +1,42 @@
-# SSE Terminal State Handling Implementation Plan
+# SSE 终态处理实现计划
 
 status: append
 owner: Codex
 created_at: 2026-07-19
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向执行线程：** 必须使用子技能 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans，逐项执行本计划。各步骤使用 checkbox（`- [ ]`）语法跟踪状态。
 
-**Goal:** Reliably distinguish completed, failed, indeterminate, and cancelled SSE requests while ensuring the embedded trading flow sends its terminal event before the outer `auto_agent` request closes.
+**目标：** 可靠区分已完成、失败、状态未确认和已取消的 SSE 请求，同时确保嵌入式交易流程在外层 `auto_agent` 请求关闭前发送终态事件。
 
-**Architecture:** Keep explicit SSE terminal events as the only proof of business completion. Add a pure frontend EOF resolver and an indeterminate warning presentation, make backend event senders return real delivery results, and assign `auto_agent` emitter closure exclusively to `AutoAgentExecuteStrategy`; the dedicated trading endpoint continues using `TradingSseSession`.
+**架构：** 将明确的 SSE 终态事件作为业务完成的唯一依据。新增纯前端 EOF 判定函数和状态未确认警告展示，使后端事件发送器返回真实投递结果，并将 `auto_agent` emitter 的关闭职责完全交给 `AutoAgentExecuteStrategy`；独立交易端点继续使用 `TradingSseSession`。
 
-**Tech Stack:** Java 17, Spring MVC `ResponseBodyEmitter`, Maven/JUnit 5/Mockito, native JavaScript, Node.js test runner, HTML/Tailwind utilities.
+**技术栈：** Java 17、Spring MVC `ResponseBodyEmitter`、Maven/JUnit 5/Mockito、原生 JavaScript、Node.js 测试运行器、HTML/Tailwind 工具类。
 
-**Design:** `docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md`
+**设计文档：** `docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md`
 
-**Status rule:** Every task starts as `append`. The task execution thread may change only its own status to `pass`, and only after the implementation, targeted tests, and listed acceptance checks all pass. A failed or incomplete task remains `append`.
+**状态规则：** 每个任务的初始状态均为 `append`。任务执行线程只能修改自己负责的任务，并且只有实现、定向测试和列出的验收检查全部通过后，才能将状态改为 `pass`。失败或未完成的任务保持 `append`。
 
 ---
 
-### Task 1: Add frontend terminal-state resolution and indeterminate presentation
+### 任务 1：新增前端终态判定与状态未确认展示
 
-| Task | status |
+| 任务 | status |
 |------|------|
-| Task 1: Add frontend terminal-state resolution and indeterminate presentation | pass |
+| 任务 1：新增前端终态判定与状态未确认展示 | pass |
 
-**Files:**
-- Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js:147-167`
-- Modify: `docs/dev-ops/nginx/html/index.html:585-593`
-- Modify: `docs/dev-ops/nginx/html/index.html:1135-1159`
-- Modify: `docs/dev-ops/nginx/html/index.html:1787-1798`
-- Modify: `docs/dev-ops/nginx/html/index.html:2021-2063`
-- Modify: `docs/dev-ops/nginx/html/index.html:2321-2332`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-security-smoke.html`
+**文件：**
+- 修改：`docs/dev-ops/nginx/html/js/agent-ui-core.js:147-167`
+- 修改：`docs/dev-ops/nginx/html/index.html:585-593`
+- 修改：`docs/dev-ops/nginx/html/index.html:1135-1159`
+- 修改：`docs/dev-ops/nginx/html/index.html:1787-1798`
+- 修改：`docs/dev-ops/nginx/html/index.html:2021-2063`
+- 修改：`docs/dev-ops/nginx/html/index.html:2321-2332`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-security-smoke.html`
 
-- [x] **Step 1: Write failing EOF-resolution tests**
+- [x] **步骤 1：编写失败的 EOF 判定测试**
 
-Import `resolveStreamEnd` from `agent-ui-core.js` and add these cases:
+从 `agent-ui-core.js` 导入 `resolveStreamEnd`，并新增以下用例：
 
 ```javascript
 test('resolveStreamEnd preserves explicit terminal outcomes', () => {
@@ -70,19 +70,19 @@ test('resolveStreamEnd does not replace protocol failure', () => {
 });
 ```
 
-- [x] **Step 2: Run the frontend unit test and verify it fails**
+- [x] **步骤 2：运行前端单元测试并确认失败**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: FAIL because `resolveStreamEnd` is not exported.
+预期：测试失败，因为尚未导出 `resolveStreamEnd`。
 
-- [x] **Step 3: Implement the pure EOF resolver**
+- [x] **步骤 3：实现纯函数 EOF 判定器**
 
-Add and export:
+新增并导出：
 
 ```javascript
 function resolveStreamEnd(streamState, hasResult) {
@@ -98,7 +98,7 @@ function resolveStreamEnd(streamState, hasResult) {
 }
 ```
 
-Replace both duplicated EOF branches with:
+将两处重复的 EOF 分支替换为：
 
 ```javascript
 const hasResult = document.getElementById('resultMessages').children.length > 1;
@@ -109,9 +109,9 @@ if (streamEnd.notice) {
 }
 ```
 
-- [x] **Step 4: Add a warning presentation that is distinct from failure**
+- [x] **步骤 4：新增区别于失败状态的警告展示**
 
-Add `warning` to `stageTypeMap`, add an amber `.bubble-warning`, and make `addStageMessage` select warning styling without the “操作失败” header or retry footer:
+在 `stageTypeMap` 中新增 `warning`，新增琥珀色 `.bubble-warning`，并让 `addStageMessage` 选择不带“操作失败”标题和重试页脚的警告样式：
 
 ```javascript
 const isError = type === 'error' || subType === 'error';
@@ -124,11 +124,11 @@ const statusIndicator = isError
         : '');
 ```
 
-Use stable amber classes for the avatar, title, body, and border. Do not change successful result rendering.
+头像、标题、正文和边框使用稳定的琥珀色样式类。不要修改成功结果的渲染方式。
 
-- [x] **Step 5: Add browser smoke assertions**
+- [x] **步骤 5：新增浏览器冒烟断言**
 
-Feed a result event without a terminal event, resolve EOF, render the returned notice, and assert:
+输入一个没有终态事件的结果事件，判定 EOF，渲染返回的提示，并执行以下断言：
 
 ```javascript
 assert(streamEnd.outcome === 'indeterminate', 'Missing terminal must be indeterminate');
@@ -136,26 +136,26 @@ assert(thinking.textContent.includes('状态未确认'), 'Indeterminate warning 
 assert(!thinking.textContent.includes('操作失败'), 'Indeterminate warning was rendered as failure');
 ```
 
-- [x] **Step 6: Run frontend tests and perform acceptance checks**
+- [x] **步骤 6：运行前端测试并执行验收检查**
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 ```
 
-Expected: all tests PASS.
+预期：所有测试通过。
 
-Acceptance checks:
+验收检查：
 
-- `complete` and `trading_complete` remain `completed`.
-- explicit `error` remains `failed`.
-- EOF without a terminal becomes `indeterminate` regardless of result presence.
-- the warning does not contain the red “操作失败” heading.
+- `complete` 和 `trading_complete` 仍判定为 `completed`。
+- 明确的 `error` 仍判定为 `failed`。
+- 无论是否已收到结果，没有终态事件的 EOF 都判定为 `indeterminate`。
+- 警告中不包含红色的“操作失败”标题。
 
-- [x] **Step 7: Mark Task 1 pass and commit**
+- [x] **步骤 7：将任务 1 标记为 pass 并提交**
 
-Change only the Task 1 table from `append` to `pass`, then run:
+仅将任务 1 表格中的状态从 `append` 改为 `pass`，然后运行：
 
 ```powershell
 git add docs/dev-ops/nginx/html/index.html docs/dev-ops/nginx/html/js/agent-ui-core.js docs/dev-ops/nginx/html/test/agent-ui-core.test.js docs/dev-ops/nginx/html/test/agent-ui-security-smoke.html docs/superpowers/plans/2026-07-19-sse-terminal-state.md
@@ -164,26 +164,26 @@ git commit -m "fix: distinguish indeterminate SSE completion"
 
 ---
 
-### Task 2: Return real backend SSE delivery results
+### 任务 2：返回真实的后端 SSE 投递结果
 
-| Task | status |
+| 任务 | status |
 |------|------|
-| Task 2: Return real backend SSE delivery results | pass |
+| 任务 2：返回真实的后端 SSE 投递结果 | pass |
 
-**Files:**
-- Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/sse/SseEventSender.java`
-- Modify: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/auto/step/AbstractExecuteSupport.java:118-180`
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStateContext.java:32-108`
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStateContext.java:183-236`
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStarter.java:57-93`
-- Modify: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trading/trigger/http/TradingAnalysisController.java:166-172`
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/IntentRoutingNode.java:115-125`
-- Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
-- Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/IntentRoutingNodeSseForwardingTest.java`
+**文件：**
+- 新建：`ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/sse/SseEventSender.java`
+- 修改：`ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/auto/step/AbstractExecuteSupport.java:118-180`
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStateContext.java:32-108`
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStateContext.java:183-236`
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStarter.java:57-93`
+- 修改：`ai-agent-study-trigger/src/main/java/denny/ai/agent/trading/trigger/http/TradingAnalysisController.java:166-172`
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/IntentRoutingNode.java:115-125`
+- 测试：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
+- 测试：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/IntentRoutingNodeSseForwardingTest.java`
 
-- [x] **Step 1: Write failing terminal-delivery tests**
+- [x] **步骤 1：编写失败的终态投递测试**
 
-Add tests proving a rejected sender returns false and permits a later retry:
+新增测试，证明发送器拒绝投递时返回 `false`，并允许后续重试：
 
 ```java
 @Test
@@ -197,21 +197,21 @@ void failedTerminalDeliveryReturnsFalseAndCanBeRetried() {
 }
 ```
 
-Update the intent-routing forwarding test so its capturing override returns `true`, and assert that the callback supplied to `TradingStarter` returns the forwarding result.
+更新意图路由转发测试，使其捕获用的覆盖实现返回 `true`，并断言传给 `TradingStarter` 的回调会返回实际转发结果。
 
-- [x] **Step 2: Run targeted trading-domain tests and verify they fail**
+- [x] **步骤 2：运行 trading-domain 定向测试并确认失败**
 
-Run:
+运行：
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain -am -Dtest=TradingStateContextTerminalTest,IntentRoutingNodeSseForwardingTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expected: FAIL because the sender and `sendSseResult` currently return `void`.
+预期：测试失败，因为发送器和 `sendSseResult` 当前返回 `void`。
 
-- [x] **Step 3: Add the result-bearing sender contract**
+- [x] **步骤 3：新增携带结果的发送器契约**
 
-Create:
+新建：
 
 ```java
 package denny.ai.agent.domain.service.sse;
@@ -222,13 +222,13 @@ public interface SseEventSender {
 }
 ```
 
-Change `AbstractExecuteSupport.sendSseResult(...)` to return `boolean`: return the sink acceptance result, `true` after a successful emitter send, and `false` for missing emitters, disconnected sessions, rejected sinks, and caught exceptions.
+将 `AbstractExecuteSupport.sendSseResult(...)` 的返回值改为 `boolean`：返回 sink 的接收结果；emitter 发送成功后返回 `true`；emitter 缺失、会话断开、sink 拒绝或捕获到异常时返回 `false`。
 
-- [x] **Step 4: Propagate the sender result through trading paths**
+- [x] **步骤 4：沿交易链路传递发送结果**
 
-Replace `BiConsumer<String, Object>` with `SseEventSender` in `TradingStarter` and `TradingStateContext`.
+在 `TradingStarter` 和 `TradingStateContext` 中使用 `SseEventSender` 替换 `BiConsumer<String, Object>`。
 
-Dedicated endpoint adapter:
+独立端点适配器：
 
 ```java
 SseEventSender sseSender = (type, event) -> {
@@ -240,7 +240,7 @@ SseEventSender sseSender = (type, event) -> {
 };
 ```
 
-Embedded `auto_agent` adapter:
+嵌入式 `auto_agent` 适配器：
 
 ```java
 starter.start(tradingRequest, dynamicContext, (type, event) -> {
@@ -251,9 +251,9 @@ starter.start(tradingRequest, dynamicContext, (type, event) -> {
 });
 ```
 
-- [x] **Step 5: Make terminal methods report real delivery and allow retry after rejection**
+- [x] **步骤 5：让终态方法报告真实投递结果，并允许拒绝后重试**
 
-Use the existing atomic guard, but reopen it when delivery fails:
+使用现有原子保护，但在投递失败时重新开放：
 
 ```java
 public boolean sendTerminalCompleteOnce() {
@@ -269,28 +269,28 @@ public boolean sendTerminalCompleteOnce() {
 }
 ```
 
-Apply the same result handling to `sendTerminalErrorOnce`. Remove the duplicate void terminal sender after all callers use the boolean implementation.
+对 `sendTerminalErrorOnce` 应用相同的结果处理。所有调用方改用 boolean 实现后，删除重复的 void 终态发送方法。
 
-- [x] **Step 6: Add accepted/rejected terminal logs**
+- [x] **步骤 6：新增终态接受/拒绝日志**
 
-Log one INFO entry for accepted terminal delivery and WARN for rejected or failed delivery. Include `sessionId`, `type`, `subType`, and whether the route uses a sink or raw emitter. Do not log “sent” before the sender returns `true`.
+终态投递被接受时记录一条 INFO 日志，被拒绝或投递失败时记录 WARN 日志。日志应包含 `sessionId`、`type`、`subType`，以及路由使用 sink 还是 raw emitter。发送器返回 `true` 之前不得记录“sent”。
 
-- [x] **Step 7: Run targeted tests and acceptance checks**
+- [x] **步骤 7：运行定向测试和验收检查**
 
-Run the Maven command from Step 2.
+运行步骤 2 中的 Maven 命令。
 
-Expected: tests PASS.
+预期：测试通过。
 
-Acceptance checks:
+验收检查：
 
-- sender rejection returns `false`.
-- a rejected first attempt does not permanently suppress a retry.
-- successful terminal delivery remains at-most-once.
-- both dedicated and embedded trading adapters return actual delivery results.
+- 发送器拒绝投递时返回 `false`。
+- 首次尝试被拒绝后，不会永久阻止后续重试。
+- 成功的终态投递仍保证至多一次。
+- 独立和嵌入式交易适配器都返回实际投递结果。
 
-- [x] **Step 8: Mark Task 2 pass and commit**
+- [x] **步骤 8：将任务 2 标记为 pass 并提交**
 
-Change only the Task 2 table to `pass`, then stage the listed Java files and plan file:
+仅将任务 2 表格中的状态改为 `pass`，然后暂存列出的 Java 文件和计划文件：
 
 ```powershell
 git commit -m "fix: report SSE terminal delivery results"
@@ -298,21 +298,21 @@ git commit -m "fix: report SSE terminal delivery results"
 
 ---
 
-### Task 3: Assign emitter closure to the outer request owner
+### 任务 3：将 emitter 关闭职责交给外层请求所有者
 
-| Task | status |
+| 任务 | status |
 |------|------|
-| Task 3: Assign emitter closure to the outer request owner | pass |
+| 任务 3：将 emitter 关闭职责交给外层请求所有者 | pass |
 
-**Files:**
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStarter.java:90-175`
-- Modify: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/auto/AutoAgentExecuteStrategy.java:65-110`
-- Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStarterPipelineTest.java`
-- Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/service/auto/AutoAgentStrategyTest.java`
+**文件：**
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/config/TradingStarter.java:90-175`
+- 修改：`ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/auto/AutoAgentExecuteStrategy.java:65-110`
+- 测试：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStarterPipelineTest.java`
+- 测试：`ai-agent-study-app/src/test/java/denny/ai/agent/test/service/auto/AutoAgentStrategyTest.java`
 
-- [x] **Step 1: Change the ownership test expectation and verify failure**
+- [x] **步骤 1：修改所有权测试预期并确认失败**
 
-Rename the pipeline test to `embeddedTradingDoesNotCompleteOuterEmitter` and assert:
+将 pipeline 测试重命名为 `embeddedTradingDoesNotCompleteOuterEmitter`，并执行以下断言：
 
 ```java
 assertEquals(0, emitter.completeCount,
@@ -322,17 +322,17 @@ assertEquals(1, events.stream()
         .count());
 ```
 
-Run:
+运行：
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain -am -Dtest=TradingStarterPipelineTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expected: FAIL because `TradingStarter` currently completes the raw emitter.
+预期：测试失败，因为 `TradingStarter` 当前仍会关闭 raw emitter。
 
-- [x] **Step 2: Close only a sink owned by the dedicated trading route**
+- [x] **步骤 2：仅关闭独立交易路由拥有的 sink**
 
-Replace the raw-emitter fallback in `TradingStarter` with sink-only closure:
+将 `TradingStarter` 中的 raw emitter 兜底关闭逻辑替换为仅关闭 sink 的逻辑：
 
 ```java
 private void completeOwnedSseSession(DynamicContext dynamicContext) {
@@ -346,32 +346,32 @@ private void completeOwnedSseSession(DynamicContext dynamicContext) {
 }
 ```
 
-Call this method from synchronous and legacy trading-finally paths. Do not call `ResponseBodyEmitter.complete()` from `TradingStarter.start(...)`.
+在同步流程和旧版交易流程的 finally 路径中调用此方法。不得在 `TradingStarter.start(...)` 中调用 `ResponseBodyEmitter.complete()`。
 
-- [x] **Step 3: Verify the outer strategy remains the single raw-emitter closer**
+- [x] **步骤 3：确认外层策略仍是 raw emitter 的唯一关闭者**
 
-Keep `AutoAgentExecuteStrategy.safeComplete(...)` as the outer owner. Add or update a test that exercises a successful strategy execution and verifies `emitter.complete()` exactly once after the node chain returns. Add an INFO log containing `owner=auto_agent` at the successful close point.
+保留 `AutoAgentExecuteStrategy.safeComplete(...)` 作为外层所有者。新增或更新测试，覆盖策略成功执行，并验证节点链返回后 `emitter.complete()` 恰好调用一次。在成功关闭点新增一条包含 `owner=auto_agent` 的 INFO 日志。
 
-- [x] **Step 4: Run ownership tests**
+- [x] **步骤 4：运行所有权测试**
 
-Run:
+运行：
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain,ai-agent-study-app -am -Dtest=TradingStarterPipelineTest,AutoAgentStrategyTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expected: tests PASS.
+预期：测试通过。
 
-Acceptance checks:
+验收检查：
 
-- embedded trading sends `trading_complete` but does not close the emitter.
-- dedicated trading still requests `SseEventSink.complete()`.
-- `AutoAgentExecuteStrategy` closes its emitter exactly once.
-- no raw emitter close remains in `TradingStarter`.
+- 嵌入式交易发送 `trading_complete`，但不关闭 emitter。
+- 独立交易仍会请求 `SseEventSink.complete()`。
+- `AutoAgentExecuteStrategy` 恰好关闭其 emitter 一次。
+- `TradingStarter` 中不再保留 raw emitter 关闭逻辑。
 
-- [x] **Step 5: Mark Task 3 pass and commit**
+- [x] **步骤 5：将任务 3 标记为 pass 并提交**
 
-Change only the Task 3 table to `pass`, stage the listed files and plan file, then commit:
+仅将任务 3 表格中的状态改为 `pass`，暂存列出的文件和计划文件，然后提交：
 
 ```powershell
 git commit -m "fix: centralize auto agent SSE closure"
@@ -379,61 +379,61 @@ git commit -m "fix: centralize auto agent SSE closure"
 
 ---
 
-### Task 4: Complete protocol regression and delivery verification
+### 任务 4：完成协议回归与投递验证
 
-| Task | status |
+| 任务 | status |
 |------|------|
-| Task 4: Complete protocol regression and delivery verification | append |
+| 任务 4：完成协议回归与投递验证 | append |
 
-**Files:**
-- Modify: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md:170-176`
-- Modify: `docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md:1-10`
-- Modify: `docs/superpowers/plans/2026-07-19-sse-terminal-state.md`
-- Test: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
-- Test: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
-- Test: `ai-agent-study-trigger/src/test/java/denny/ai/agent/trading/trigger/http/TradingSseSessionTest.java`
+**文件：**
+- 修改：`docs/superpowers/test/2026-06-21-frontend-product-polish-test.md:170-176`
+- 修改：`docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md:1-10`
+- 修改：`docs/superpowers/plans/2026-07-19-sse-terminal-state.md`
+- 测试：`docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
+- 测试：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/config/TradingStateContextTerminalTest.java`
+- 测试：`ai-agent-study-trigger/src/test/java/denny/ai/agent/trading/trigger/http/TradingSseSessionTest.java`
 
-- [x] **Step 1: Update the regression expectation for missing terminal events**
+- [x] **步骤 1：更新缺失终态事件的回归预期**
 
 status: pass
 
-Keep `disconnect-before-terminal` as non-success, but change its expected UI from a red failure to an indeterminate warning:
+保留 `disconnect-before-terminal` 的非成功判定，但将其预期界面从红色失败提示改为状态未确认警告：
 
 ```text
 显示“状态未确认/连接已结束”警告，不得包装成成功，不得显示“操作失败”；
 已有结果保留，按钮和 Loading 恢复。
 ```
 
-- [x] **Step 2: Run the focused frontend and backend suites**
+- [x] **步骤 2：运行前后端定向测试集**
 
 status: pass
 
-Run:
+运行：
 
 ```powershell
 node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain,ai-agent-study-trigger,ai-agent-study-app -am -Dtest=TradingStateContextTerminalTest,IntentRoutingNodeSseForwardingTest,TradingStarterPipelineTest,TradingSseSessionTest,AutoAgentStrategyTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expected: all selected tests PASS.
+预期：所有选定测试通过。
 
-- [x] **Step 3: Run the broader module regression**
+- [x] **步骤 3：运行更广泛的模块回归测试**
 
 status: pass
 
-Run:
+运行：
 
 ```powershell
 mvn -pl ai-agent-study-domain,ai-agent-study-trading/ai-agent-study-trading-domain,ai-agent-study-trigger,ai-agent-study-app -am test
 ```
 
-Expected: BUILD SUCCESS.
+预期：构建成功。
 
-- [ ] **Step 4: Verify the raw SSE terminal sequence**
+- [ ] **步骤 4：验证原始 SSE 终态序列**
 
 status: append
 
-With the application running, invoke both entry points using valid local request payloads:
+应用运行后，使用有效的本地请求载荷调用两个入口：
 
 ```powershell
 $autoPayload = '{"message":"分析股票300502","sessionId":"sse-terminal-auto-test","userId":"test-user","maxStep":5}'
@@ -442,86 +442,86 @@ curl.exe -N -H "Accept: text/event-stream" -H "Content-Type: application/json" -
 curl.exe -N -H "Accept: text/event-stream" -H "Content-Type: application/json" --data-raw $tradingPayload http://localhost:8090/api/v1/trading/analysis
 ```
 
-Expected for each successful trading request: a visible `data:` frame containing `"subType":"trading_complete"` before the process returns to the prompt. If local configuration cannot start the application, leave Task 4 as `append` and record the environmental blocker in the execution report; do not mark it `pass`.
+每个成功交易请求的预期结果：进程返回命令提示符前，可见一个包含 `"subType":"trading_complete"` 的 `data:` 帧。如果本地配置无法启动应用，则任务 4 保持 `append`，并在执行报告中记录环境阻塞；不得标记为 `pass`。
 
-- [ ] **Step 5: Update document-level status after all tasks pass**
+- [ ] **步骤 5：所有任务通过后更新文档级状态**
 
 status: append
 
-Only when Tasks 1-4 all show `pass`:
+仅当任务 1-4 均显示 `pass` 时：
 
-- change this plan's top-level `status: append` to `status: pass`;
-- change the design document status from “实现计划已生成，待执行” to “实现完成并验收通过”;
-- keep the design document linked to
+- 将本计划的顶层 `status: append` 改为 `status: pass`；
+- 将设计文档状态从“实现计划已生成，待执行”改为“实现完成并验收通过”；
+- 保留设计文档到以下文件的链接：
   `docs/superpowers/plans/2026-07-19-sse-terminal-state.md`.
 
-- [ ] **Step 6: Mark Task 4 pass and commit**
+- [ ] **步骤 6：将任务 4 标记为 pass 并提交**
 
 status: append
 
-After Steps 1-5 and all acceptance checks pass, change only the Task 4 table to `pass`, then run:
+步骤 1-5 和所有验收检查通过后，仅将任务 4 表格中的状态改为 `pass`，然后运行：
 
 ```powershell
 git add docs/superpowers/test/2026-06-21-frontend-product-polish-test.md docs/superpowers/plans/2026-07-19-sse-terminal-state-design.md docs/superpowers/plans/2026-07-19-sse-terminal-state.md
 git commit -m "test: verify SSE terminal state handling"
 ```
 
-### Task 4A: Repair TradingNodeInvoker constructor injection
+### 任务 4A：修复 TradingNodeInvoker 构造器注入
 
-| Task | status |
+| 任务 | status |
 |---|---|
-| Task 4A: Repair TradingNodeInvoker constructor injection | pass |
+| 任务 4A：修复 TradingNodeInvoker 构造器注入 | pass |
 
-**Files:**
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvoker.java`
-- Modify: `ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvokerTest.java`
-- Modify: `docs/superpowers/plans/2026-07-19-sse-terminal-state.md`
-- Modify: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
+**文件：**
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvoker.java`
+- 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/pipeline/TradingNodeInvokerTest.java`
+- 修改：`docs/superpowers/plans/2026-07-19-sse-terminal-state.md`
+- 修改：`docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
 
-- [x] **Step 1: Add a failing Spring constructor-selection test**
-
-status: pass
-
-Inspect the constructor injection metadata and assert that exactly one constructor is marked `@Autowired`, with parameter types `ExecutorService` and `TradingAgentProperties`, and that the executor parameter carries `@Qualifier("tradingTaskExecutor")`. Run only `TradingNodeInvokerTest` and confirm the current two-constructor implementation fails because no constructor is explicitly selected.
-
-- [x] **Step 2: Make the configured constructor explicit for Spring**
+- [x] **步骤 1：新增失败的 Spring 构造器选择测试**
 
 status: pass
 
-Use constructor injection on the two-argument constructor, qualify the executor parameter, and retain the one-argument constructor only as a test convenience. The production path must use the configured `TradingAgentProperties` bean.
+检查构造器注入元数据，并断言恰好一个构造器标有 `@Autowired`，其参数类型为 `ExecutorService` 和 `TradingAgentProperties`，且 executor 参数带有 `@Qualifier("tradingTaskExecutor")`。仅运行 `TradingNodeInvokerTest`，确认当前双构造器实现因未显式选择构造器而失败。
 
-- [x] **Step 3: Run focused constructor and protocol tests**
-
-status: pass
-
-Run `TradingNodeInvokerTest` plus the Task 4 focused backend suite. Expected: all selected tests pass.
-
-- [x] **Step 4: Package and start the application**
+- [x] **步骤 2：为 Spring 显式指定配置构造器**
 
 status: pass
 
-Build the executable app jar, start it from this worktree, and verify port 8090 listens. Only after the constructor test passes and the application listens may Task 4A change to `pass`.
+在双参数构造器上使用构造器注入，为 executor 参数添加限定符，并仅将单参数构造器保留为测试便利入口。生产路径必须使用配置好的 `TradingAgentProperties` bean。
 
-#### Task 4A execution report
+- [x] **步骤 3：运行构造器和协议定向测试**
 
-| Verification item | Result | Evidence | status |
+status: pass
+
+运行 `TradingNodeInvokerTest` 和任务 4 后端定向测试集。预期：所有选定测试通过。
+
+- [x] **步骤 4：打包并启动应用**
+
+status: pass
+
+构建可执行应用 jar，从此 worktree 启动，并验证端口 8090 正在监听。只有构造器测试通过且应用开始监听后，才能将任务 4A 改为 `pass`。
+
+#### 任务 4A 执行报告
+
+| 验证项 | 结果 | 证据 | status |
 |---|---|---|---|
-| Constructor-selection red test | Failed as expected before the fix: expected one `@Autowired` constructor, found zero | `TradingNodeInvokerTest#should_expose_single_configured_constructor_for_spring` | pass |
-| Constructor-selection green test | 3/3 `TradingNodeInvokerTest` tests passed | Focused trading-domain Maven run | pass |
-| Focused protocol regression | 17 selected tests passed, 0 failed/errors; 11-module Reactor build succeeded | Task 4A Step 3 Maven run | pass |
-| Package | Executable jar rebuilt successfully | `mvn -pl ai-agent-study-app -am -Dmaven.test.skip=true package`, `BUILD SUCCESS` | pass |
-| Application startup | Spring context created `TradingNodeInvoker`; application started and listened on port 8090 | `Tomcat started on port 8090`, PID 36880 | pass |
+| 构造器选择红灯测试 | 修复前按预期失败：预期存在一个 `@Autowired` 构造器，实际为零个 | `TradingNodeInvokerTest#should_expose_single_configured_constructor_for_spring` | pass |
+| 构造器选择绿灯测试 | `TradingNodeInvokerTest` 3/3 通过 | trading-domain Maven 定向运行 | pass |
+| 协议定向回归 | 选定的 17 个测试通过，失败/错误为 0；11 个模块的 Reactor 构建成功 | 任务 4A 步骤 3 的 Maven 运行结果 | pass |
+| 打包 | 可执行 jar 重新构建成功 | `mvn -pl ai-agent-study-app -am -Dmaven.test.skip=true package`, `BUILD SUCCESS` | pass |
+| 应用启动 | Spring 上下文成功创建 `TradingNodeInvoker`；应用启动并监听端口 8090 | `Tomcat started on port 8090`, PID 36880 | pass |
 
-#### Task 4 execution report
+#### 任务 4 执行报告
 
-| Verification item | Result | Evidence | status |
+| 验证项 | 结果 | 证据 | status |
 |---|---|---|---|
-| TC-102 expectation | Updated to `indeterminate`; explicitly neither success nor failure | `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md` | pass |
-| Frontend focused suite | 28 tests passed, 0 failed | `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | pass |
-| Backend focused suite | 14 selected tests passed, 0 failed/errors; Reactor build succeeded | Focused Maven command from Step 2 | pass |
-| Broader module regression | 11/11 Reactor modules succeeded | Maven command from Step 3, `BUILD SUCCESS` | pass |
-| Application startup | Constructor injection blocker repaired; executable jar started and listened on port 8090 | `target/task4a-app.out.log`, `Tomcat started on port 8090` | pass |
-| `auto_agent` raw SSE | Request reached SSE endpoint but returned explicit error before trading execution; no `trading_complete` frame | Final read-only main-workspace config verification in `target/task4-main-config-auto.sse`: `Missing INTENT_ROUTING client configuration` | append |
-| Dedicated trading raw SSE | Request reached SSE endpoint but returned explicit trading error; no `trading_complete` frame | Final read-only main-workspace config verification in `target/task4-main-config-trading.sse`: `subType:error`, network request timeout | append |
+| TC-102 预期 | 已更新为 `indeterminate`；明确既非成功也非失败 | `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md` | pass |
+| 前端定向测试集 | 28 个测试通过，失败为 0 | `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js` | pass |
+| 后端定向测试集 | 选定的 14 个测试通过，失败/错误为 0；Reactor 构建成功 | 步骤 2 的 Maven 定向命令 | pass |
+| 更广泛的模块回归 | 11/11 个 Reactor 模块构建成功 | 步骤 3 的 Maven 命令，`BUILD SUCCESS` | pass |
+| 应用启动 | 构造器注入阻塞已修复；可执行 jar 启动并监听端口 8090 | `target/task4a-app.out.log`, `Tomcat started on port 8090` | pass |
+| `auto_agent` 原始 SSE | 请求已到达 SSE 端点，但在执行交易前返回明确错误；没有 `trading_complete` 帧 | 使用主工作区配置进行最终只读验证，记录于 `target/task4-main-config-auto.sse`：`Missing INTENT_ROUTING client configuration` | append |
+| 独立交易原始 SSE | 请求已到达 SSE 端点，但返回明确的交易错误；没有 `trading_complete` 帧 | 使用主工作区配置进行最终只读验证，记录于 `target/task4-main-config-trading.sse`：`subType:error`，网络请求超时 | append |
 
-Task 4 remains `append`. The constructor injection blocker is fixed, but the automated suites do not replace successful raw SSE verification through both running application entry points. A final attempt loaded the main workspace `application.yml` read-only through Spring's external config location; the application listened on 8090, but both endpoints still returned the explicit errors above. Restore valid database/client configuration for `auto_agent` and network/model availability for the dedicated trading route, then rerun both Step 4 curl commands. Only after both responses contain `trading_complete` may TC-102, Task 4, and the document-level statuses be considered for `pass`.
+任务 4 保持 `append`。构造器注入阻塞已修复，但自动化测试集不能替代通过两个运行中应用入口进行的原始 SSE 成功验证。最后一次尝试通过 Spring 外部配置位置以只读方式加载主工作区的 `application.yml`；应用已监听 8090，但两个端点仍返回上述明确错误。请恢复 `auto_agent` 所需的有效数据库/客户端配置，以及独立交易路由所需的网络/模型可用性，然后重新运行步骤 4 中的两个 curl 命令。只有两个响应都包含 `trading_complete` 后，TC-102、任务 4 和文档级状态才可考虑改为 `pass`。
