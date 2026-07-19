@@ -33,6 +33,8 @@ public class IntentRoutingOnlineEvaluator {
             "JSON\u89e3\u6790\u5931\u8d25",
             "taskList\u4e3a\u7a7a"
     );
+    private static final List<String> FINANCIAL_INTENTS = List.of(
+            "FINANCIAL_GENERAL", "STOCK_ANALYSIS");
 
     private final IntentRoutingService routingService;
     private final ObservabilityService observabilityService;
@@ -533,6 +535,7 @@ public class IntentRoutingOnlineEvaluator {
         populateCategoryMetrics(cases, metrics);
         populatePerIntentAccuracy(cases, metrics);
         populateConfusionMatrix(cases, metrics);
+        populateFinancialIntentMetrics(cases, metrics);
         populateRuntimeMetrics(allRuns, metrics);
         return metrics;
     }
@@ -628,6 +631,55 @@ public class IntentRoutingOnlineEvaluator {
             }
         }
         metrics.setConfusionMatrix(matrix);
+    }
+
+    private void populateFinancialIntentMetrics(List<CaseResult> cases, GlobalMetrics metrics) {
+        Map<String, ClassificationMetric> classification = new LinkedHashMap<>();
+        FINANCIAL_INTENTS.forEach(intent -> classification.put(intent, new ClassificationMetric()));
+        int financialGeneralRuns = 0;
+        int financialGeneralToStock = 0;
+
+        for (CaseResult c : cases) {
+            if (!"single-task".equals(c.getCategory()) || c.getExpectedIntents().size() != 1) {
+                continue;
+            }
+            String expected = c.getExpectedIntents().get(0);
+            for (RunResult run : c.getRuns()) {
+                if (OutcomeType.INFRA_ERROR.name().equals(run.getOutcomeType())) {
+                    continue;
+                }
+                String actual = run.getActualIntents().size() == 1 ? run.getActualIntents().get(0) : null;
+                if ("FINANCIAL_GENERAL".equals(expected)) {
+                    financialGeneralRuns++;
+                    if ("STOCK_ANALYSIS".equals(actual)) {
+                        financialGeneralToStock++;
+                    }
+                }
+                if (!OutcomeType.ROUTE.name().equals(run.getOutcomeType()) || actual == null) {
+                    continue;
+                }
+                for (Map.Entry<String, ClassificationMetric> entry : classification.entrySet()) {
+                    String target = entry.getKey();
+                    ClassificationMetric value = entry.getValue();
+                    if (target.equals(expected) && target.equals(actual)) {
+                        value.setTruePositive(value.getTruePositive() + 1);
+                    } else if (!target.equals(expected) && target.equals(actual)) {
+                        value.setFalsePositive(value.getFalsePositive() + 1);
+                    } else if (target.equals(expected)) {
+                        value.setFalseNegative(value.getFalseNegative() + 1);
+                    }
+                }
+            }
+        }
+        classification.values().forEach(value -> {
+            value.setPrecision(rate(value.getTruePositive(),
+                    value.getTruePositive() + value.getFalsePositive()));
+            value.setRecall(rate(value.getTruePositive(),
+                    value.getTruePositive() + value.getFalseNegative()));
+        });
+        metrics.setFinancialIntentMetrics(classification);
+        metrics.setFinancialGeneralToStockAnalysisRate(
+                rate(financialGeneralToStock, financialGeneralRuns));
     }
 
     private double rate(long numerator, long denominator) {
@@ -771,6 +823,8 @@ public class IntentRoutingOnlineEvaluator {
         private double stageSuccessRate;
         private Map<String, AccuracyMetric> perIntentAccuracy = new LinkedHashMap<>();
         private Map<String, Map<String, Integer>> confusionMatrix = new LinkedHashMap<>();
+        private Map<String, ClassificationMetric> financialIntentMetrics = new LinkedHashMap<>();
+        private double financialGeneralToStockAnalysisRate;
     }
 
     @Data
@@ -778,5 +832,14 @@ public class IntentRoutingOnlineEvaluator {
         private int runCount;
         private int passedRunCount;
         private double accuracy;
+    }
+
+    @Data
+    public static class ClassificationMetric {
+        private int truePositive;
+        private int falsePositive;
+        private int falseNegative;
+        private double precision;
+        private double recall;
     }
 }

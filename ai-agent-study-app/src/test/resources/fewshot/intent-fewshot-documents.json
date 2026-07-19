@@ -1,0 +1,632 @@
+[
+    {
+        "id":  "5fd6f957-8d32-3a29-b8e8-8eeec7a8bf86",
+        "text":  "什么是向量数据库？",
+        "metadata":  {
+                         "id":  "1",
+                         "intentCode":  "GENERAL_CHAT",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"什么是向量数据库？\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "3696dbbb-0f69-3958-9c48-1cd2b145e3bf",
+        "text":  "RAG 是什么意思？",
+        "metadata":  {
+                         "id":  "2",
+                         "intentCode":  "GENERAL_CHAT",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"RAG 是什么意思？\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "05a3f343-586c-3949-ae4f-10bd5b080867",
+        "text":  "给我讲讲大语言模型",
+        "metadata":  {
+                         "id":  "3",
+                         "intentCode":  "GENERAL_CHAT",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"给我讲讲大语言模型\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "eb6f8edc-68d1-389d-af08-c119c14b2229",
+        "text":  "transformer 是什么",
+        "metadata":  {
+                         "id":  "4",
+                         "intentCode":  "GENERAL_CHAT",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"transformer 是什么\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "07ad1e5f-40ff-3f64-96f0-eca6bca18fb0",
+        "text":  "解释一下注意力机制",
+        "metadata":  {
+                         "id":  "5",
+                         "intentCode":  "GENERAL_CHAT",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"通用问答/概念解释\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"解释一下注意力机制\",\"intent\":\"GENERAL_CHAT\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "054b82f7-cd2c-3c7a-976f-80cf29204477",
+        "text":  "查询一下最新的 AI Agent 论文",
+        "metadata":  {
+                         "id":  "6",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"查询一下最新的 AI Agent 论文\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "ddeb7342-d348-32c8-beb4-510e51d56161",
+        "text":  "查找向量数据库选型相关的文档",
+        "metadata":  {
+                         "id":  "7",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"查找向量数据库选型相关的文档\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "80d1dafe-1b80-3bc9-888a-213cb773c6e4",
+        "text":  "检索 RAG 架构优化的资料",
+        "metadata":  {
+                         "id":  "8",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"检索 RAG 架构优化的资料\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "77c71ca9-63f8-3f9a-bafd-e1b314fb9fd3",
+        "text":  "汇总一下 LangChain 官方文档里关于 memory 的用法",
+        "metadata":  {
+                         "id":  "9",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"汇总一下 LangChain 官方文档里关于 memory 的用法\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "57404ee2-0312-3f51-8c71-802dc0e6768a",
+        "text":  "基于知识库检索整理一份向量数据库对比",
+        "metadata":  {
+                         "id":  "10",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"知识库检索/多文档汇总\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"基于知识库检索整理一份向量数据库对比\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "f57416ef-3470-3fdb-ac13-77a31fa80e11",
+        "text":  "分析一下为什么 LLM 会产生幻觉",
+        "metadata":  {
+                         "id":  "11",
+                         "intentCode":  "PE_REASONING",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"分析一下为什么 LLM 会产生幻觉\",\"intent\":\"PE_REASONING\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "a51526ed-5a9f-3114-83d4-1089009a6d4e",
+        "text":  "帮我推理一下这个算法的复杂度",
+        "metadata":  {
+                         "id":  "12",
+                         "intentCode":  "PE_REASONING",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我推理一下这个算法的复杂度\",\"intent\":\"PE_REASONING\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "da3e5d67-7424-34fb-a0e7-bfdbbefa6571",
+        "text":  "设计一个分布式缓存方案",
+        "metadata":  {
+                         "id":  "13",
+                         "intentCode":  "PE_REASONING",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"设计一个分布式缓存方案\",\"intent\":\"PE_REASONING\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "f4c6054f-2508-3a1d-a5a8-ae78de4c0db2",
+        "text":  "分析这个问题应该用什么设计模式",
+        "metadata":  {
+                         "id":  "14",
+                         "intentCode":  "PE_REASONING",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"分析这个问题应该用什么设计模式\",\"intent\":\"PE_REASONING\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "bbe7f130-245a-3cd1-8a34-a2ee4b891496",
+        "text":  "帮我理清这个业务逻辑",
+        "metadata":  {
+                         "id":  "15",
+                         "intentCode":  "PE_REASONING",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"逻辑推理/问题分析\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我理清这个业务逻辑\",\"intent\":\"PE_REASONING\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "0fd94cb5-bf15-329a-bdf4-d777f8ab468e",
+        "text":  "计算一下 12345 的阶乘",
+        "metadata":  {
+                         "id":  "16",
+                         "intentCode":  "PE_CALCULATION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"计算一下 12345 的阶乘\",\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "ecdd298d-7344-3659-b0f8-8638eec37f7f",
+        "text":  "帮我算一下复利的终值",
+        "metadata":  {
+                         "id":  "17",
+                         "intentCode":  "PE_CALCULATION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我算一下复利的终值\",\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "a8ba449b-1f82-3fe5-b3d0-6ccdcf40b6e1",
+        "text":  "统计一下这组数据的均值和方差",
+        "metadata":  {
+                         "id":  "18",
+                         "intentCode":  "PE_CALCULATION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"统计一下这组数据的均值和方差\",\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "24c6cc53-f16c-3af9-af4d-257e3fc95824",
+        "text":  "计算这两个矩阵的乘积",
+        "metadata":  {
+                         "id":  "19",
+                         "intentCode":  "PE_CALCULATION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"计算这两个矩阵的乘积\",\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "3b1632b7-0bc1-3027-8737-75f51b25eda3",
+        "text":  "帮我做一个回归分析",
+        "metadata":  {
+                         "id":  "20",
+                         "intentCode":  "PE_CALCULATION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"数学计算/数据处理\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我做一个回归分析\",\"intent\":\"PE_CALCULATION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "1e57d916-88ad-3615-9662-b68509aece0d",
+        "text":  "分析一下贵州茅台的走势",
+        "metadata":  {
+                         "id":  "21",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "389ebe7c-6cf5-3a8e-86ee-51865167ca2e",
+        "text":  "帮我看看比亚迪最近怎么样",
+        "metadata":  {
+                         "id":  "22",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "71978127-bd57-34f0-938e-79867618983f",
+        "text":  "查询宁德时代的K线",
+        "metadata":  {
+                         "id":  "23",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"查询宁德时代的K线\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "7f69430a-77d6-3a1a-bb7e-4368c86c1b4f",
+        "text":  "分析上证指数的技术指标",
+        "metadata":  {
+                         "id":  "24",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"分析上证指数的技术指标\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "119186e3-a253-3c6a-bd6b-8b1fc9536fef",
+        "text":  "给我看看腾讯控股的行情",
+        "metadata":  {
+                         "id":  "25",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"给我看看腾讯控股的行情\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "b4403e43-241d-3895-b3e2-75c92ce5ba4d",
+        "text":  "帮我分析一下这只股票最近的走势。",
+        "metadata":  {
+                         "id":  "26",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"stockCode\"],\"clarificationPrompt\":\"请提供要分析的股票代码或股票名称。\",\"reasoning\":\"用户未明确股票标的\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "fd59a87a-3a10-301c-8fd9-33590e8c0c3e",
+        "text":  "帮我分析这只股票最近是不是可以抄底，顺便看看风险大不大。",
+        "metadata":  {
+                         "id":  "27",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"stockCode\"],\"clarificationPrompt\":\"请提供要分析的股票代码或股票名称。\",\"reasoning\":\"用户未明确股票标的\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "9848b847-9dd3-3fc7-9b51-57e0fc2e07ab",
+        "text":  "再把这些文档里的风险点汇总一下。",
+        "metadata":  {
+                         "id":  "28",
+                         "intentCode":  "PE_RETRIEVAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"历史文档追问\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"再把这些文档里的风险点汇总一下。\",\"intent\":\"PE_RETRIEVAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "45972fb0-f99b-341b-9789-e67256ef6bcf",
+        "text":  "检查一下系统健康状态",
+        "metadata":  {
+                         "id":  "29",
+                         "intentCode":  "INSPECTION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"检查一下系统健康状态\",\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "339e68eb-781d-3ded-9542-f126b12a9df2",
+        "text":  "做个系统巡检",
+        "metadata":  {
+                         "id":  "30",
+                         "intentCode":  "INSPECTION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"做个系统巡检\",\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "1be5e671-a7e1-3de5-a2ec-9d85f49acecb",
+        "text":  "查看 CPU 和内存使用情况",
+        "metadata":  {
+                         "id":  "31",
+                         "intentCode":  "INSPECTION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"查看 CPU 和内存使用情况\",\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "81596163-f5a0-3d69-9049-5f9111a37ff0",
+        "text":  "检查一下数据库连接池",
+        "metadata":  {
+                         "id":  "32",
+                         "intentCode":  "INSPECTION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"检查一下数据库连接池\",\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "7b2ba1bd-77a8-3ba3-99bc-fba4c59e53e9",
+        "text":  "帮我看看各个服务的状态",
+        "metadata":  {
+                         "id":  "33",
+                         "intentCode":  "INSPECTION",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"系统巡检/健康检查\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我看看各个服务的状态\",\"intent\":\"INSPECTION\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "e43c0988-56d7-3320-b227-c56b1cc6844a",
+        "text":  "什么是市盈率？",
+        "metadata":  {
+                         "id":  "34",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"什么是市盈率？\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "176a90cc-9afe-3055-b46a-35d8375ddd83",
+        "text":  "查一下贵州茅台现在的股价",
+        "metadata":  {
+                         "id":  "35",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"查一下贵州茅台现在的股价\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "b174f653-1c34-3c8d-af79-cbdc5f3b6e4b",
+        "text":  "贵州茅台当前市盈率和市净率是多少",
+        "metadata":  {
+                         "id":  "36",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台当前市盈率和市净率是多少\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "7b34c5c0-3155-3a40-868b-9e2dc822ecdf",
+        "text":  "总结宁德时代最近一期财报",
+        "metadata":  {
+                         "id":  "37",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"总结宁德时代最近一期财报\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "333adeba-0e87-3535-bf50-0bccfdd8330b",
+        "text":  "宁德时代财报反映了哪些经营变化",
+        "metadata":  {
+                         "id":  "38",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"宁德时代财报反映了哪些经营变化\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "e647ec0b-4ddd-3f57-91bc-153c5da75b8a",
+        "text":  "最近有哪些影响新能源板块的新闻",
+        "metadata":  {
+                         "id":  "39",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"最近有哪些影响新能源板块的新闻\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "fd38ecbb-170f-37ee-b2e7-df338afc54cf",
+        "text":  "帮我找一下比亚迪最新公告",
+        "metadata":  {
+                         "id":  "40",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我找一下比亚迪最新公告\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "3a35b98b-f88e-3091-9fe3-ce8383583f45",
+        "text":  "解释一下基金净值和累计净值的区别",
+        "metadata":  {
+                         "id":  "41",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"解释一下基金净值和累计净值的区别\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "d9bc0e81-231d-3e7b-b186-9e8102a8c852",
+        "text":  "上证指数今天涨了多少",
+        "metadata":  {
+                         "id":  "42",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"上证指数今天涨了多少\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "2de90ab7-4ac7-3654-800d-92ce73194ddd",
+        "text":  "不需要投资建议，只告诉我茅台的估值指标",
+        "metadata":  {
+                         "id":  "43",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"不需要投资建议，只告诉我茅台的估值指标\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "5754d533-f04a-376b-895d-8643f9814316",
+        "text":  "看看 600519 的 K 线和技术指标，不要买卖建议",
+        "metadata":  {
+                         "id":  "44",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"看看 600519 的 K 线和技术指标，不要买卖建议\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "2aae1b78-d56f-3b13-af1c-b5774198ced5",
+        "text":  "茅台市盈律多少",
+        "metadata":  {
+                         "id":  "45",
+                         "intentCode":  "FINANCIAL_GENERAL",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"客观金融查询\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"茅台市盈律多少\",\"intent\":\"FINANCIAL_GENERAL\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "b347c871-e666-38bd-9d1f-c218c7038ac4",
+        "text":  "贵州茅台现在是否值得买入",
+        "metadata":  {
+                         "id":  "46",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台现在是否值得买入\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "0dcb30ad-faea-3f85-b76d-2123f171856a",
+        "text":  "贵州茅台和五粮液哪个更值得投资",
+        "metadata":  {
+                         "id":  "47",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台和五粮液哪个更值得投资\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "a5aaadeb-7ccb-33a7-8269-f7bf32041e4a",
+        "text":  "我持有宁德时代，应该继续持有还是卖出",
+        "metadata":  {
+                         "id":  "48",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"我持有宁德时代，应该继续持有还是卖出\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "48bbb151-4413-3dd4-b3d0-7dc2fc5d7715",
+        "text":  "给出比亚迪的仓位建议",
+        "metadata":  {
+                         "id":  "49",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"给出比亚迪的仓位建议\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "b72a4133-6d3e-39bc-b50e-32e222724d3b",
+        "text":  "贵州茅台的目标价和止损位怎么设",
+        "metadata":  {
+                         "id":  "50",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台的目标价和止损位怎么设\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "5ef7f48a-0265-3b0c-9612-b6b8636cd117",
+        "text":  "对腾讯控股做一次完整投资分析",
+        "metadata":  {
+                         "id":  "51",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"对腾讯控股做一次完整投资分析\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "6d9fc535-985b-3c84-94e4-3cb6716c13d0",
+        "text":  "结合财报判断宁德时代是否值得长期持有",
+        "metadata":  {
+                         "id":  "52",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"结合财报判断宁德时代是否值得长期持有\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "55b02f21-bbdc-3151-ac4a-10298bf473d0",
+        "text":  "现在是不是抄底新能源 ETF 的好时机",
+        "metadata":  {
+                         "id":  "53",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"现在是不是抄底新能源 ETF 的好时机\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "14e1c011-fca1-3c97-affe-bd53aaae4896",
+        "text":  "帮我评估五粮液的投资价值和主要风险",
+        "metadata":  {
+                         "id":  "54",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我评估五粮液的投资价值和主要风险\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "1058fcda-2c47-3845-a173-de1381c80cf0",
+        "text":  "茅台现在能不能买，打算拿三年",
+        "metadata":  {
+                         "id":  "55",
+                         "intentCode":  "STOCK_ANALYSIS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"茅台现在能不能买，打算拿三年\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "1e563cbd-d85b-35ab-8939-97680c0b0ddf",
+        "text":  "贵州茅台最近怎么样",
+        "metadata":  {
+                         "id":  "56",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "bb8a25fe-9623-3d46-8917-23f062462ffc",
+        "text":  "帮我看看宁德时代",
+        "metadata":  {
+                         "id":  "57",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "a866b7ad-b4af-3b2f-aa65-7ed00ce4c6d7",
+        "text":  "分析一下比亚迪",
+        "metadata":  {
+                         "id":  "58",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "39fb398d-7ac0-3d03-aab4-7bc1f71708d7",
+        "text":  "腾讯控股最近咋样",
+        "metadata":  {
+                         "id":  "59",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "7fc605f7-4350-3ec2-a692-213b2604267b",
+        "text":  "看看 600519",
+        "metadata":  {
+                         "id":  "60",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "4cecb52c-fa0a-3a89-8ecf-2911f647e100",
+        "text":  "这个股票最近怎么样",
+        "metadata":  {
+                         "id":  "61",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "cd027d8c-059a-3101-9599-a7134fb0dadf",
+        "text":  "那五粮液呢",
+        "metadata":  {
+                         "id":  "62",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    },
+    {
+        "id":  "95065dec-7254-3bb4-823a-e56a355f7385",
+        "text":  "帮我分西一下茅台",
+        "metadata":  {
+                         "id":  "63",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"analysisDepth\"],\"clarificationPrompt\":\"你需要快速了解，还是进行完整投资分析？\",\"reasoning\":\"用户未明确查询深度\",\"taskList\":[]}",
+                         "status":  1
+                     }
+    }
+]

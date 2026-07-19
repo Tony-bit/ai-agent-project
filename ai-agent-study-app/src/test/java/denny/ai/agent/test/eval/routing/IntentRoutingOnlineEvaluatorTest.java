@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class IntentRoutingOnlineEvaluatorTest {
@@ -165,6 +166,55 @@ public class IntentRoutingOnlineEvaluatorTest {
         assertEquals(1, service.unifiedCalls);
         assertEquals(1, report.getMetrics().getRunCount());
         assertEquals(1, report.getCases().get(0).getRuns().size());
+    }
+
+    @Test
+    public void shouldReportFinancialPrecisionRecallAndTradingMisrouteRate() throws Exception {
+        StubRoutingService service = new StubRoutingService(List.of(
+                route(false, IntentTypeEnum.FINANCIAL_GENERAL),
+                route(false, IntentTypeEnum.STOCK_ANALYSIS),
+                route(false, IntentTypeEnum.STOCK_ANALYSIS),
+                route(false, IntentTypeEnum.FINANCIAL_GENERAL)
+        ));
+        List<IntentRoutingOnlineEvalCase> cases = List.of(
+                routingCase("fg-correct", "single-task", List.of("FINANCIAL_GENERAL"), false, 1),
+                routingCase("fg-to-stock", "single-task", List.of("FINANCIAL_GENERAL"), false, 1),
+                routingCase("stock-correct", "single-task", List.of("STOCK_ANALYSIS"), false, 1),
+                routingCase("stock-to-fg", "single-task", List.of("STOCK_ANALYSIS"), false, 1)
+        );
+
+        EvalReport report = new IntentRoutingOnlineEvaluator(service, "3201")
+                .evaluate(cases, null, null);
+
+        IntentRoutingOnlineEvaluator.ClassificationMetric financial =
+                report.getMetrics().getFinancialIntentMetrics().get("FINANCIAL_GENERAL");
+        IntentRoutingOnlineEvaluator.ClassificationMetric stock =
+                report.getMetrics().getFinancialIntentMetrics().get("STOCK_ANALYSIS");
+        assertEquals(0.5, financial.getPrecision());
+        assertEquals(0.5, financial.getRecall());
+        assertEquals(0.5, stock.getPrecision());
+        assertEquals(0.5, stock.getRecall());
+        assertEquals(0.5, report.getMetrics().getFinancialGeneralToStockAnalysisRate());
+
+        WrittenReports written = new IntentRoutingOnlineEvalReportWriter(tempDirectory).write(report);
+        String markdown = Files.readString(written.getMarkdownPath());
+        assertTrue(markdown.contains("Financial Intent Precision / Recall"));
+        assertTrue(markdown.contains("Financial general to stock analysis rate"));
+    }
+
+    @Test
+    public void onlineReleaseThresholdShouldRejectFinancialGeneralTradingMisrouteByDefault() {
+        IntentRoutingOnlineEvaluator.GlobalMetrics metrics = new IntentRoutingOnlineEvaluator.GlobalMetrics();
+        metrics.setCasePassRate(1.0);
+        metrics.setRunAccuracy(1.0);
+        metrics.setFinancialGeneralToStockAnalysisRate(0.01);
+        EvalReport report = new EvalReport();
+        report.setMetrics(metrics);
+
+        AssertionError error = assertThrows(AssertionError.class,
+                () -> new IntentRoutingOnlineIntegrationTest().assertThresholds(report));
+
+        assertTrue(error.getMessage().contains("financialGeneralToStockAnalysisRate=0.01 > 0.0"));
     }
 
     @Test

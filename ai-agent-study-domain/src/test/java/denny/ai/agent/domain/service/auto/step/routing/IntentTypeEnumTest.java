@@ -28,6 +28,13 @@ public class IntentTypeEnumTest {
         assertEquals("STOCK_ANALYSIS", IntentTypeEnum.STOCK_ANALYSIS.getCode());
     }
 
+    @Test
+    public void testFinancialGeneralCode() {
+        assertEquals("FINANCIAL_GENERAL", IntentTypeEnum.FINANCIAL_GENERAL.getCode());
+        assertEquals(IntentTypeEnum.FINANCIAL_GENERAL,
+                IntentTypeEnum.fromCode("FINANCIAL_GENERAL"));
+    }
+
     /**
      * TC-Enum-002: PE推理枚举_校验code
      */
@@ -92,6 +99,7 @@ public class IntentTypeEnumTest {
     @Test
     public void testFromCode_validCode() {
         assertEquals(IntentTypeEnum.STOCK_ANALYSIS, IntentTypeEnum.fromCode("STOCK_ANALYSIS"));
+        assertEquals(IntentTypeEnum.FINANCIAL_GENERAL, IntentTypeEnum.fromCode("FINANCIAL_GENERAL"));
         assertEquals(IntentTypeEnum.PE_REASONING, IntentTypeEnum.fromCode("PE_REASONING"));
         assertEquals(IntentTypeEnum.GENERAL_CHAT, IntentTypeEnum.fromCode("GENERAL_CHAT"));
     }

@@ -24,6 +24,7 @@ import java.util.Set;
 public class RoutingStructuredOutputValidator {
 
     private static final Set<String> ALLOWED_INTENTS = Set.of(
+            "FINANCIAL_GENERAL",
             "STOCK_ANALYSIS",
             "PE_REASONING",
             "PE_CALCULATION",
@@ -66,6 +67,12 @@ public class RoutingStructuredOutputValidator {
 
     public UnifiedRoutingOutput parseUnified(String response) {
         return toDto(parseObject(response), UnifiedRoutingOutput.class);
+    }
+
+    public UnifiedRoutingOutput validateAndParseUnified(String response) {
+        JSONObject json = parseObject(response);
+        validateUnifiedOutput(json);
+        return toDto(json, UnifiedRoutingOutput.class);
     }
 
     public QueryDecompositionOutput parseQueryDecomposition(String response) {
@@ -204,6 +211,9 @@ public class RoutingStructuredOutputValidator {
         if (Boolean.TRUE.equals(output.getNeedsClarification())) {
             if (output.getMissingInfo() == null || output.getMissingInfo().isEmpty()) {
                 throw business("missingInfo must not be empty when needsClarification is true");
+            }
+            if (output.getTaskList() != null && !output.getTaskList().isEmpty()) {
+                throw business("taskList must be empty when needsClarification is true");
             }
             return;
         }

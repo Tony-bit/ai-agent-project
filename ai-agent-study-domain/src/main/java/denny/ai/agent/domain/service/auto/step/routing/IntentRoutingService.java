@@ -37,8 +37,8 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -346,6 +346,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     }
 
     private String defaultClarificationPrompt(String clarificationPrompt, List<String> missingInfo) {
+        if (missingInfo != null && missingInfo.contains("analysisDepth")) {
+            return "你需要快速了解，还是进行完整投资分析？";
+        }
         if (clarificationPrompt != null && !clarificationPrompt.isBlank()) {
             return clarificationPrompt;
         }

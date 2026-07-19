@@ -31,11 +31,20 @@ public class IntentRoutingOnlineEvalDatasetTest {
                 .collect(Collectors.toSet());
         assertTrue(coveredIntents.containsAll(Set.of(
                 "GENERAL_CHAT", "PE_RETRIEVAL", "PE_REASONING",
-                "PE_CALCULATION", "STOCK_ANALYSIS", "INSPECTION")));
+                "PE_CALCULATION", "FINANCIAL_GENERAL", "STOCK_ANALYSIS", "INSPECTION")));
+
+        assertTrue(cases.stream().anyMatch(c -> c.getCaseId().equals("online-financial-negation-001")
+                && c.getExpected().getTaskIntents().equals(List.of("FINANCIAL_GENERAL"))));
+        assertTrue(cases.stream().anyMatch(c -> c.getCaseId().equals("online-financial-clarification-depth-001")
+                && Boolean.TRUE.equals(c.getExpected().getNeedsClarification())
+                && c.getExpected().getMissingInfoContains().contains("analysisDepth")));
+        assertTrue(cases.stream().anyMatch(c -> c.getCaseId().equals("online-multi-financial-investment-001")
+                && c.getExpected().getTaskIntents().equals(
+                List.of("FINANCIAL_GENERAL", "STOCK_ANALYSIS"))));
 
         int expectedRuns = cases.stream().mapToInt(c -> c.getEvaluation().getRuns()).sum();
-        assertEquals(38, cases.size(), "Dataset should contain baseline plus challenge cases");
-        assertEquals(110, expectedRuns, "Dataset should include challenge runs");
+        assertEquals(46, cases.size(), "Dataset should contain financial boundary cases");
+        assertEquals(126, expectedRuns, "Dataset should include financial boundary runs");
     }
 
     private long countSuite(List<IntentRoutingOnlineEvalCase> cases, String suite) {

@@ -77,7 +77,7 @@
 | 快速了解 | `FINANCIAL_GENERAL` | `generalChatNode` |
 | 完整投资分析 | `STOCK_ANALYSIS` | `tradingStarter` |
 
-用户未选择、回复无法识别或澄清状态过期时，默认转换为 `FINANCIAL_GENERAL`。
+用户未选择或回复无法识别时，默认转换为 `FINANCIAL_GENERAL`。
 
 ## 4. 路由映射
 
@@ -117,13 +117,14 @@
 ```text
 “贵州茅台最近怎么样”
   -> needsClarification=true
-  -> 保存 pending clarification 上下文
+  -> RootNode 将原请求和 clarificationPrompt 持久化为现有会话记录
   -> 用户选择“快速了解”
+  -> IntentRoutingNode 将会话历史与当前回复一并注入统一路由 Prompt
   -> FINANCIAL_GENERAL
   -> generalChatNode
 ```
 
-澄清上下文至少保存原始请求、已识别金融实体及股票槽位、会话 ID、澄清类型和过期时间。澄清完成后复用这些信息，不重新依赖一句“快速了解”推断股票对象。
+金融澄清复用现有会话记录和上下文注入，不新增 pending cache 或第二套状态管理。统一路由 Prompt 根据历史中的原请求、澄清问题和当前选项完成确定性转换，并在 task content 中恢复原金融对象，不能只用一句“快速了解”作为下游请求。当前回复无法识别为固定选项时，安全转换为 `FINANCIAL_GENERAL`。
 
 ### 5.4 多任务请求
 

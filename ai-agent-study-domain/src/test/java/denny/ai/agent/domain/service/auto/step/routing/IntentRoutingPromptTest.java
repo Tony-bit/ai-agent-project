@@ -32,7 +32,8 @@ public class IntentRoutingPromptTest {
         assertTrue(slotPrompt.contains("PE_RETRIEVAL"));
         assertTrue(slotPrompt.contains("PE_REASONING"));
         assertTrue(slotPrompt.contains("GENERAL_CHAT"));
-        assertTrue(slotPrompt.contains("intent 字段必须严格等于上述 6 个合法值之一"));
+        assertTrue(slotPrompt.contains("FINANCIAL_GENERAL"));
+        assertTrue(slotPrompt.contains("intent 字段必须严格等于上述 7 个合法值之一"));
         assertTrue(slotPrompt.contains("禁止输出语义标签或自造标签"));
         assertTrue(slotPrompt.contains("TECHNICAL_CONSULTING"));
         assertTrue(slotPrompt.contains("INFORMATION_PROVISION"));
@@ -168,5 +169,54 @@ public class IntentRoutingPromptTest {
         assertTrue(slotPrompt.contains("（无历史对话）"));
         assertTrue(decompositionPrompt.contains("Do not output intent"));
         assertTrue(slotPrompt.contains("Do not output multiTask"));
+    }
+
+    @Test
+    public void should_define_financial_boundaries_in_every_intent_producing_prompt() {
+        List<String> intentPrompts = List.of(
+                IntentRoutingPrompt.buildPrompt("查询茅台市盈率", List.of()),
+                IntentRoutingPrompt.buildUnifiedRoutingPrompt("查询茅台市盈率", List.of(), List.of()),
+                IntentRoutingPrompt.buildTaskRoutingSlotPrompt("查询茅台市盈率", List.of()),
+                IntentRoutingPrompt.buildMultiTaskDecomposePrompt("查询茅台市盈率", List.of())
+        );
+
+        for (String prompt : intentPrompts) {
+            assertTrue("Prompt 应包含 FINANCIAL_GENERAL", prompt.contains("FINANCIAL_GENERAL"));
+            assertTrue("Prompt 应收窄 STOCK_ANALYSIS 到投资决策", prompt.contains("买入、卖出、持有"));
+            assertTrue("Prompt 应包含分析深度澄清字段", prompt.contains("analysisDepth"));
+            assertTrue("Prompt 应包含固定澄清问题", prompt.contains("你需要快速了解，还是进行完整投资分析？"));
+            assertTrue("Prompt 应声明分析关键词不是充分条件", prompt.contains("不能单独作为 STOCK_ANALYSIS"));
+            assertTrue("Prompt 应声明否定表达优先", prompt.contains("否定表达优先"));
+        }
+    }
+
+    @Test
+    public void unified_prompt_should_include_contrastive_financial_examples() {
+        String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt("贵州茅台最近怎么样", List.of(), List.of());
+
+        assertTrue(prompt.contains("查询贵州茅台当前股价和市盈率"));
+        assertTrue(prompt.contains("贵州茅台当前估值是否适合买入"));
+        assertTrue(prompt.contains("帮我看看贵州茅台最近怎么样"));
+        assertTrue(prompt.contains("当前输入和历史上下文优先"));
+    }
+
+    @Test
+    public void financial_clarification_reply_should_reuse_history_context() {
+        List<String> history = List.of(
+                "user: 贵州茅台最近怎么样",
+                "assistant: 你需要快速了解，还是进行完整投资分析？");
+
+        String quickPrompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt("快速了解", history, List.of());
+        String fullPrompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt("完整投资分析", history, List.of());
+
+        for (String prompt : List.of(quickPrompt, fullPrompt)) {
+            assertTrue(prompt.contains("快速了解"));
+            assertTrue(prompt.contains("FINANCIAL_GENERAL"));
+            assertTrue(prompt.contains("完整投资分析"));
+            assertTrue(prompt.contains("STOCK_ANALYSIS"));
+            assertTrue(prompt.contains("task content 必须结合历史恢复原金融对象"));
+            assertTrue(prompt.contains("无法识别选项时安全生成 FINANCIAL_GENERAL"));
+            assertTrue(prompt.contains("user: 贵州茅台最近怎么样"));
+        }
     }
 }

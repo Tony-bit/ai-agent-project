@@ -92,9 +92,9 @@
     "enabled": true,
     "suite": "smoke",
     "category": "single-task",
-    "description": "A 股技术分析",
+    "description": "A 股客观技术走势查询",
     "input": {"query": "分析一下贵州茅台 600519 最近三个月的技术走势。", "historyMessages": []},
-    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
     "tags": ["stock", "mainline", "a-share"]
   },
@@ -204,7 +204,7 @@
     "category": "single-task",
     "description": "金融概念解释不应误判为个股分析",
     "input": {"query": "我不是要分析某只股票，只想知道什么是市盈率，它高了通常意味着什么？", "historyMessages": []},
-    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["GENERAL_CHAT"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 5, "minPassRate": 0.8, "minConsistencyRate": 0.8},
     "tags": ["boundary", "general-vs-stock", "negation"]
   },
@@ -226,7 +226,7 @@
     "category": "multi-task",
     "description": "同类多实体应拆为两个股票任务",
     "input": {"query": "分别分析贵州茅台 600519 和比亚迪 002594 最近一个月的走势。", "historyMessages": []},
-    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS", "STOCK_ANALYSIS"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL", "FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 3, "minPassRate": 0.67, "minConsistencyRate": 0.67},
     "tags": ["multitask", "stock", "same-intent"]
   },
@@ -290,9 +290,9 @@
     "enabled": true,
     "suite": "history",
     "category": "single-task",
-    "description": "追问继承股票分析意图并切换标的",
+    "description": "追问继承客观走势查询并切换标的",
     "input": {"query": "那腾讯控股呢？", "historyMessages": ["user: 分析一下贵州茅台最近的技术走势", "assistant: 已完成贵州茅台的分析"]},
-    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 3, "minPassRate": 0.67, "minConsistencyRate": 0.67},
     "tags": ["history", "stock", "follow-up"]
   },
@@ -392,7 +392,7 @@
     "category": "multi-task",
     "description": "股票分析和收益率计算应拆为两个不同意图",
     "input": {"query": "先分析贵州茅台 600519 最近一个月的技术走势，再计算如果 1500 元买入、现在 1605 元卖出收益率是多少。", "historyMessages": []},
-    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS", "PE_CALCULATION"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL", "PE_CALCULATION"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
     "tags": ["challenge", "multitask", "stock", "calculation"]
   },
@@ -417,5 +417,93 @@
     "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["INSPECTION"], "acceptableTaskIntents": [], "orderSensitive": true},
     "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
     "tags": ["challenge", "history", "current-input-wins", "inspection"]
+  },
+  {
+    "caseId": "online-financial-knowledge-001",
+    "enabled": true,
+    "suite": "boundary",
+    "category": "single-task",
+    "description": "金融术语解释进入通用金融意图",
+    "input": {"query": "什么是市净率，它和市盈率有什么区别？", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["financial-general", "knowledge"]
+  },
+  {
+    "caseId": "online-financial-quote-001",
+    "enabled": true,
+    "suite": "boundary",
+    "category": "single-task",
+    "description": "客观行情查询不触发投资分析",
+    "input": {"query": "查询贵州茅台 600519 当前股价和市盈率。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["financial-general", "quote", "valuation"]
+  },
+  {
+    "caseId": "online-financial-report-001",
+    "enabled": true,
+    "suite": "boundary",
+    "category": "single-task",
+    "description": "财报一般解读进入通用金融意图",
+    "input": {"query": "总结宁德时代最近一期财报反映出的主要经营变化。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["financial-general", "financial-report"]
+  },
+  {
+    "caseId": "online-financial-negation-001",
+    "enabled": true,
+    "suite": "challenge",
+    "category": "single-task",
+    "description": "否定投资建议优先于股票关键词",
+    "input": {"query": "我不是要买卖建议，只查一下贵州茅台当前市盈率。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["financial-general", "negation", "challenge"]
+  },
+  {
+    "caseId": "online-financial-investment-buy-001",
+    "enabled": true,
+    "suite": "boundary",
+    "category": "single-task",
+    "description": "明确买入判断保留深度投资意图",
+    "input": {"query": "结合当前估值判断贵州茅台现在是否值得买入，并说明主要风险。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["STOCK_ANALYSIS"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["stock-analysis", "investment-decision"]
+  },
+  {
+    "caseId": "online-financial-clarification-depth-001",
+    "enabled": true,
+    "suite": "boundary",
+    "category": "clarification",
+    "description": "标的明确但分析深度不明确时澄清",
+    "input": {"query": "帮我看看贵州茅台最近怎么样。", "historyMessages": []},
+    "expected": {"multiTask": false, "needsClarification": true, "taskIntents": [], "acceptableTaskIntents": [], "orderSensitive": true, "missingInfoContains": ["analysisDepth"], "missingInfoNotEmpty": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["clarification", "analysis-depth", "financial"]
+  },
+  {
+    "caseId": "online-history-financial-followup-001",
+    "enabled": true,
+    "suite": "history",
+    "category": "single-task",
+    "description": "省略主语的指标追问继承金融标的",
+    "input": {"query": "那它现在的市盈率呢？", "historyMessages": ["user: 查询贵州茅台当前股价", "assistant: 贵州茅台当前股价为示例值"]},
+    "expected": {"multiTask": false, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["history", "financial-general", "follow-up"]
+  },
+  {
+    "caseId": "online-multi-financial-investment-001",
+    "enabled": true,
+    "suite": "multitask",
+    "category": "multi-task",
+    "description": "先查询估值再做投资判断应拆分意图",
+    "input": {"query": "先告诉我贵州茅台当前估值，再判断现在是否值得买入。", "historyMessages": []},
+    "expected": {"multiTask": true, "needsClarification": false, "taskIntents": ["FINANCIAL_GENERAL", "STOCK_ANALYSIS"], "acceptableTaskIntents": [], "orderSensitive": true},
+    "evaluation": {"runs": 2, "minPassRate": 1.0, "minConsistencyRate": 1.0},
+    "tags": ["multitask", "financial-general", "stock-analysis"]
   }
 ]

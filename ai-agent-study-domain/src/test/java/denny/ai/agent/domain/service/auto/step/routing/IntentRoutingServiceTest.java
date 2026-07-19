@@ -136,6 +136,32 @@ public class IntentRoutingServiceTest {
     }
 
     @Test
+    public void parsesFinancialGeneralAndNormalizesExecutorNode() {
+        MultiIntentRoutingResult result = intentRoutingService.parseUnifiedResponse("""
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"objective financial query","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"查询贵州茅台市盈率",
+                    "intent":"FINANCIAL_GENERAL","confidence":"HIGH","dependsOn":[],"slots":{}}
+                 ]}
+                """);
+
+        assertEquals(IntentTypeEnum.FINANCIAL_GENERAL, result.getTaskList().get(0).getIntent());
+        assertEquals("generalChatNode", result.getTaskList().get(0).getExecutorNode());
+    }
+
+    @Test
+    public void forcesFixedAnalysisDepthClarificationContract() {
+        MultiIntentRoutingResult result = intentRoutingService.parseUnifiedResponse("""
+                {"multiTask":false,"needsClarification":true,"missingInfo":["analysisDepth"],
+                 "clarificationPrompt":"想要哪种分析？","reasoning":"depth missing","taskList":[]}
+                """);
+
+        assertEquals("你需要快速了解，还是进行完整投资分析？", result.getClarificationPrompt());
+        assertEquals(List.of("analysisDepth"), result.getMissingInfo());
+        assertTrue(result.getTaskList().isEmpty());
+    }
+
+    @Test
     public void testParseUnifiedMultiTaskResponse() {
         String response = """
                 {

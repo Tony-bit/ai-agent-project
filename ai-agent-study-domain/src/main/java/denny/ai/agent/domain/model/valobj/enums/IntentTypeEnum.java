@@ -13,6 +13,7 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum IntentTypeEnum {
 
+    FINANCIAL_GENERAL("FINANCIAL_GENERAL", "通用金融查询"),
     STOCK_ANALYSIS("STOCK_ANALYSIS", "股票/市场分析"),
     PE_REASONING("PE_REASONING", "PE逻辑推理任务"),
     PE_CALCULATION("PE_CALCULATION", "PE计算任务"),

@@ -2,6 +2,9 @@ package denny.ai.agent.domain.service.intent;
 
 import denny.ai.agent.domain.adapter.repository.IIntentFewshotSampleRepository;
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
+import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.service.auto.step.routing.RoutingStructuredOutputValidator;
+import denny.ai.agent.domain.service.auto.step.routing.UnifiedRoutingOutput;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -15,6 +18,9 @@ import org.springframework.util.StringUtils;
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +48,9 @@ public class IntentFewshotService {
     @Resource
     private IIntentFewshotSampleRepository intentFewshotSampleRepository;
 
+    @Resource
+    private RoutingStructuredOutputValidator structuredOutputValidator;
+
     @Value("${intent.routing.fewshot.top-k:5}")
     private int defaultTopK = 5;
 
@@ -66,6 +75,8 @@ public class IntentFewshotService {
             List<Document> docs = intentFewshotVectorStore.similaritySearch(request);
             return docs.stream()
                     .map(this::documentToSample)
+                    .filter(this::isValidPromptSample)
+                    .limit(k)
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("Few-Shot PGvector 检索异常，降级为空列表: query={}, error={}",
@@ -91,6 +102,7 @@ public class IntentFewshotService {
                 .exampleJson(exampleJson)
                 .status(IntentFewshotSample.STATUS_ENABLED)
                 .build();
+        requireValidPromptSample(sample);
         // 保存到 MySQL（仅存储文本信息）
         intentFewshotSampleRepository.save(sample);
         // 同步到 PGvector（PgVectorStore 自动生成 embedding）
@@ -105,6 +117,7 @@ public class IntentFewshotService {
      */
     public void deleteSample(Long id) {
         intentFewshotSampleRepository.delete(id);
+        deleteFromVectorStore(id);
         log.info("Few-Shot 样本软删除完成: id={}", id);
     }
 
@@ -121,9 +134,30 @@ public class IntentFewshotService {
             return;
         }
         sample.setExampleJson(exampleJson);
+        requireValidPromptSample(sample);
         intentFewshotSampleRepository.update(sample);
+        deleteFromVectorStore(id);
         syncToVectorStore(sample);
         log.info("Few-Shot 样本更新完成: id={}", id);
+    }
+
+    public void migrateSample(Long id, String intentCode, String exampleJson, boolean enabled) {
+        IntentFewshotSample sample = intentFewshotSampleRepository.queryById(id);
+        if (sample == null) {
+            throw new IllegalArgumentException("Few-Shot sample does not exist: id=" + id);
+        }
+        sample.setIntentCode(intentCode);
+        sample.setExampleJson(exampleJson);
+        sample.setStatus(enabled ? IntentFewshotSample.STATUS_ENABLED : IntentFewshotSample.STATUS_DISABLED);
+        if (enabled) {
+            requireValidPromptSample(sample);
+        }
+        intentFewshotSampleRepository.update(sample);
+        deleteFromVectorStore(id);
+        if (enabled) {
+            syncToVectorStore(sample);
+        }
+        log.info("Few-Shot 样本迁移完成: id={}, intentCode={}, enabled={}", id, intentCode, enabled);
     }
 
     /**
@@ -136,7 +170,7 @@ public class IntentFewshotService {
         return intentFewshotSampleRepository.queryByIntentCode(intentCode);
     }
 
-    private void syncToVectorStore(IntentFewshotSample sample) {
+    private boolean syncToVectorStore(IntentFewshotSample sample) {
         try {
             Document doc = sampleToDocument(sample);
             List<Document> docs = new ArrayList<>();
@@ -144,9 +178,11 @@ public class IntentFewshotService {
             // PgVectorStore 会在 accept 时自动为 doc 生成 embedding 并存储
             intentFewshotVectorStore.accept(docs);
             log.debug("样本同步到 PGvector 完成: id={}", sample.getId());
+            return true;
         } catch (Exception e) {
             log.warn("样本同步到 PGvector 失败: id={}, error={}",
                     sample.getId(), e.getMessage());
+            return false;
         }
     }
 
@@ -169,7 +205,7 @@ public class IntentFewshotService {
         IntentFewshotSample sample = IntentFewshotSample.builder()
                 .id(id)
                 .queryText(doc.getText())
-                .status(IntentFewshotSample.STATUS_ENABLED)
+                .status(metadataStatus(doc))
                 .build();
         doc.getMetadata().forEach((k, v) -> {
             if ("intentCode".equals(k)) {
@@ -182,10 +218,86 @@ public class IntentFewshotService {
     }
 
     private Document sampleToDocument(IntentFewshotSample sample) {
-        Document doc = new Document(sample.getQueryText());
-        doc.getMetadata().put("id", String.valueOf(sample.getId()));
-        doc.getMetadata().put("intentCode", sample.getIntentCode());
-        doc.getMetadata().put("exampleJson", sample.getExampleJson());
-        return doc;
+        Map<String, Object> metadata = Map.of(
+                "id", String.valueOf(sample.getId()),
+                "intentCode", sample.getIntentCode(),
+                "exampleJson", sample.getExampleJson(),
+                "status", sample.getStatus());
+        return new Document(vectorDocumentId(sample.getId()), sample.getQueryText(), metadata);
+    }
+
+    private boolean isValidPromptSample(IntentFewshotSample sample) {
+        try {
+            requireValidPromptSample(sample);
+            return true;
+        } catch (IllegalArgumentException e) {
+            log.warn("过滤非法 Few-Shot 样本: id={}, intentCode={}, error={}",
+                    sample.getId(), sample.getIntentCode(), e.getMessage());
+            return false;
+        }
+    }
+
+    private void requireValidPromptSample(IntentFewshotSample sample) {
+        if (sample == null || !Integer.valueOf(IntentFewshotSample.STATUS_ENABLED).equals(sample.getStatus())) {
+            throw new IllegalArgumentException("sample must be enabled");
+        }
+        IntentTypeEnum metadataIntent = IntentTypeEnum.fromCode(sample.getIntentCode());
+        if (metadataIntent == IntentTypeEnum.UNKNOWN) {
+            throw new IllegalArgumentException("unknown intentCode: " + sample.getIntentCode());
+        }
+        try {
+            UnifiedRoutingOutput output = structuredOutputValidator.validateAndParseUnified(sample.getExampleJson());
+            if (Boolean.TRUE.equals(output.getNeedsClarification())) {
+                if (metadataIntent != IntentTypeEnum.AMBIGUOUS
+                        || output.getMissingInfo() == null
+                        || output.getMissingInfo().isEmpty()
+                        || output.getTaskList() == null
+                        || !output.getTaskList().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "clarification sample must use AMBIGUOUS, non-empty missingInfo, and empty taskList");
+                }
+                return;
+            }
+            if (metadataIntent == IntentTypeEnum.AMBIGUOUS || output.getTaskList() == null
+                    || output.getTaskList().isEmpty()
+                    || output.getTaskList().stream()
+                    .anyMatch(task -> !sample.getIntentCode().equals(task.getIntent()))) {
+                throw new IllegalArgumentException("intentCode does not match taskList intents");
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("invalid exampleJson: " + e.getMessage(), e);
+        }
+    }
+
+    private Integer metadataStatus(Document doc) {
+        Object status = doc.getMetadata().get("status");
+        if (status instanceof Number number) {
+            return number.intValue();
+        }
+        if (status != null) {
+            try {
+                return Integer.parseInt(status.toString());
+            } catch (NumberFormatException ignored) {
+                return IntentFewshotSample.STATUS_DISABLED;
+            }
+        }
+        return IntentFewshotSample.STATUS_ENABLED;
+    }
+
+    private void deleteFromVectorStore(Long id) {
+        if (id == null) {
+            return;
+        }
+        try {
+            intentFewshotVectorStore.delete(List.of(vectorDocumentId(id)));
+        } catch (Exception e) {
+            log.warn("删除 Few-Shot 向量文档失败: id={}, error={}", id, e.getMessage());
+        }
+    }
+
+    private String vectorDocumentId(Long id) {
+        return UUID.nameUUIDFromBytes(("intent-fewshot:" + id).getBytes(StandardCharsets.UTF_8)).toString();
     }
 }

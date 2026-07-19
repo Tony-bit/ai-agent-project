@@ -34,6 +34,22 @@ public class RoutingStructuredOutputValidatorTest {
     }
 
     @Test
+    public void shouldAcceptFinancialGeneralInUnifiedAndTaskRoutingOutputs() {
+        validator.unified().validate(response("""
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"objective financial query","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"查询贵州茅台市盈率",
+                    "intent":"FINANCIAL_GENERAL","confidence":"HIGH","dependsOn":[],"slots":{}}
+                 ]}
+                """));
+
+        validator.taskIntentRouting().validate(response("""
+                {"intent":"FINANCIAL_GENERAL","confidence":"HIGH","reasoning":"objective financial query",
+                 "baseSlot":{"topic":"贵州茅台市盈率","sentiment":"neutral"},"intentSpecificSlots":{}}
+                """));
+    }
+
+    @Test
     public void shouldAcceptUnifiedOutputWithoutMissingInfoWhenClarificationIsFalse() {
         validator.unified().validate(response("""
                 {"multiTask":false,"needsClarification":false,

@@ -13,7 +13,7 @@
           "taskId": "sub-1",
           "taskIndex": 1,
           "totalTasks": 1,
-          "content": "分析腾讯股票走势",
+          "content": "判断腾讯控股当前是否值得买入",
           "intent": "STOCK_ANALYSIS",
           "executorNode": "tradingStarter",
           "confidence": "HIGH",
@@ -56,7 +56,7 @@
           "taskId": "sub-1",
           "taskIndex": 1,
           "totalTasks": 1,
-          "content": "分析贵州茅台近期走势",
+          "content": "对贵州茅台做一次完整投资分析",
           "intent": "STOCK_ANALYSIS",
           "executorNode": "tradingStarter",
           "confidence": "HIGH",
@@ -270,7 +270,7 @@
           "taskId": "sub-2",
           "taskIndex": 2,
           "totalTasks": 2,
-          "content": "分析宁德时代走势",
+          "content": "判断宁德时代当前是否值得买入",
           "intent": "STOCK_ANALYSIS",
           "executorNode": "tradingStarter",
           "confidence": "HIGH",
@@ -313,7 +313,7 @@
           "taskId": "sub-1",
           "taskIndex": 1,
           "totalTasks": 2,
-          "content": "分析贵州茅台",
+          "content": "判断贵州茅台当前是否值得买入",
           "intent": "STOCK_ANALYSIS",
           "executorNode": "tradingStarter",
           "confidence": "HIGH",
@@ -335,7 +335,7 @@
           "taskId": "sub-2",
           "taskIndex": 2,
           "totalTasks": 2,
-          "content": "分析五粮液",
+          "content": "判断五粮液当前是否值得买入",
           "intent": "STOCK_ANALYSIS",
           "executorNode": "tradingStarter",
           "confidence": "HIGH",
@@ -651,5 +651,136 @@
       "reasoningContains": "LLM返回为空"
     },
     "tags": ["intent-routing", "fallback", "blank-response"]
+  },
+  {
+    "caseId": "intent-single-financial-general-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "客观金融指标查询路由到通用金融意图",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "missingInfo": [],
+      "clarificationPrompt": "",
+      "reasoning": "用户只查询客观估值指标",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "查询贵州茅台当前市盈率",
+          "intent": "FINANCIAL_GENERAL",
+          "confidence": "HIGH",
+          "dependsOn": [],
+          "slots": {"intentSpecificSlots": {"stockCode": "600519"}}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["FINANCIAL_GENERAL"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "financial-general", "valuation"]
+  },
+  {
+    "caseId": "intent-single-financial-negation-001",
+    "status": "pending",
+    "category": "single-task",
+    "description": "否定投资建议时保持客观金融查询",
+    "response": {
+      "multiTask": false,
+      "needsClarification": false,
+      "missingInfo": [],
+      "clarificationPrompt": "",
+      "reasoning": "用户明确否定投资建议",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 1,
+          "content": "不需要投资建议，只解释市盈率",
+          "intent": "FINANCIAL_GENERAL",
+          "confidence": "HIGH",
+          "dependsOn": [],
+          "slots": {}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": false,
+      "taskCount": 1,
+      "taskIntents": ["FINANCIAL_GENERAL"],
+      "executorNodes": ["generalChatNode"]
+    },
+    "tags": ["intent-routing", "financial-general", "negation"]
+  },
+  {
+    "caseId": "intent-clarification-analysis-depth-001",
+    "status": "pending",
+    "category": "clarification",
+    "description": "金融对象明确但分析深度不明确",
+    "response": {
+      "multiTask": false,
+      "needsClarification": true,
+      "missingInfo": ["analysisDepth"],
+      "clarificationPrompt": "想做哪种分析？",
+      "reasoning": "用户未明确查询深度",
+      "taskList": []
+    },
+    "expected": {
+      "multiTask": false,
+      "needsClarification": true,
+      "taskCount": 0,
+      "missingInfo": ["analysisDepth"],
+      "clarificationPrompt": "你需要快速了解，还是进行完整投资分析？"
+    },
+    "tags": ["intent-routing", "clarification", "analysis-depth"]
+  },
+  {
+    "caseId": "intent-multi-financial-investment-001",
+    "status": "pending",
+    "category": "multi-task",
+    "description": "客观估值查询后执行投资决策",
+    "response": {
+      "multiTask": true,
+      "needsClarification": false,
+      "missingInfo": [],
+      "clarificationPrompt": "",
+      "reasoning": "包含客观查询和投资判断",
+      "taskList": [
+        {
+          "taskId": "sub-1",
+          "taskIndex": 1,
+          "totalTasks": 2,
+          "content": "查询并解释贵州茅台当前估值",
+          "intent": "FINANCIAL_GENERAL",
+          "confidence": "HIGH",
+          "dependsOn": [],
+          "slots": {"intentSpecificSlots": {"stockCode": "600519"}}
+        },
+        {
+          "taskId": "sub-2",
+          "taskIndex": 2,
+          "totalTasks": 2,
+          "content": "结合估值判断贵州茅台是否值得买入 <$DEPENDENCY$ taskId=\"sub-1\" />",
+          "intent": "STOCK_ANALYSIS",
+          "confidence": "HIGH",
+          "dependsOn": ["sub-1"],
+          "slots": {"intentSpecificSlots": {"stockCode": "600519"}}
+        }
+      ]
+    },
+    "expected": {
+      "multiTask": true,
+      "needsClarification": false,
+      "taskCount": 2,
+      "taskIntents": ["FINANCIAL_GENERAL", "STOCK_ANALYSIS"],
+      "executorNodes": ["generalChatNode", "tradingStarter"]
+    },
+    "tags": ["intent-routing", "multi-task", "financial-general", "stock-analysis"]
   }
 ]

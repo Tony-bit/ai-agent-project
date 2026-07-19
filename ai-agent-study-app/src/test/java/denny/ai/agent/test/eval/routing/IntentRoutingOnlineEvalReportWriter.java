@@ -109,6 +109,9 @@ public class IntentRoutingOnlineEvalReportWriter {
         comparison.getMetricDeltas().put("formatErrorRate", now.getFormatErrorRate() - before.getFormatErrorRate());
         comparison.getMetricDeltas().put("infrastructureErrorRate",
                 now.getInfrastructureErrorRate() - before.getInfrastructureErrorRate());
+        comparison.getMetricDeltas().put("financialGeneralToStockAnalysisRate",
+                now.getFinancialGeneralToStockAnalysisRate()
+                        - before.getFinancialGeneralToStockAnalysisRate());
         comparison.getMetricDeltas().put("avgLatencyMs", now.getAvgLatencyMs() - before.getAvgLatencyMs());
         comparison.getMetricDeltas().put("p95LatencyMs", (double) now.getP95LatencyMs() - before.getP95LatencyMs());
         comparison.getMetricDeltas().put("avgTokens", now.getAvgTokens() - before.getAvgTokens());
@@ -179,6 +182,8 @@ public class IntentRoutingOnlineEvalReportWriter {
         decimalMetric(markdown, "Avg stage count", metrics.getAvgStageCount());
         metric(markdown, "Estimated token rate", metrics.getEstimatedTokenRate());
         metric(markdown, "Stage success rate", metrics.getStageSuccessRate());
+        metric(markdown, "Financial general to stock analysis rate",
+                metrics.getFinancialGeneralToStockAnalysisRate());
         markdown.append("| Cases | ").append(metrics.getPassedCaseCount()).append(" / ").append(metrics.getCaseCount()).append(" |\n");
         markdown.append("| Runs | ").append(metrics.getPassedRunCount()).append(" / ").append(metrics.getEffectiveRunCount()).append(" effective |\n\n");
 
@@ -192,6 +197,21 @@ public class IntentRoutingOnlineEvalReportWriter {
                     .append(value.getPassedRunCount()).append(" | ")
                     .append(value.getRunCount()).append(" | ")
                     .append(percent(value.getAccuracy())).append(" |\n");
+        }
+        markdown.append("\n");
+
+        markdown.append("## Financial Intent Precision / Recall\n\n");
+        markdown.append("| Intent | TP | FP | FN | Precision | Recall |\n");
+        markdown.append("|---|---:|---:|---:|---:|---:|\n");
+        for (Map.Entry<String, IntentRoutingOnlineEvaluator.ClassificationMetric> entry
+                : metrics.getFinancialIntentMetrics().entrySet()) {
+            IntentRoutingOnlineEvaluator.ClassificationMetric value = entry.getValue();
+            markdown.append("| ").append(entry.getKey()).append(" | ")
+                    .append(value.getTruePositive()).append(" | ")
+                    .append(value.getFalsePositive()).append(" | ")
+                    .append(value.getFalseNegative()).append(" | ")
+                    .append(percent(value.getPrecision())).append(" | ")
+                    .append(percent(value.getRecall())).append(" |\n");
         }
         markdown.append("\n");
 

@@ -101,6 +101,18 @@ public class RoutingResultHandlerTest {
     }
 
     @Test
+    public void routesFinancialGeneralToGeneralChat() throws Exception {
+        MultiIntentRoutingResult result = result(false,
+                List.of(task("sub-1", 1, 1, IntentTypeEnum.FINANCIAL_GENERAL)));
+
+        handler.handle(request, context, result);
+
+        assertEquals(IntentTypeEnum.FINANCIAL_GENERAL,
+                context.getValue(RoutingResultHandler.RECOGNIZED_INTENT_KEY));
+        verify(generalChatNode).apply(any(), any());
+    }
+
+    @Test
     public void publishesRoutingConfidenceMetadataWhenTraceExists() throws Exception {
         context.setTraceId("trace-1");
         MultiIntentRoutingResult result = result(true, List.of(

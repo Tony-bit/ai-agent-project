@@ -114,12 +114,14 @@ public class IntentRoutingOnlineIntegrationTest {
                 .toList();
     }
 
-    private void assertThresholds(EvalReport report) {
+    void assertThresholds(EvalReport report) {
         GlobalMetrics metrics = report.getMetrics();
         double minCasePassRate = doubleSetting("intent.routing.eval.min-case-pass-rate", 0.90);
         double minRunAccuracy = doubleSetting("intent.routing.eval.min-run-accuracy", 0.90);
         double maxFormatErrorRate = doubleSetting("intent.routing.eval.max-format-error-rate", 0.02);
         double maxInfrastructureErrorRate = doubleSetting("intent.routing.eval.max-infrastructure-error-rate", 0.0);
+        double maxFinancialGeneralToStockRate = doubleSetting(
+                "intent.routing.eval.max-financial-general-to-stock-rate", 0.0);
 
         List<String> failures = new ArrayList<>();
         if (metrics.getCasePassRate() < minCasePassRate) {
@@ -134,6 +136,10 @@ public class IntentRoutingOnlineIntegrationTest {
         if (metrics.getInfrastructureErrorRate() > maxInfrastructureErrorRate) {
             failures.add("infrastructureErrorRate=" + metrics.getInfrastructureErrorRate()
                     + " > " + maxInfrastructureErrorRate);
+        }
+        if (metrics.getFinancialGeneralToStockAnalysisRate() > maxFinancialGeneralToStockRate) {
+            failures.add("financialGeneralToStockAnalysisRate="
+                    + metrics.getFinancialGeneralToStockAnalysisRate() + " > " + maxFinancialGeneralToStockRate);
         }
         if (!report.failedCaseIds().isEmpty()) {
             failures.add("failedCases=" + report.failedCaseIds());

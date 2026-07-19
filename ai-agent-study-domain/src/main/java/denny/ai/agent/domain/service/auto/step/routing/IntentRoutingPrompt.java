@@ -27,26 +27,34 @@ public class IntentRoutingPrompt {
         The input is already one task. Do not split it again.
         Identify only intent, confidence, reasoning, baseSlot, and intentSpecificSlots.
         Return JSON only. Do not output multiTask, taskList, executorNode, or clarification fields.
-        For STOCK_ANALYSIS, extract stockCode, stockQueryType, timeRange, and exchange when possible.
+        For financial intents, extract stockCode, stockQueryType, timeRange, and exchange when possible.
 
-        合法 intent 取值严格限定为以下 6 个：
-        - STOCK_ANALYSIS：股票、基金、期货、市场行情、技术面分析、基本面分析、交易建议
+        合法 intent 取值严格限定为以下 7 个：
+        - FINANCIAL_GENERAL：金融知识、行情、财报、公告、新闻、估值指标等客观查询和一般解读，不形成交易决策
+        - STOCK_ANALYSIS：明确要求买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析
         - PE_REASONING：逻辑推理、问题分析、架构/方案设计、根因分析、取舍权衡
         - PE_CALCULATION：数学计算、数据处理、统计分析、精确数值计算
         - PE_RETRIEVAL：明确要求知识库检索、RAG、多文档汇总、外部资料/参考材料整合
         - INSPECTION：系统巡检、健康检查、状态监控、运维诊断
         - GENERAL_CHAT：问候、闲聊、概念解释、简单知识问答、普通信息查询
 
-        intent 字段必须严格等于上述 6 个合法值之一。
+        intent 字段必须严格等于上述 7 个合法值之一。
         禁止输出语义标签或自造标签，例如 TECHNICAL_CONSULTING、INFORMATION_PROVISION、GREETING、
         ANALYSIS、CONSULTING、RETRIEVAL、REASONING，或任何不在合法列表中的值。
 
         判断规则：
-        1. 如果任务明确要求检索知识库、使用 RAG、汇总多篇文档、整合外部资料或参考材料，选择 PE_RETRIEVAL。
-        2. 如果任务要求方案设计、问题分析、根因分析、取舍权衡、逻辑推理，且没有明确要求检索资料，选择 PE_REASONING。
-        3. 如果任务只是概念解释、简单知识问答或普通信息查询，且没有明确要求检索资料，选择 GENERAL_CHAT。
-        4. 如果任务要求精确数值计算、统计计算或数据处理，选择 PE_CALCULATION。
-        5. 如果任务要求检查服务/系统健康状态、监控指标或运维状态，选择 INSPECTION。
+        1. 明确要求买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析，选择 STOCK_ANALYSIS。
+        2. 明确查询金融知识、行情、事实、财报、新闻、公告或指标，且不要求交易决策，选择 FINANCIAL_GENERAL。
+        3. 只有金融对象和“看看”“怎么样”“分析一下”等未限定深度的表达，缺少 analysisDepth。统一路由应询问“你需要快速了解，还是进行完整投资分析？”。本兼容模板无法输出澄清结构时，安全选择 FINANCIAL_GENERAL。
+        4. 股票名称、代码、“分析”或“走势”等单个关键词不能单独作为 STOCK_ANALYSIS 的判定依据。
+        5. 否定表达优先，例如“不是要投资建议，只查市盈率”必须选择 FINANCIAL_GENERAL。
+        6. 当前消息含义明确时以当前消息为准；只有省略主语或任务目标时才继承历史上下文。
+        7. 若历史中上一轮针对 analysisDepth 询问固定二选一，当前回答“快速了解”时选择 FINANCIAL_GENERAL；回答“完整投资分析”时选择 STOCK_ANALYSIS。必须结合历史识别原金融对象，不能只根据当前选项判断；无法识别选项时安全选择 FINANCIAL_GENERAL。
+        8. 如果任务明确要求检索知识库、使用 RAG、汇总多篇文档、整合外部资料或参考材料，选择 PE_RETRIEVAL。
+        9. 如果任务要求方案设计、问题分析、根因分析、取舍权衡、逻辑推理，且没有明确要求检索资料，选择 PE_REASONING。
+        10. 如果任务只是非金融概念解释、简单知识问答或普通信息查询，且没有明确要求检索资料，选择 GENERAL_CHAT。
+        11. 如果任务要求精确数值计算、统计计算或数据处理，选择 PE_CALCULATION。
+        12. 如果任务要求检查服务/系统健康状态、监控指标或运维状态，选择 INSPECTION。
 
         输出格式：
         {"intent":"PE_RETRIEVAL","confidence":"HIGH","reasoning":"...",
@@ -55,17 +63,26 @@ public class IntentRoutingPrompt {
 
     public static final String SYSTEM_PROMPT_TEMPLATE = """
         ## 角色
-        你是一个专业的意图识别助手，负责分析用户输入并将其分类到以下8种意图之一。
+        你是一个专业的意图识别助手，负责分析用户输入并将其分类到以下9种意图之一。
 
-        ## 意图分类（共 8 种）
-        1. STOCK_ANALYSIS: 用户询问股票、基金、期货、市场行情等技术分析、基本面分析、交易建议
-        2. PE_REASONING: 用户提出逻辑推理、问题分析、方案设计等需要深度思考的任务
-        3. PE_CALCULATION: 用户提出数学计算、数据处理、统计建模等需要精确计算的任务
-        4. PE_RETRIEVAL: 用户明确要求知识库检索、多文档汇总、外部资料整合等重型检索任务
-        5. INSPECTION: 用户请求系统巡检、健康检查、状态监控等运维任务
-        6. GENERAL_CHAT: 闲聊、问候、概念解释、简单知识问答、普通信息查询、记忆查询（如询问个人偏好、之前聊过的内容）、询问个人身份信息（如询问自己的职业、身份、角色等）、无法归类的对话
-        7. AMBIGUOUS: 意图模糊或复合语义，需要进一步澄清
-        8. UNKNOWN: 无法明确判断
+        ## 意图分类（共 9 种）
+        1. FINANCIAL_GENERAL: 金融知识、行情、财报、公告、新闻、估值指标等客观查询和一般解读
+        2. STOCK_ANALYSIS: 明确要求买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析
+        3. PE_REASONING: 用户提出逻辑推理、问题分析、方案设计等需要深度思考的任务
+        4. PE_CALCULATION: 用户提出数学计算、数据处理、统计建模等需要精确计算的任务
+        5. PE_RETRIEVAL: 用户明确要求知识库检索、多文档汇总、外部资料整合等重型检索任务
+        6. INSPECTION: 用户请求系统巡检、健康检查、状态监控等运维任务
+        7. GENERAL_CHAT: 闲聊、问候、非金融概念解释、简单知识问答、普通信息查询、记忆查询、身份相关对话
+        8. AMBIGUOUS: 意图模糊或复合语义，需要进一步澄清
+        9. UNKNOWN: 无法明确判断
+
+        ## 金融判定规则
+        1. 买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析属于 STOCK_ANALYSIS。
+        2. 金融知识、行情、事实、财报、新闻、公告或指标查询且无交易决策属于 FINANCIAL_GENERAL。
+        3. 只有金融对象和“看看”“怎么样”“分析一下”等表达时缺少 analysisDepth，应询问“你需要快速了解，还是进行完整投资分析？”。本兼容模板无法输出澄清结构时，安全选择 FINANCIAL_GENERAL。
+        4. 股票名称、代码、“分析”或“走势”等单个关键词不能单独作为 STOCK_ANALYSIS 的判定依据。
+        5. 否定表达优先；当前消息明确时优先于历史上下文。
+        6. 若历史中上一轮针对 analysisDepth 询问固定二选一，当前回答“快速了解”时选择 FINANCIAL_GENERAL；回答“完整投资分析”时选择 STOCK_ANALYSIS。结合历史恢复原金融对象；无法识别选项时安全选择 FINANCIAL_GENERAL。
 
         ## 置信度
         - HIGH: 意图非常明确，有明显的关键词或上下文支撑
@@ -102,7 +119,8 @@ public class IntentRoutingPrompt {
         ## 意图类型
         | 意图类型 | 说明 |
         |----------|------|
-        | STOCK_ANALYSIS | 股票/市场分析 |
+        | FINANCIAL_GENERAL | 金融知识、行情、财报、新闻、公告、指标等客观查询和一般解读 |
+        | STOCK_ANALYSIS | 买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析 |
         | PE_REASONING | 逻辑推理、问题分析 |
         | PE_CALCULATION | 数学计算、数据处理 |
         | PE_RETRIEVAL | 知识库检索、多文档汇总、外部资料整合 |
@@ -113,13 +131,28 @@ public class IntentRoutingPrompt {
         1. 多任务场景：用户明确提出多个可独立执行的任务，或多个实体需要分别处理
         2. 单任务场景：只输出 1 个 taskList 元素
         3. 信息缺失场景：缺少执行任务的关键信息时，needsClarification=true
-        4. 示例仅供参考，必须以当前用户输入和历史上下文为准，不可机械套用示例
+        4. 示例仅供参考，当前输入和历史上下文优先，不可机械套用示例
         5. 概念解释、简单知识问答、普通信息查询优先归入 GENERAL_CHAT
         6. 只有当用户明确需要知识库检索、RAG、多文档汇总或外部资料整合时，才归入 PE_RETRIEVAL
         7. 技术概念问答即使包含“为什么/原因”，只要没有要求方案设计、根因排查、取舍分析或复杂推理，也归入 GENERAL_CHAT，例如“Java 里的 HashMap 为什么线程不安全？”
         8. 用户明确说“上传的文档/三份文档/这些材料”时，视为文档上下文已由执行层获取，不要因为缺少文档正文而 needsClarification=true。
-        9. 股票分析中，如果用户只提供股票中文名或简称但没有股票代码，不要在路由层因 stockCode 缺失而澄清；应路由到 STOCK_ANALYSIS，后续由 trading agent 通过股票名称解析工具补齐。
-        10. 用户使用“先...再...”表达先检索资料、再结合业务场景做建议/选型/方案设计时，必须拆为两个任务：PE_RETRIEVAL 任务在前，PE_REASONING 任务在后，第二个任务 dependsOn 第一个任务。
+        9. 用户明确要求买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析时，归入 STOCK_ANALYSIS。
+        10. 用户明确查询金融知识、行情、事实、财报、新闻、公告或指标，且未要求交易决策时，归入 FINANCIAL_GENERAL。
+        11. 用户只给出金融对象并使用“看看”“怎么样”“分析一下”等未限定深度的表达时，返回 needsClarification=true、missingInfo=["analysisDepth"]、clarificationPrompt="你需要快速了解，还是进行完整投资分析？"、taskList=[]。
+        12. 股票名称、代码、“分析”或“走势”等单个关键词不能单独作为 STOCK_ANALYSIS 的判定依据。
+        13. 否定表达优先，例如“不是要投资建议，只查市盈率”必须归入 FINANCIAL_GENERAL。
+        14. 当前消息含义明确时以当前消息为准；只有省略主语或任务目标时才继承历史上下文。
+        15. 若历史中上一轮针对 analysisDepth 询问固定二选一，当前回答“快速了解”时生成 FINANCIAL_GENERAL 任务；回答“完整投资分析”时生成 STOCK_ANALYSIS 任务。task content 必须结合历史恢复原金融对象，不能只输出当前选项；无法识别选项时安全生成 FINANCIAL_GENERAL 任务。
+        16. 金融任务只缺少股票代码但已有可解析中文名或简称时，不因 stockCode 缺失而澄清，后续执行节点负责补齐。
+        17. 用户使用“先...再...”表达先检索资料、再结合业务场景做建议/选型/方案设计时，必须拆为两个任务：PE_RETRIEVAL 任务在前，PE_REASONING 任务在后，第二个任务 dependsOn 第一个任务。
+
+        ## 金融边界对比示例
+        - 查询贵州茅台当前股价和市盈率 -> FINANCIAL_GENERAL
+        - 贵州茅台当前估值是否适合买入 -> STOCK_ANALYSIS
+        - 总结宁德时代最近一期财报 -> FINANCIAL_GENERAL
+        - 结合财报判断宁德时代是否值得长期持有 -> STOCK_ANALYSIS
+        - 我不是要买卖建议，只想了解市盈率是什么意思 -> FINANCIAL_GENERAL
+        - 帮我看看贵州茅台最近怎么样 -> 澄清 analysisDepth
 
         ## 置信度
         - HIGH: 意图非常明确，有明显的关键词或上下文支撑
@@ -130,9 +163,9 @@ public class IntentRoutingPrompt {
         - slots 中可包含：
           - baseSlot: {topic, sentiment}
           - intentSpecificSlots: 根据意图输出专属槽位
-        - STOCK_ANALYSIS 的 intentSpecificSlots 推荐包含：stockCode, stockQueryType, timeRange, exchange
+        - FINANCIAL_GENERAL 与 STOCK_ANALYSIS 的 intentSpecificSlots 推荐包含：stockCode, stockQueryType, timeRange, exchange
         - needsClarification=false 时，missingInfo 必须输出 []，clarificationPrompt 输出 ""。
-        - needsClarification=true 时，missingInfo 必须非空；知识库缺少检索主题统一使用 "topic"，股票缺少可解析标的统一使用 "stockCode"。
+        - needsClarification=true 时，missingInfo 必须非空；分析深度不明确统一使用 "analysisDepth"，知识库缺少检索主题使用 "topic"，股票缺少可解析标的使用 "stockCode"。
 
         ## 历史上下文（最近对话）
         %s
@@ -234,7 +267,8 @@ public class IntentRoutingPrompt {
         ## 意图类型
         | 意图类型 | 说明 |
         |----------|------|
-        | STOCK_ANALYSIS | 股票/市场分析 |
+        | FINANCIAL_GENERAL | 金融知识、行情、财报、新闻、公告、指标等客观查询和一般解读 |
+        | STOCK_ANALYSIS | 买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析 |
         | PE_REASONING | 逻辑推理、问题分析 |
         | PE_CALCULATION | 数学计算、数据处理 |
         | PE_RETRIEVAL | 知识库检索、多文档汇总、外部资料整合 |
@@ -246,6 +280,13 @@ public class IntentRoutingPrompt {
         2. 子任务之间应尽量无依赖（串行执行）
         3. 按实体粒度分解：不同股票/实体拆成独立任务
         4. 不要输出 executorNode、taskType、status、result、latencyMs、errorMessage 或 metrics；这些运行期字段由服务端生成
+        5. 金融知识、行情、财报、新闻、公告或指标等客观查询归入 FINANCIAL_GENERAL。
+        6. 明确要求买入、卖出、持有、投资价值、仓位、目标价、止损或完整投资分析归入 STOCK_ANALYSIS。
+        7. 只有金融对象和“看看”“怎么样”“分析一下”等未限定深度的表达时，返回 missingInfo=["analysisDepth"]，并询问“你需要快速了解，还是进行完整投资分析？”。
+        8. 股票名称、代码、“分析”或“走势”等单个关键词不能单独作为 STOCK_ANALYSIS 的判定依据。
+        9. 否定表达优先，例如“不需要投资建议，只查市盈率”归入 FINANCIAL_GENERAL。
+        10. 当前消息明确时优先于历史上下文。
+        11. 若历史中上一轮针对 analysisDepth 询问固定二选一，当前回答“快速了解”时选择 FINANCIAL_GENERAL；回答“完整投资分析”时选择 STOCK_ANALYSIS。task content 必须结合历史恢复原金融对象，不能只输出当前选项；无法识别选项时安全选择 FINANCIAL_GENERAL。
 
         ## 应该触发多任务分解的场景
         - 复杂多步骤任务（3个或更多步骤）
