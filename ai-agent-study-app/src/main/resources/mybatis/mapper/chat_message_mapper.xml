@@ -55,4 +55,9 @@
         LIMIT #{limit}
     </select>
 
+    <delete id="deleteBySessionId">
+        DELETE FROM ai_chat_message
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

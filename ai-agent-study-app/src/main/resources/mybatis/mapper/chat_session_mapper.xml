@@ -97,4 +97,10 @@
         LIMIT 1
     </select>
 
+    <delete id="deleteByUserIdAndSessionId">
+        DELETE FROM ai_chat_session
+        WHERE user_id = #{userId}
+          AND session_id = #{sessionId}
+    </delete>
+
 </mapper>
