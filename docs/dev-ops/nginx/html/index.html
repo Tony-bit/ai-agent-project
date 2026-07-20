@@ -714,7 +714,39 @@
         }
     </style>
 </head>
-<body class="h-screen flex flex-col font-sans overflow-hidden">
+<body class="h-screen font-sans overflow-hidden">
+<section id="loginView" class="h-screen flex items-center justify-center bg-gray-100 px-4">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-soft-lg p-6">
+        <div class="mb-6">
+            <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold mb-4">AI</div>
+            <h1 class="text-xl font-bold text-gray-900">登录 AI Agent</h1>
+            <p class="mt-1 text-sm text-gray-500">使用账号继续，或创建独立的游客身份</p>
+        </div>
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label for="loginAccount" class="block text-xs font-semibold text-gray-700 mb-1.5">账号</label>
+                <input id="loginAccount" name="account" autocomplete="username" maxlength="128" required
+                       class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500">
+            </div>
+            <div>
+                <label for="loginPassword" class="block text-xs font-semibold text-gray-700 mb-1.5">密码</label>
+                <input id="loginPassword" name="password" type="password" autocomplete="current-password" required
+                       class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500">
+            </div>
+            <p id="loginError" class="hidden text-sm text-red-600" role="alert"></p>
+            <button id="loginBtn" type="submit"
+                    class="w-full px-4 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/40">
+                登录
+            </button>
+            <button id="guestLoginBtn" type="button"
+                    class="w-full px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                游客进入
+            </button>
+        </form>
+    </div>
+</section>
+
+<div id="authenticatedApp" class="hidden h-screen flex flex-col">
 <!-- Top Navigation -->
 <nav class="glass border-b border-white/20 px-4 py-2.5 flex items-center gap-4 sticky top-0 z-30 shadow-soft">
     <div class="flex items-center gap-2">
@@ -735,6 +767,12 @@
     </div>
 
     <div class="flex items-center gap-2">
+        <button id="logoutBtn" type="button" title="退出登录"
+                class="p-2 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
+            </svg>
+        </button>
         <button id="newChatBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -1017,6 +1055,7 @@
         </div>
     </div>
 </div>
+</div>
 
 <script>
     const {
@@ -1029,6 +1068,8 @@
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl: joinApiUrl,
+        createAuthState,
+        validateSessionId,
         createRequestLifecycle,
         isNearBottom
     } = window.AgentUiCore;
@@ -1050,11 +1091,115 @@
         defaultUserId: 'test-user-f52b2ed1',
         origin: window.location.origin
     });
-    const currentUserId = runtimeConfig.userId;
-    document.getElementById('currentUserId').textContent = currentUserId;
+    const authState = createAuthState({ storage: window.localStorage });
+    let currentUserId = null;
 
     function buildApiUrl(path) {
         return joinApiUrl(runtimeConfig.apiBase, path);
+    }
+
+    function showLoginView(message = '') {
+        document.getElementById('authenticatedApp').classList.add('hidden');
+        document.getElementById('loginView').classList.remove('hidden');
+        const error = document.getElementById('loginError');
+        error.textContent = message;
+        error.classList.toggle('hidden', !message);
+        window.setTimeout(() => document.getElementById('loginAccount').focus(), 0);
+    }
+
+    function showAuthenticatedApp(user) {
+        currentUserId = user.userId;
+        document.getElementById('currentUserId').textContent = currentUserId;
+        document.getElementById('loginView').classList.add('hidden');
+        document.getElementById('authenticatedApp').classList.remove('hidden');
+    }
+
+    function clearIdentityUi() {
+        const chatList = document.getElementById('chatList');
+        if (chatList) chatList.innerHTML = '';
+        document.getElementById('noHistoryTip').classList.add('hidden');
+        sessionCursorTime = null;
+        sessionCursorId = null;
+        messageCursorIndex = null;
+        hasMoreSessions = true;
+        hasMoreMessages = true;
+        currentStepMessages.clear();
+        pendingStreamingRenders.clear();
+        sessionId = generateSessionId();
+        document.getElementById('sessionId').textContent = sessionId;
+        document.getElementById('thinkingMessages').innerHTML = '';
+        document.getElementById('resultMessages').innerHTML = '';
+    }
+
+    function clearAuthentication(message = '') {
+        cancelActiveRequest(false);
+        authState.clear();
+        currentUserId = null;
+        clearIdentityUi();
+        showLoginView(message);
+    }
+
+    async function authenticatedFetch(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: authState.headers(options.headers || {})
+        });
+        if (response.status === 401) {
+            clearAuthentication('登录状态已失效，请重新登录');
+            const error = new Error('HTTP 401');
+            error.status = 401;
+            throw error;
+        }
+        return response;
+    }
+
+    async function acceptAuthentication(result) {
+        if (!result || result.code !== '200' || !result.data || !result.data.accessToken) {
+            throw new Error(result && result.info ? result.info : '认证失败');
+        }
+        cancelActiveRequest(false);
+        authState.clear();
+        clearIdentityUi();
+        authState.setSession(result.data.accessToken, result.data.user);
+        showAuthenticatedApp(result.data.user);
+        await loadSessionList(false);
+        document.getElementById('messageInput').focus();
+    }
+
+    async function submitAuthentication(path, body) {
+        const response = await fetch(buildApiUrl(path), {
+            method: 'POST',
+            headers: body ? { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+                : { 'Accept': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(result && result.info ? result.info : '账号或密码错误');
+        }
+        await acceptAuthentication(result);
+    }
+
+    async function restoreAuthentication() {
+        const token = authState.getAccessToken();
+        if (!token) {
+            showLoginView();
+            return;
+        }
+        try {
+            const response = await fetch(buildApiUrl('/api/v1/auth/me'), {
+                headers: authState.headers({ 'Accept': 'application/json' })
+            });
+            if (!response.ok) throw new Error('restore failed');
+            const result = await response.json();
+            if (result.code !== '200' || !result.data) throw new Error('restore failed');
+            authState.setSession(token, result.data);
+            showAuthenticatedApp(result.data);
+            await loadSessionList(false);
+            document.getElementById('messageInput').focus();
+        } catch (_) {
+            clearAuthentication();
+        }
     }
 
     let isConnected = false;
@@ -1336,12 +1481,12 @@
         }
 
         try {
-            let url = buildApiUrl(`/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`);
+            let url = buildApiUrl('/api/v1/session/list');
             if (sessionCursorTime && sessionCursorId && append) {
-                url += `&cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
+                url += `?cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
             }
 
-            const response = await fetch(url, {
+            const response = await authenticatedFetch(url, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -1496,7 +1641,7 @@
                 url += `?cursorIndex=${messageCursorIndex}`;
             }
 
-            const response = await fetch(url, {
+            const response = await authenticatedFetch(url, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -1760,7 +1905,6 @@
         const requestData = {
             message: message,
             sessionId: sessionId,
-            userId: currentUserId,
             maxStep: parseInt(document.getElementById('maxStepSelect').value)
         };
         if (aiAgentId) {
@@ -1769,7 +1913,7 @@
 
         const streamState = createStreamState('general');
 
-        fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
+        authenticatedFetch(buildApiUrl('/api/v1/agent/auto_agent'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2315,7 +2459,7 @@
 
         const streamState = createStreamState('trading');
 
-        fetch(buildApiUrl('/api/v1/trading/analysis'), {
+        authenticatedFetch(buildApiUrl('/api/v1/trading/analysis'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2373,7 +2517,7 @@
         `;
 
         try {
-            const response = await fetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`), {
+            const response = await authenticatedFetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory`), {
                 method: 'POST',
                 headers: { 'Accept': 'application/json' }
             });
@@ -2417,13 +2561,57 @@
         cancelActiveRequest(true);
     });
 
-    window.addEventListener('load', function() {
-        document.getElementById('messageInput').focus();
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const loginBtn = document.getElementById('loginBtn');
+        const guestBtn = document.getElementById('guestLoginBtn');
+        const error = document.getElementById('loginError');
+        loginBtn.disabled = true;
+        guestBtn.disabled = true;
+        error.classList.add('hidden');
+        try {
+            await submitAuthentication('/api/v1/auth/login', {
+                account: document.getElementById('loginAccount').value.trim(),
+                password: document.getElementById('loginPassword').value
+            });
+            document.getElementById('loginPassword').value = '';
+        } catch (_) {
+            error.textContent = '账号或密码错误';
+            error.classList.remove('hidden');
+        } finally {
+            loginBtn.disabled = false;
+            guestBtn.disabled = false;
+        }
+    });
+
+    document.getElementById('guestLoginBtn').addEventListener('click', async () => {
+        const loginBtn = document.getElementById('loginBtn');
+        const guestBtn = document.getElementById('guestLoginBtn');
+        const error = document.getElementById('loginError');
+        loginBtn.disabled = true;
+        guestBtn.disabled = true;
+        error.classList.add('hidden');
+        try {
+            await submitAuthentication('/api/v1/auth/guest');
+        } catch (_) {
+            error.textContent = '游客身份创建失败，请稍后重试';
+            error.classList.remove('hidden');
+        } finally {
+            loginBtn.disabled = false;
+            guestBtn.disabled = false;
+        }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        clearAuthentication();
+    });
+
+    window.addEventListener('load', async function() {
         setupDynamicInteractions();
-        loadSessionList(false);
         setupSessionListScroll();
         setupMessageScroll();
         document.getElementById('currentModeTag').textContent = '通用对话';
+        await restoreAuthentication();
     });
 </script>
 </body>

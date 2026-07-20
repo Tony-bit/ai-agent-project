@@ -12,9 +12,57 @@ const {
     validateSseResponse,
     resolveRuntimeConfig,
     buildApiUrl,
+    createAuthState,
+    validateSessionId,
     createRequestLifecycle,
     isNearBottom
 } = require('../js/agent-ui-core.js');
+
+test('auth state stores token, builds bearer headers and clears identity', () => {
+    const storage = memoryStorage();
+    const auth = createAuthState({ storage });
+
+    auth.setSession('token-123', { userId: 'user_a', userType: 'ACCOUNT' });
+
+    assert.equal(storage.snapshot()['agent.accessToken'], 'token-123');
+    assert.equal(auth.getAccessToken(), 'token-123');
+    assert.equal(auth.getCurrentUser().userId, 'user_a');
+    assert.deepEqual(auth.headers({ Accept: 'application/json' }), {
+        Accept: 'application/json', Authorization: 'Bearer token-123'
+    });
+
+    auth.clear();
+    assert.equal(auth.getAccessToken(), null);
+    assert.equal(auth.getCurrentUser(), null);
+    assert.deepEqual(auth.headers({ Accept: 'application/json' }), { Accept: 'application/json' });
+});
+
+test('auth state falls back to memory when localStorage throws', () => {
+    const storage = {
+        getItem() { throw new Error('blocked'); },
+        setItem() { throw new Error('blocked'); },
+        removeItem() { throw new Error('blocked'); }
+    };
+    const auth = createAuthState({ storage });
+
+    auth.setSession('memory-token', { userId: 'guest_1', userType: 'GUEST' });
+
+    assert.equal(auth.getAccessToken(), 'memory-token');
+    assert.equal(auth.getCurrentUser().userId, 'guest_1');
+});
+
+test('auth state restores only the access token and waits for auth me user data', () => {
+    const auth = createAuthState({ storage: memoryStorage({ 'agent.accessToken': 'stored-token' }) });
+    assert.equal(auth.getAccessToken(), 'stored-token');
+    assert.equal(auth.getCurrentUser(), null);
+});
+
+test('session id validation follows the backend contract', () => {
+    assert.deepEqual(validateSessionId('session_123-abc'), { valid: true, value: 'session_123-abc' });
+    assert.equal(validateSessionId('').valid, false);
+    assert.equal(validateSessionId('bad/session').valid, false);
+    assert.equal(validateSessionId('s'.repeat(65)).valid, false);
+});
 
 test('resolveStreamEnd preserves explicit terminal outcomes', () => {
     assert.deepEqual(resolveStreamEnd({

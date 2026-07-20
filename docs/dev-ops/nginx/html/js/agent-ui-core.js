@@ -212,6 +212,58 @@
         }
     }
 
+    function safeStorageRemove(storage, key) {
+        try {
+            if (storage && storage.removeItem) storage.removeItem(key);
+        } catch (_) {
+            // Storage persistence is optional.
+        }
+    }
+
+    const ACCESS_TOKEN_KEY = 'agent.accessToken';
+
+    function createAuthState({ storage } = {}) {
+        let accessToken = safeStorageGet(storage, ACCESS_TOKEN_KEY);
+        let currentUser = null;
+
+        return {
+            setSession(token, user) {
+                accessToken = typeof token === 'string' && token ? token : null;
+                currentUser = user && typeof user === 'object' ? { ...user } : null;
+                if (accessToken) safeStorageSet(storage, ACCESS_TOKEN_KEY, accessToken);
+                else safeStorageRemove(storage, ACCESS_TOKEN_KEY);
+            },
+            setCurrentUser(user) {
+                currentUser = user && typeof user === 'object' ? { ...user } : null;
+            },
+            getAccessToken() {
+                return accessToken;
+            },
+            getCurrentUser() {
+                return currentUser ? { ...currentUser } : null;
+            },
+            headers(baseHeaders = {}) {
+                const headers = { ...baseHeaders };
+                if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+                return headers;
+            },
+            clear() {
+                accessToken = null;
+                currentUser = null;
+                safeStorageRemove(storage, ACCESS_TOKEN_KEY);
+            }
+        };
+    }
+
+    const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+
+    function validateSessionId(value) {
+        const normalized = String(value == null ? '' : value).trim();
+        return SESSION_ID_PATTERN.test(normalized)
+            ? { valid: true, value: normalized }
+            : { valid: false, value: normalized, error: '会话 ID 需为 1-64 位字母、数字、下划线或连字符' };
+    }
+
     function normalizeApiBase(value, origin) {
         if (!value) return '';
         try {
@@ -321,6 +373,8 @@
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl,
+        createAuthState,
+        validateSessionId,
         createRequestLifecycle,
         isNearBottom
     };
