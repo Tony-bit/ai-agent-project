@@ -66,15 +66,26 @@
         checks.push('markdown sanitization');
 
         window.localStorage.removeItem('agent.apiBase');
-        window.localStorage.removeItem('agent.userId');
+        window.localStorage.removeItem('agent.accessToken');
         const frame = document.getElementById('agentUi');
         const indexHtml = await fetch('../index.html').then((response) => response.text());
         const fixtureBootstrap = `<script>
             window.__fixtureRequests = [];
+            window.__fixtureValues = new Map([['agent.accessToken', 'fixture-token']]);
+            window.__fixtureStorage = {
+                getItem: (key) => window.__fixtureValues.get(key) || null,
+                setItem: (key, value) => window.__fixtureValues.set(key, String(value)),
+                removeItem: (key) => window.__fixtureValues.delete(key)
+            };
             window.fetch = (url, options = {}) => {
-                window.__fixtureRequests.push({ url: String(url), method: options.method || 'GET' });
+                window.__fixtureRequests.push({
+                    url: String(url), method: options.method || 'GET', headers: options.headers || {}
+                });
+                const data = String(url).includes('/auth/me')
+                    ? { userId: 'fixture-user', userType: 'ACCOUNT', account: 'fixture' }
+                    : { sessions: [], hasMore: false };
                 return Promise.resolve(new Response(JSON.stringify({
-                    code: '200', data: { sessions: [], hasMore: false }
+                    code: '200', data
                 }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
             };
         <\/script>`;
@@ -86,6 +97,7 @@
 
         async function loadFixture(search) {
             const fixtureHtml = baseFixtureHtml
+                .replaceAll('storage: window.localStorage', 'storage: window.__fixtureStorage')
                 .replace(
                     'search: window.location.search',
                     `search: ${JSON.stringify(search || '')}`
@@ -111,10 +123,10 @@
             result.innerHTML = '';
         };
 
-        assert(agentWindow.buildApiUrl('/api/v1/test') === '/api/v1/test'
-            && agentDocument.getElementById('currentUserId').textContent === 'test-user-f52b2ed1',
-            'Same-origin runtime configuration did not use the default user');
-        checks.push('same-origin runtime configuration');
+        await waitFor(() => agentDocument.getElementById('currentUserId').textContent === 'fixture-user');
+        assert(agentWindow.buildApiUrl('/api/v1/test') === '/api/v1/test',
+            'Same-origin runtime configuration was not applied');
+        checks.push('same-origin authentication restore');
 
         resetPanels();
         const generalState = agentWindow.createStreamState('general');
@@ -321,15 +333,77 @@
             'Trading cancellation did not abort and restore the UI');
         checks.push('trading cancellation');
 
+        const sessionRequests = [];
+        agentWindow.fetch = (url, options = {}) => {
+            sessionRequests.push({ url: String(url), method: options.method || 'GET', headers: options.headers || {} });
+            const data = String(url).includes('/messages')
+                ? { messages: [], hasMore: false }
+                : { sessions: [], hasMore: false };
+            return Promise.resolve(new agentWindow.Response(JSON.stringify({ code: '200', data }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        };
+
+        agentDocument.getElementById('sessionSettingsBtn').click();
+        const sessionInput = agentDocument.getElementById('sessionIdInput');
+        sessionInput.value = 'bad/session';
+        agentDocument.getElementById('applySessionSettingsBtn').click();
+        assert(!agentDocument.getElementById('sessionSettingsDialog').classList.contains('hidden'),
+            'Invalid session ID closed the settings dialog');
+        sessionInput.value = 'manual_session';
+        agentDocument.getElementById('applySessionSettingsBtn').click();
+        await waitFor(() => agentDocument.getElementById('sessionSettingsDialog').classList.contains('hidden'));
+        assert(agentDocument.getElementById('sessionId').textContent === 'manual_session',
+            'Valid session ID was not applied');
+        checks.push('session ID validation and apply');
+
+        agentWindow.renderSessionList([
+            { sessionId: 'other_session', firstQuery: 'Other', lastResponse: 'Other result', messageCount: 1 },
+            { sessionId: 'manual_session', firstQuery: 'Current', lastResponse: 'Current result', messageCount: 1 }
+        ]);
+        const otherItem = agentDocument.querySelector('[data-session-id="other_session"]');
+        otherItem.querySelector('.session-delete-btn').click();
+        assert(agentDocument.getElementById('sessionId').textContent === 'manual_session'
+            && !agentDocument.getElementById('deleteSessionDialog').classList.contains('hidden'),
+            'Delete button propagated into session selection');
+        assert(agentDocument.getElementById('deleteSessionDialog').textContent.includes('Mem0')
+            && agentDocument.getElementById('deleteSessionDialog').textContent.includes('继续保留'),
+            'Delete confirmation omitted retained long-term memory notice');
+        agentDocument.getElementById('cancelDeleteSessionBtn').click();
+        assert(sessionRequests.every((request) => request.method !== 'DELETE'),
+            'Cancelling deletion sent a DELETE request');
+
+        otherItem.querySelector('.session-delete-btn').click();
+        agentDocument.getElementById('confirmDeleteSessionBtn').click();
+        await waitFor(() => !agentDocument.querySelector('[data-session-id="other_session"]'));
+        const deleteRequest = sessionRequests.find((request) => request.method === 'DELETE');
+        assert(deleteRequest
+            && deleteRequest.url.endsWith('/api/v1/session/other_session')
+            && deleteRequest.headers.Authorization === 'Bearer fixture-token'
+            && !deleteRequest.url.includes('userId='),
+            'Session DELETE request did not use the authenticated contract');
+        assert(agentDocument.getElementById('sessionId').textContent === 'manual_session',
+            'Deleting a non-current session changed the current session');
+
+        const currentItem = agentDocument.querySelector('[data-session-id="manual_session"]');
+        currentItem.querySelector('.session-delete-btn').click();
+        agentDocument.getElementById('confirmDeleteSessionBtn').click();
+        await waitFor(() => agentDocument.getElementById('sessionId').textContent !== 'manual_session');
+        assert(agentDocument.getElementById('sessionId').textContent.startsWith('session_'),
+            'Deleting the current session did not create a new session');
+        checks.push('authenticated session deletion states');
+
         ({ agentWindow, agentDocument } = await loadFixture(
             '?apiBase=http%3A%2F%2Flocalhost%3A8090&userId=demo-user'
         ));
+        await waitFor(() => agentDocument.getElementById('currentUserId').textContent === 'fixture-user');
         const configuredUserId = agentDocument.getElementById('currentUserId').textContent;
         const configuredTestUrl = agentWindow.buildApiUrl('/api/v1/test');
-        assert(configuredUserId === 'demo-user'
+        assert(configuredUserId === 'fixture-user'
             && configuredTestUrl === 'http://localhost:8090/api/v1/test',
-            `Configured API host or user was not applied: ${JSON.stringify({ configuredUserId, configuredTestUrl })}`);
-        checks.push('configured host and user');
+            `Configured API host or authenticated user was not applied: ${JSON.stringify({ configuredUserId, configuredTestUrl })}`);
+        checks.push('configured host and authenticated user');
 
         const configuredUrls = agentWindow.__fixtureRequests.map((request) => request.url);
         agentWindow.fetch = (url, options = {}) => {
@@ -364,18 +438,20 @@
         await waitFor(() => !agentDocument.getElementById('sendTradingBtn').disabled);
         assert(configuredUrls.length >= 5
             && configuredUrls.every((url) => url.startsWith('http://localhost:8090/'))
-            && configuredUrls.some((url) => url.includes('/session/list?userId=demo-user'))
+            && configuredUrls.some((url) => url.endsWith('/session/list'))
             && configuredUrls.some((url) => url.includes('/session/session-config/messages'))
-            && configuredUrls.some((url) => url.includes('/sync-memory?userId=demo-user')),
+            && configuredUrls.some((url) => url.endsWith('/sync-memory'))
+            && configuredUrls.every((url) => !url.includes('userId=')),
             'All API families did not share the configured runtime');
         checks.push('shared API configuration');
 
-        window.localStorage.removeItem('agent.userId');
+        window.localStorage.removeItem('agent.accessToken');
         window.localStorage.removeItem('agent.apiBase');
         ({ agentWindow, agentDocument } = await loadFixture('?userId=%3Cscript%3E'));
-        assert(agentDocument.getElementById('currentUserId').textContent === 'test-user-f52b2ed1',
-            'Invalid userId did not fall back to the default user');
-        checks.push('invalid user fallback');
+        await waitFor(() => agentDocument.getElementById('currentUserId').textContent === 'fixture-user');
+        assert(agentDocument.getElementById('currentUserId').textContent === 'fixture-user',
+            'URL userId changed the authenticated user');
+        checks.push('URL userId ignored');
 
         resultNode.textContent = `PASS (${checks.length}/${checks.length})\n${checks.join('\n')}`;
     }

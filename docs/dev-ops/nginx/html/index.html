@@ -1040,6 +1040,12 @@
                 <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 rounded-full">
                     <span class="text-[10px] text-gray-500">会话ID:</span>
                     <span id="sessionId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
+                    <button id="sessionSettingsBtn" type="button" title="设置会话 ID" aria-haspopup="dialog"
+                            class="p-1 text-gray-500 hover:text-primary-600 hover:bg-white rounded focus:outline-none focus:ring-2 focus:ring-primary-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15.5A3.5 3.5 0 1112 8a3.5 3.5 0 010 7.5zM19.4 15a1.7 1.7 0 00.34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 .6l-.04.08H10l-.04-.08a1.7 1.7 0 00-1-.6 1.7 1.7 0 00-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-.6-1l-.08-.04V10l.08-.04a1.7 1.7 0 00.6-1 1.7 1.7 0 00-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-.6l.04-.08h3.92L14 4a1.7 1.7 0 001 .6 1.7 1.7 0 001.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0019.4 9c.08.4.3.75.6 1l.08.04v3.92L20 14c-.3.25-.52.6-.6 1z"/>
+                        </svg>
+                    </button>
                     <span class="text-[10px] text-gray-500">用户:</span>
                     <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
@@ -1052,6 +1058,32 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="sessionSettingsDialog" class="hidden fixed inset-0 z-50 bg-black/30 flex items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="sessionSettingsTitle">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-xl p-5">
+        <h2 id="sessionSettingsTitle" class="text-sm font-bold text-gray-900">设置会话 ID</h2>
+        <input id="sessionIdInput" maxlength="64" autocomplete="off"
+               class="mt-4 w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+        <div class="mt-4 flex justify-end gap-2">
+            <button id="cancelSessionSettingsBtn" type="button" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+            <button id="applySessionSettingsBtn" type="button" class="px-3 py-2 text-sm text-white bg-primary-600 rounded-lg hover:bg-primary-700">应用</button>
+        </div>
+    </div>
+</div>
+
+<div id="deleteSessionDialog" class="hidden fixed inset-0 z-50 bg-black/30 flex items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="deleteSessionTitle">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-xl p-5">
+        <h2 id="deleteSessionTitle" class="text-sm font-bold text-gray-900">删除会话</h2>
+        <p class="mt-3 text-sm text-gray-600">将删除会话 <strong id="deleteSessionIdLabel" class="font-mono text-gray-900"></strong> 及本站消息记录。</p>
+        <p class="mt-2 text-sm text-gray-600">已经同步到 Mem0 的长期记忆将继续保留。</p>
+        <div class="mt-5 flex justify-end gap-2">
+            <button id="cancelDeleteSessionBtn" type="button" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+            <button id="confirmDeleteSessionBtn" type="button" class="px-3 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">删除</button>
         </div>
     </div>
 </div>
@@ -1553,7 +1585,7 @@
 
     function createSessionItem(session) {
         const li = document.createElement('li');
-        li.className = 'session-item';
+        li.className = 'session-item group relative';
         li.dataset.sessionId = session.sessionId;
 
         const title = truncateText(session.firstQuery, 25);
@@ -1565,7 +1597,15 @@
             : null;
 
         li.innerHTML = `
-            <div class="session-item-title">${escapeHtml(title)}</div>
+            <div class="flex items-start gap-2">
+                <div class="session-item-title flex-1 min-w-0">${escapeHtml(title)}</div>
+                <button type="button" class="session-delete-btn w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                        aria-label="删除会话 ${escapeHtml(session.sessionId)}" title="删除会话">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.87 12.14A2 2 0 0116.14 21H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6M9 7V4h6v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
             <div class="session-item-preview">
                 <span class="session-item-badge badge-user">问</span>${escapeHtml(preview)}
             </div>
@@ -1578,28 +1618,33 @@
         li.addEventListener('click', () => {
             selectSession(session.sessionId, li);
         });
+        li.querySelector('.session-delete-btn').addEventListener('click', (event) => {
+            event.stopPropagation();
+            requestSessionDeletion(session.sessionId, li, event.currentTarget);
+        });
 
         return li;
     }
 
     async function selectSession(selectedSessionId, element) {
         cancelActiveRequest(false);
-        document.querySelectorAll('.session-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        element.classList.add('active');
-
-        sessionId = selectedSessionId;
-        document.getElementById('sessionId').textContent = sessionId;
-
+        const previous = captureSessionView();
         messageCursorIndex = null;
         hasMoreMessages = true;
-
-        await loadSessionMessages(selectedSessionId, false);
+        const loaded = await loadSessionMessages(selectedSessionId, false);
+        if (!loaded) {
+            restoreSessionView(previous);
+            return false;
+        }
+        document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+        if (element) element.classList.add('active');
+        sessionId = selectedSessionId;
+        document.getElementById('sessionId').textContent = sessionId;
+        return true;
     }
 
     async function loadSessionMessages(targetSessionId, append = false) {
-        if (isLoadingMessages || (!append && !hasMoreMessages)) return;
+        if (isLoadingMessages || (!append && !hasMoreMessages)) return false;
 
         isLoadingMessages = true;
 
@@ -1680,6 +1725,8 @@
                 resultDiv.innerHTML = '';
             }
 
+            return true;
+
         } catch (error) {
             console.error('加载会话消息失败:', error);
             if (!append) {
@@ -1697,8 +1744,118 @@
                 `;
                 resultDiv.innerHTML = '';
             }
+            return false;
         } finally {
             isLoadingMessages = false;
+        }
+    }
+
+    function captureSessionView() {
+        return {
+            sessionId,
+            thinkingHtml: document.getElementById('thinkingMessages').innerHTML,
+            resultHtml: document.getElementById('resultMessages').innerHTML,
+            messageCursorIndex,
+            hasMoreMessages,
+            activeSessionId: document.querySelector('.session-item.active')?.dataset.sessionId || null
+        };
+    }
+
+    function restoreSessionView(view) {
+        sessionId = view.sessionId;
+        document.getElementById('sessionId').textContent = sessionId;
+        document.getElementById('thinkingMessages').innerHTML = view.thinkingHtml;
+        document.getElementById('resultMessages').innerHTML = view.resultHtml;
+        messageCursorIndex = view.messageCursorIndex;
+        hasMoreMessages = view.hasMoreMessages;
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.sessionId === view.activeSessionId);
+        });
+    }
+
+    let sessionSettingsReturnFocus = null;
+    let pendingSessionDeletion = null;
+
+    function openSessionSettings() {
+        sessionSettingsReturnFocus = document.activeElement;
+        const dialog = document.getElementById('sessionSettingsDialog');
+        const input = document.getElementById('sessionIdInput');
+        input.value = sessionId;
+        dialog.classList.remove('hidden');
+        input.focus();
+        input.select();
+    }
+
+    function closeSessionSettings() {
+        document.getElementById('sessionSettingsDialog').classList.add('hidden');
+        if (sessionSettingsReturnFocus && sessionSettingsReturnFocus.focus) {
+            sessionSettingsReturnFocus.focus();
+        }
+        sessionSettingsReturnFocus = null;
+    }
+
+    async function applySessionSettings() {
+        const validation = validateSessionId(document.getElementById('sessionIdInput').value);
+        if (!validation.valid) {
+            showToast(validation.error, 'error');
+            return;
+        }
+        const button = document.getElementById('applySessionSettingsBtn');
+        button.disabled = true;
+        try {
+            if (validation.value === sessionId || await selectSession(validation.value, null)) {
+                closeSessionSettings();
+            } else {
+                showToast('无法切换到该会话 ID', 'error');
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function requestSessionDeletion(targetSessionId, element, returnFocus) {
+        if (targetSessionId === sessionId && requestLifecycle.isRunning()) {
+            showToast('请先取消当前会话正在执行的任务', 'info');
+            return;
+        }
+        pendingSessionDeletion = { sessionId: targetSessionId, element, returnFocus };
+        document.getElementById('deleteSessionIdLabel').textContent = targetSessionId;
+        document.getElementById('deleteSessionDialog').classList.remove('hidden');
+        document.getElementById('cancelDeleteSessionBtn').focus();
+    }
+
+    function closeDeleteSessionDialog() {
+        document.getElementById('deleteSessionDialog').classList.add('hidden');
+        const returnFocus = pendingSessionDeletion && pendingSessionDeletion.returnFocus;
+        pendingSessionDeletion = null;
+        if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+    }
+
+    async function confirmSessionDeletion() {
+        if (!pendingSessionDeletion) return;
+        const target = pendingSessionDeletion;
+        const button = document.getElementById('confirmDeleteSessionBtn');
+        button.disabled = true;
+        try {
+            const response = await authenticatedFetch(
+                buildApiUrl(`/api/v1/session/${encodeURIComponent(target.sessionId)}`),
+                { method: 'DELETE', headers: { 'Accept': 'application/json' } }
+            );
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result || result.code !== '200') {
+                throw new Error(result && result.info ? result.info : '删除会话失败');
+            }
+            const deletingCurrent = target.sessionId === sessionId;
+            target.element.remove();
+            closeDeleteSessionDialog();
+            if (deletingCurrent) {
+                createNewChat();
+            }
+            showToast('会话已删除，Mem0 长期记忆已保留', 'success');
+        } catch (error) {
+            if (error.status !== 401) showToast(error.message || '删除会话失败', 'error');
+        } finally {
+            button.disabled = false;
         }
     }
 
@@ -2604,6 +2761,26 @@
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         clearAuthentication();
+    });
+
+    document.getElementById('sessionSettingsBtn').addEventListener('click', openSessionSettings);
+    document.getElementById('cancelSessionSettingsBtn').addEventListener('click', closeSessionSettings);
+    document.getElementById('applySessionSettingsBtn').addEventListener('click', applySessionSettings);
+    document.getElementById('sessionIdInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applySessionSettings();
+        }
+    });
+    document.getElementById('cancelDeleteSessionBtn').addEventListener('click', closeDeleteSessionDialog);
+    document.getElementById('confirmDeleteSessionBtn').addEventListener('click', confirmSessionDeletion);
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (!document.getElementById('sessionSettingsDialog').classList.contains('hidden')) {
+            closeSessionSettings();
+        } else if (!document.getElementById('deleteSessionDialog').classList.contains('hidden')) {
+            closeDeleteSessionDialog();
+        }
     });
 
     window.addEventListener('load', async function() {
