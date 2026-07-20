@@ -1,9 +1,11 @@
 package denny.ai.agent.trading.trigger.http;
 
 import com.alibaba.fastjson.JSON;
+import denny.ai.agent.domain.auth.CurrentUserContext;
 import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.sse.SseEventSender;
+import denny.ai.agent.infrastructure.service.SessionExecutionGuard;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStarter;
@@ -19,6 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 股票分析独立 HTTP 端点。
@@ -42,6 +45,8 @@ public class TradingAnalysisController {
     private final ExecutorService tradingOrchestrationExecutor;
     private final ExecutorService tradingSseWriterExecutor;
     private final ScheduledExecutorService tradingSseHeartbeatExecutor;
+    private final CurrentUserContext currentUserContext;
+    private final SessionExecutionGuard executionGuard;
     private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
 
     public TradingAnalysisController(TradingStarter tradingStarter,
@@ -50,11 +55,15 @@ public class TradingAnalysisController {
                                      @Qualifier("tradingSseWriterExecutor")
                                      ExecutorService tradingSseWriterExecutor,
                                      @Qualifier("tradingSseHeartbeatExecutor")
-                                     ScheduledExecutorService tradingSseHeartbeatExecutor) {
+                                     ScheduledExecutorService tradingSseHeartbeatExecutor,
+                                     CurrentUserContext currentUserContext,
+                                     SessionExecutionGuard executionGuard) {
         this.tradingStarter = tradingStarter;
         this.tradingOrchestrationExecutor = tradingOrchestrationExecutor;
         this.tradingSseWriterExecutor = tradingSseWriterExecutor;
         this.tradingSseHeartbeatExecutor = tradingSseHeartbeatExecutor;
+        this.currentUserContext = currentUserContext;
+        this.executionGuard = executionGuard;
     }
 
     /**
@@ -74,7 +83,16 @@ public class TradingAnalysisController {
                 request.getMaxDebateRounds());
 
         if (request.getTicker() == null || request.getTicker().isBlank()) {
-            return buildErrorEmitter(response, "股票代码不能为空");
+            return buildErrorEmitter(response, 400, "股票代码不能为空");
+        }
+
+        String sessionId = request.getSessionId();
+        final SessionExecutionGuard.ExecutionLease lease;
+        try {
+            lease = executionGuard.acquire(currentUserContext.currentUserId(), sessionId);
+        } catch (SessionExecutionGuard.ExecutionFailure failure) {
+            int status = failure.getReason() == SessionExecutionGuard.FailureReason.INVALID ? 400 : 409;
+            return buildErrorEmitter(response, status, failure.getMessage());
         }
 
         try {
@@ -88,53 +106,63 @@ public class TradingAnalysisController {
         }
 
         ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
-        String sessionId = request.getSessionId() != null ? request.getSessionId() : UUID.randomUUID().toString();
         TradingSseSession sseSession = new TradingSseSession(
                 emitter,
                 UUID.randomUUID().toString(),
                 sessionId,
                 request.getTicker().toUpperCase().trim()
         );
+        AtomicReference<CompletableFuture<Void>> analysisFuture = new AtomicReference<>();
         emitter.onCompletion(() -> {
             sseSession.markDisconnected(null);
             log.info("交易分析SSE连接完成: ticker={}", request.getTicker());
         });
         emitter.onTimeout(() -> {
             sseSession.markDisconnected(new IllegalStateException("SSE response timeout"));
+            cancelAnalysis(analysisFuture);
             log.warn("交易分析SSE连接超时: ticker={}", request.getTicker());
         });
         emitter.onError(error -> {
             sseSession.markDisconnected(error);
+            cancelAnalysis(analysisFuture);
             log.warn("交易分析SSE连接异常: ticker={}, error={}", request.getTicker(), error.getMessage());
         });
         try {
             sseSession.startWriter(tradingSseWriterExecutor);
             sseSession.startHeartbeat(tradingSseHeartbeatExecutor);
         } catch (Exception e) {
+            lease.close();
             log.error("交易分析SSE session 启动失败: ticker={}, error={}", request.getTicker(), e.getMessage(), e);
-            return buildErrorEmitter(response, "SSE连接初始化失败，请稍后重试");
+            return buildErrorEmitter(response, 500, "SSE连接初始化失败，请稍后重试");
         }
 
-        CompletableFuture.runAsync(() -> {
-            try {
-                // 发送开始任务标记给前端，展示给用户
-                sendStartEvent(sseSession, request);
-
-                // 开始执行整个分析流程
-                executeAnalysis(request, sseSession, sessionId);
-            } catch (Exception e) {
-                log.error("股票分析执行异常: {}", e.getMessage(), e);
-                if (sseSession.shouldContinue()) {
-                    sseSession.sendBusiness("error", AutoAgentExecuteResultEntity.builder()
-                            .type("error")
-                            .subType("system_error")
-                            .content("分析执行失败: " + e.getMessage())
-                            .timestamp(System.currentTimeMillis())
-                            .build());
-                    sseSession.complete();
+        try {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    sendStartEvent(sseSession, request);
+                    executeAnalysis(request, sseSession, sessionId);
+                } catch (Exception e) {
+                    log.error("股票分析执行异常: {}", e.getMessage(), e);
+                    if (sseSession.shouldContinue()) {
+                        sseSession.sendBusiness("error", AutoAgentExecuteResultEntity.builder()
+                                .type("error")
+                                .subType("system_error")
+                                .content("分析执行失败: " + e.getMessage())
+                                .timestamp(System.currentTimeMillis())
+                                .build());
+                        sseSession.complete();
+                    }
+                } finally {
+                    lease.close();
                 }
-            }
-        }, tradingOrchestrationExecutor);
+            }, tradingOrchestrationExecutor);
+            analysisFuture.set(future);
+        } catch (RuntimeException exception) {
+            lease.close();
+            sseSession.markDisconnected(exception);
+            log.error("股票分析任务提交失败: ticker={}", request.getTicker(), exception);
+            return buildErrorEmitter(response, 500, "operation failed");
+        }
 
         return emitter;
     }
@@ -202,8 +230,16 @@ public class TradingAnalysisController {
                 .build());
     }
 
-    private ResponseBodyEmitter buildErrorEmitter(HttpServletResponse response, String message) {
+    private void cancelAnalysis(AtomicReference<CompletableFuture<Void>> analysisFuture) {
+        CompletableFuture<Void> future = analysisFuture.get();
+        if (future != null) {
+            future.cancel(true);
+        }
+    }
+
+    private ResponseBodyEmitter buildErrorEmitter(HttpServletResponse response, int status, String message) {
         try {
+            response.setStatus(status);
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
             ResponseBodyEmitter errorEmitter = new ResponseBodyEmitter();
