@@ -13,6 +13,7 @@ import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextAdvisor;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
 import org.junit.Before;
 import org.junit.Test;
@@ -697,6 +698,26 @@ public class IntentRoutingServiceTest {
         assertEquals(Integer.valueOf(2), result.getMetrics().getStageMetrics().get(2).getCallIndex());
         org.mockito.Mockito.verify(chatModel, org.mockito.Mockito.times(3))
                 .call(any(org.springframework.ai.chat.prompt.Prompt.class));
+    }
+
+    @Test
+    public void shouldKeepConversationIdConsistentAcrossSplitRoutingStages() {
+        List<String> scenes = List.of(
+                ConversationContextAdvisor.SCENE_ROUTING,
+                ConversationContextAdvisor.SCENE_DECOMPOSITION,
+                ConversationContextAdvisor.SCENE_SLOT);
+
+        for (String scene : scenes) {
+            Map<String, Object> context = intentRoutingService.routingAdvisorContext(
+                    "session-consistent", scene, Map.of("trace", "trace-1"));
+
+            assertEquals("session-consistent",
+                    context.get(ConversationContextAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY));
+            assertEquals(scene, context.get(ConversationContextAdvisor.CONVERSATION_CONTEXT_SCENE_KEY));
+            assertEquals(true,
+                    context.get(ConversationContextAdvisor.CONVERSATION_CONTEXT_PRELOADED_KEY));
+            assertEquals("trace-1", context.get("trace"));
+        }
     }
 
     @Test
