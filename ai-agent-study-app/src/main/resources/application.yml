@@ -1,6 +1,11 @@
 server:
   port: 8090
 
+auth:
+  jwt:
+    secret: ${AI_AGENT_JWT_SECRET:dev-only-change-me}
+    expires-in-seconds: 86400
+
 intent:
   routing:
     mode: SPLIT
