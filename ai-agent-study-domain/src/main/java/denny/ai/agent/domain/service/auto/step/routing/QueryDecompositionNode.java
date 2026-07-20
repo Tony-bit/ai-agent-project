@@ -39,7 +39,8 @@ public class QueryDecompositionNode extends AbstractExecuteSupport {
         AiAgentClientFlowConfigVO config = requireConfig(context);
         IntentRoutingService.RoutingCallResult<QueryDecompositionResult> call =
                 intentRoutingService.decomposeQueryWithMetric(
-                        request.getMessage(), history(request.getSessionId(), context), config);
+                        request.getMessage(), history(request.getSessionId(), context), config,
+                        request.getSessionId());
         QueryDecompositionResult result = call.result();
         try {
             taskGraphValidator.validateDecomposedTasks(result.getTaskList());

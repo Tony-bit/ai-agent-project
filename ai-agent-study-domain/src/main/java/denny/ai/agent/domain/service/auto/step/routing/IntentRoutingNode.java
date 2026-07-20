@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
@@ -56,7 +57,8 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
             throw new IllegalStateException("Missing INTENT_ROUTING client configuration");
         }
         MultiIntentRoutingResult result = intentRoutingService.routeUnified(
-                request.getMessage(), getRecentHistoryMessages(request.getSessionId(), context), config);
+                request.getMessage(), getRecentHistoryMessages(request.getSessionId(), context), config,
+                request.getSessionId());
         if (!Boolean.TRUE.equals(result.getNeedsClarification())) {
             try {
                 validator().validateSubTasks(result.getTaskList());
@@ -65,7 +67,11 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                 result = intentRoutingService.fallbackMultiIntentResult("Task graph validation failed: " + e.getMessage());
             }
         }
-        return handler().handle(request, context, result);
+        String response = handler().handle(request, context, result);
+        if (Boolean.TRUE.equals(result.getNeedsClarification())) {
+            sendClarificationAndComplete(context, request.getSessionId(), response);
+        }
+        return response;
     }
 
     @Override
@@ -98,5 +104,22 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                         return List.of();
                     }
                 });
+    }
+
+    private void sendClarificationAndComplete(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context,
+            String sessionId,
+            String clarificationPrompt) {
+        boolean clarificationSent = sendSseResult(context,
+                AutoAgentExecuteResultEntity.createSummarySubResult(
+                        "clarification", clarificationPrompt, sessionId));
+        boolean terminalSent = clarificationSent && sendSseResult(context,
+                AutoAgentExecuteResultEntity.createCompleteResult(sessionId));
+        if (terminalSent) {
+            log.info("Clarification SSE completed: sessionId={}", sessionId);
+        } else {
+            log.warn("Clarification SSE delivery failed: sessionId={}, clarificationSent={}",
+                    sessionId, clarificationSent);
+        }
     }
 }

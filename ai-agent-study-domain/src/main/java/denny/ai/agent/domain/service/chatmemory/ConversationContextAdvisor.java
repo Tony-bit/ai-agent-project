@@ -23,6 +23,7 @@ public class ConversationContextAdvisor implements BaseAdvisor {
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = ChatMemory.CONVERSATION_ID;
     public static final String CONVERSATION_CONTEXT_SCENE_KEY = "conversation_context_scene";
+    public static final String CONVERSATION_CONTEXT_PRELOADED_KEY = "conversation_context_preloaded";
     public static final String SCENE_CHAT = "chat";
     public static final String SCENE_ROUTING = "routing";
     public static final String SCENE_DECOMPOSITION = "decomposition";
@@ -54,6 +55,9 @@ public class ConversationContextAdvisor implements BaseAdvisor {
         String conversationId = conversationId(request.context());
         if (conversationId == null || conversationId.isBlank()) {
             log.debug("未提供 conversationId，跳过场景化上下文注入: scene={}", scene);
+            return request;
+        }
+        if (contextPreloaded(request.context())) {
             return request;
         }
         RoutingConversationContext context = switch (scene) {
@@ -93,6 +97,11 @@ public class ConversationContextAdvisor implements BaseAdvisor {
     private String conversationId(Map<String, Object> context) {
         Object conversationId = context == null ? null : context.get(CHAT_MEMORY_CONVERSATION_ID_KEY);
         return conversationId == null ? null : conversationId.toString();
+    }
+
+    private boolean contextPreloaded(Map<String, Object> context) {
+        Object preloaded = context == null ? null : context.get(CONVERSATION_CONTEXT_PRELOADED_KEY);
+        return Boolean.TRUE.equals(preloaded) || "true".equalsIgnoreCase(String.valueOf(preloaded));
     }
 
     private Prompt promptWithContext(Prompt original, String scene, List<String> historyMessages) {

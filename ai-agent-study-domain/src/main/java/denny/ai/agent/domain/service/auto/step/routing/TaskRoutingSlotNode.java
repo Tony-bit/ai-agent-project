@@ -53,7 +53,8 @@ public class TaskRoutingSlotNode extends AbstractExecuteSupport {
             DecomposedTask task = ordered.get(i);
             IntentRoutingService.RoutingCallResult<IntentRoutingResult> call =
                     intentRoutingService.routeTaskIntentSlotsWithMetric(
-                            task.getContent(), task.getTaskId(), i + 1, history, config);
+                            task.getContent(), task.getTaskId(), i + 1, history, config,
+                            request.getSessionId());
             metrics.addStage(call.metric());
             tasks.add(intentRoutingService.toSubTask(task, call.result()));
         }

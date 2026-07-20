@@ -1,6 +1,8 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.fastjson.JSON;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.BaseSlot;
@@ -24,6 +26,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.context.ApplicationContext;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.lang.reflect.Field;
 import java.util.HashMap;
@@ -33,9 +36,11 @@ import java.util.Map;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 /**
@@ -70,6 +75,9 @@ public class IntentRoutingNodeTest {
 
     @Mock
     private ApplicationContext applicationContext;
+
+    @Mock
+    private ResponseBodyEmitter emitter;
 
     private IntentRoutingNode intentRoutingNode;
 
@@ -110,18 +118,20 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testDoApplyUsesUnifiedRoutingService() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
 
-        verify(intentRoutingService).routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class));
+        verify(intentRoutingService).routeUnified(
+                anyString(), org.mockito.ArgumentMatchers.anyList(),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123"));
         assertEquals(IntentTypeEnum.PE_RETRIEVAL, dynamicContext.getValue(IntentRoutingNode.RECOGNIZED_INTENT_KEY));
     }
 
     @Test
     public void testMultiTaskWritesTaskList() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(MultiIntentRoutingResult.builder()
                         .multiTask(true)
                         .needsClarification(false)
@@ -141,7 +151,8 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testNeedsClarificationReturnsPrompt() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        dynamicContext.setValue("emitter", emitter);
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(MultiIntentRoutingResult.builder()
                         .multiTask(false)
                         .needsClarification(true)
@@ -155,11 +166,22 @@ public class IntentRoutingNodeTest {
 
         assertEquals("请提供股票代码", result);
         assertEquals("请提供股票代码", dynamicContext.getValue("clarificationPrompt"));
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(emitter, times(2)).send(eventCaptor.capture());
+        List<Object> frames = eventCaptor.getAllValues();
+        AutoAgentExecuteResultEntity clarification = parseSseFrame(frames.get(0));
+        AutoAgentExecuteResultEntity complete = parseSseFrame(frames.get(1));
+        assertEquals("summary", clarification.getType());
+        assertEquals("clarification", clarification.getSubType());
+        assertEquals("请提供股票代码", clarification.getContent());
+        assertEquals("complete", complete.getType());
+        assertTrue(complete.getCompleted());
     }
 
     @Test
     public void testSingleTaskPERetrievalRouting() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
@@ -171,7 +193,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testSingleTaskGeneralChatRouting() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.GENERAL_CHAT, "generalChatNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
@@ -183,7 +205,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void testStockSlotStoredInContext() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
 
         intentRoutingNode.doApply(request, dynamicContext);
@@ -205,7 +227,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_route_to_trading_node_when_intent_is_stock_analysis() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
         when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingIntentRoutingNode);
 
@@ -218,7 +240,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_keep_single_task_context_mapping_compatible_after_unified_routing() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
@@ -231,7 +253,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_keep_downstream_node_selection_unchanged_after_mainline_switch() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_REASONING, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
@@ -243,7 +265,7 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_fallback_to_general_chat_when_trading_node_is_missing() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
         when(applicationContext.getBean("tradingIntentRoutingNode")).thenThrow(new RuntimeException("missing bean"));
 
@@ -256,13 +278,14 @@ public class IntentRoutingNodeTest {
 
     @Test
     public void should_pass_intent_routing_config_to_service_when_unified_routing_is_called() throws Exception {
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
 
         ArgumentCaptor<AiAgentClientFlowConfigVO> captor = ArgumentCaptor.forClass(AiAgentClientFlowConfigVO.class);
-        verify(intentRoutingService).routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), captor.capture());
+        verify(intentRoutingService).routeUnified(
+                anyString(), org.mockito.ArgumentMatchers.anyList(), captor.capture(), eq("test-session-123"));
         assertEquals("intent-routing-client", captor.getValue().getClientId());
     }
 
@@ -270,13 +293,14 @@ public class IntentRoutingNodeTest {
     public void should_use_prepared_history_without_loading_conversation_history() throws Exception {
         List<String> preparedHistory = List.of("user: 上一轮", "assistant: 上一轮回答");
         dynamicContext.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, preparedHistory);
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
 
         ArgumentCaptor<List<String>> historyCaptor = ArgumentCaptor.forClass(List.class);
-        verify(intentRoutingService).routeUnified(anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class));
+        verify(intentRoutingService).routeUnified(
+                anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123"));
         assertEquals(preparedHistory, historyCaptor.getValue());
         verify(conversationContextProvider, never()).getRoutingContext(anyString());
     }
@@ -286,13 +310,14 @@ public class IntentRoutingNodeTest {
         dynamicContext.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, "bad-history");
         when(conversationContextProvider.getRoutingContext("test-session-123"))
                 .thenReturn(RoutingConversationContext.builder().historyMessages(List.of("user: legacy")).build());
-        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class)))
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
 
         intentRoutingNode.doApply(request, dynamicContext);
 
         ArgumentCaptor<List<String>> historyCaptor = ArgumentCaptor.forClass(List.class);
-        verify(intentRoutingService).routeUnified(anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class));
+        verify(intentRoutingService).routeUnified(
+                anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123"));
         assertEquals(List.of("user: legacy"), historyCaptor.getValue());
         verify(conversationContextProvider).getRoutingContext("test-session-123");
     }
@@ -335,6 +360,11 @@ public class IntentRoutingNodeTest {
                 .taskType(0)
                 .status(SubTask.SubTaskStatus.PENDING)
                 .build();
+    }
+
+    private AutoAgentExecuteResultEntity parseSseFrame(Object frame) {
+        String data = String.valueOf(frame).replaceFirst("^data: ", "").trim();
+        return JSON.parseObject(data, AutoAgentExecuteResultEntity.class);
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {

@@ -82,7 +82,7 @@ public class TaskRoutingSlotNodeTest {
         context.setValue(QueryDecompositionNode.DECOMPOSITION_RESULT_KEY, decomposition);
         IntentRoutingResult routing = IntentRoutingResult.builder()
                 .intent(IntentTypeEnum.GENERAL_CHAT).confidence(ConfidenceEnum.HIGH).intentSpecificSlots(Map.of()).build();
-        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
+        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any(), any()))
                 .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
                         RoutingStageMetric.builder().stageName("task-routing-slot")
                                 .taskId(invocation.getArgument(1)).callIndex(invocation.getArgument(2))
@@ -99,8 +99,10 @@ public class TaskRoutingSlotNodeTest {
         node.doApply(ExecuteCommandEntity.builder().message("combined").sessionId("s").build(), context);
 
         InOrder order = inOrder(intentRoutingService);
-        order.verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-1"), eq("sub-1"), eq(1), any(), any());
-        order.verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-2"), eq("sub-2"), eq(2), any(), any());
+        order.verify(intentRoutingService).routeTaskIntentSlotsWithMetric(
+                eq("task sub-1"), eq("sub-1"), eq(1), any(), any(), eq("s"));
+        order.verify(intentRoutingService).routeTaskIntentSlotsWithMetric(
+                eq("task sub-2"), eq("sub-2"), eq(2), any(), any(), eq("s"));
         assertEquals(Integer.valueOf(0), task1.getTaskType());
         assertEquals(3, ((RoutingExecutionMetrics) context.getValue(RoutingResultHandler.METRICS_KEY)).getStageMetrics().size());
         verify(routingResultHandler).handle(any(), any(), eq(finalResult));
@@ -121,7 +123,7 @@ public class TaskRoutingSlotNodeTest {
                 .confidence(ConfidenceEnum.HIGH)
                 .intentSpecificSlots(Map.of())
                 .build();
-        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
+        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any(), any()))
                 .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
                         RoutingStageMetric.builder()
                                 .stageName("task-routing-slot")
@@ -184,7 +186,7 @@ public class TaskRoutingSlotNodeTest {
         context.setValue(QueryDecompositionNode.DECOMPOSITION_RESULT_KEY, decomposition);
         IntentRoutingResult routing = IntentRoutingResult.builder()
                 .intent(IntentTypeEnum.GENERAL_CHAT).confidence(ConfidenceEnum.HIGH).intentSpecificSlots(Map.of()).build();
-        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any()))
+        when(intentRoutingService.routeTaskIntentSlotsWithMetric(any(), any(), anyInt(), any(), any(), any()))
                 .thenAnswer(invocation -> new IntentRoutingService.RoutingCallResult<>(routing,
                         RoutingStageMetric.builder().stageName("task-routing-slot")
                                 .taskId(invocation.getArgument(1)).callIndex(invocation.getArgument(2))
@@ -197,8 +199,10 @@ public class TaskRoutingSlotNodeTest {
 
         node.doApply(ExecuteCommandEntity.builder().message("combined").sessionId("s").build(), context);
 
-        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-1"), eq("sub-1"), eq(1), eq(preparedHistory), any());
-        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(eq("task sub-2"), eq("sub-2"), eq(2), eq(preparedHistory), any());
+        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(
+                eq("task sub-1"), eq("sub-1"), eq(1), eq(preparedHistory), any(), eq("s"));
+        verify(intentRoutingService).routeTaskIntentSlotsWithMetric(
+                eq("task sub-2"), eq("sub-2"), eq(2), eq(preparedHistory), any(), eq("s"));
         verify(conversationContextProvider, never()).getSlotContext(anyString());
     }
 

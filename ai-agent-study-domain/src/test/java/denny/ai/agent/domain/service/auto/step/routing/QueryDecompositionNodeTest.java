@@ -68,7 +68,7 @@ public class QueryDecompositionNodeTest {
         RoutingStageMetric metric = RoutingStageMetric.builder()
                 .stageName("query-decomposition").callIndex(0).promptTokens(1)
                 .completionTokens(1).totalTokens(2).estimatedTokens(true).success(true).build();
-        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
 
         node.doApply(ExecuteCommandEntity.builder().message("task").sessionId("s").build(), context);
@@ -119,7 +119,7 @@ public class QueryDecompositionNodeTest {
                 .estimatedTokens(false)
                 .success(true)
                 .build();
-        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(invalid, metric));
         when(intentRoutingService.fallbackDecomposition(eq("task"), contains("Task graph validation failed")))
                 .thenReturn(fallback);
@@ -145,12 +145,13 @@ public class QueryDecompositionNodeTest {
                 .build();
         RoutingStageMetric metric = RoutingStageMetric.builder()
                 .stageName("query-decomposition").callIndex(0).success(true).build();
-        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
 
         node.doApply(ExecuteCommandEntity.builder().message("task").sessionId("s").build(), context);
 
-        verify(intentRoutingService).decomposeQueryWithMetric(eq("task"), eq(preparedHistory), any());
+        verify(intentRoutingService).decomposeQueryWithMetric(
+                eq("task"), eq(preparedHistory), any(), eq("s"));
         verify(conversationContextProvider, never()).getDecompositionContext(anyString());
     }
 
@@ -166,12 +167,13 @@ public class QueryDecompositionNodeTest {
                 .stageName("query-decomposition").callIndex(0).success(true).build();
         when(conversationContextProvider.getDecompositionContext("s"))
                 .thenReturn(RoutingConversationContext.builder().historyMessages(List.of("user: legacy")).build());
-        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any()))
+        when(intentRoutingService.decomposeQueryWithMetric(any(), any(), any(), any()))
                 .thenReturn(new IntentRoutingService.RoutingCallResult<>(result, metric));
 
         node.doApply(ExecuteCommandEntity.builder().message("task").sessionId("s").build(), context);
 
-        verify(intentRoutingService).decomposeQueryWithMetric(eq("task"), eq(List.of("user: legacy")), any());
+        verify(intentRoutingService).decomposeQueryWithMetric(
+                eq("task"), eq(List.of("user: legacy")), any(), eq("s"));
         verify(conversationContextProvider).getDecompositionContext("s");
     }
 

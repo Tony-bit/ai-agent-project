@@ -23,6 +23,7 @@ import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationEx
 import denny.ai.agent.domain.service.armory.factory.element.ResponseValidationFailureType;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.chatmemory.ConversationContextAdvisor;
 import denny.ai.agent.domain.service.intent.IntentFewshotService;
 import denny.ai.agent.domain.util.TokenCountUtils;
 import jakarta.annotation.Resource;
@@ -79,18 +80,34 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     public MultiIntentRoutingResult routeUnified(String userMessage,
                                                  List<String> historyMessages,
                                                  AiAgentClientFlowConfigVO configVO) {
-        return routeUnified(userMessage, historyMessages, configVO, Map.of());
+        return routeUnified(userMessage, historyMessages, configVO, null, Map.of());
     }
 
     public MultiIntentRoutingResult routeUnified(String userMessage,
                                                  List<String> historyMessages,
                                                  AiAgentClientFlowConfigVO configVO,
                                                  Map<String, Object> observationContext) {
+        return routeUnified(userMessage, historyMessages, configVO, null, observationContext);
+    }
+
+    public MultiIntentRoutingResult routeUnified(String userMessage,
+                                                 List<String> historyMessages,
+                                                 AiAgentClientFlowConfigVO configVO,
+                                                 String conversationId) {
+        return routeUnified(userMessage, historyMessages, configVO, conversationId, Map.of());
+    }
+
+    public MultiIntentRoutingResult routeUnified(String userMessage,
+                                                 List<String> historyMessages,
+                                                 AiAgentClientFlowConfigVO configVO,
+                                                 String conversationId,
+                                                 Map<String, Object> observationContext) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(userMessage);
         String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(userMessage, historyMessages, fewshotSamples);
         long startedAt = System.currentTimeMillis();
         RoutingCallResult<MultiIntentRoutingResult> call = callRoutingModel(
-                "unified-routing", null, 0, prompt, configVO, observationContext,
+                "unified-routing", null, 0, prompt, configVO,
+                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_ROUTING, observationContext),
                 structuredOutputValidator.unified(),
                 this::parseUnifiedResponse,
                 error -> fallbackMultiIntentResult(error));
@@ -112,8 +129,16 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     RoutingCallResult<QueryDecompositionResult> decomposeQueryWithMetric(String userMessage,
                                                                          List<String> historyMessages,
                                                                          AiAgentClientFlowConfigVO configVO) {
+        return decomposeQueryWithMetric(userMessage, historyMessages, configVO, null);
+    }
+
+    RoutingCallResult<QueryDecompositionResult> decomposeQueryWithMetric(String userMessage,
+                                                                         List<String> historyMessages,
+                                                                         AiAgentClientFlowConfigVO configVO,
+                                                                         String conversationId) {
         String prompt = IntentRoutingPrompt.buildQueryDecompositionPrompt(userMessage, historyMessages);
-        return callRoutingModel("query-decomposition", null, 0, prompt, configVO, Map.of(),
+        return callRoutingModel("query-decomposition", null, 0, prompt, configVO,
+                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_DECOMPOSITION, Map.of()),
                 structuredOutputValidator.queryDecomposition(),
                 response -> parseQueryDecompositionResponse(response, userMessage),
                 error -> fallbackDecomposition(userMessage, error));
@@ -130,9 +155,19 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                                           int callIndex,
                                                                           List<String> historyMessages,
                                                                           AiAgentClientFlowConfigVO configVO) {
+        return routeTaskIntentSlotsWithMetric(taskContent, taskId, callIndex, historyMessages, configVO, null);
+    }
+
+    RoutingCallResult<IntentRoutingResult> routeTaskIntentSlotsWithMetric(String taskContent,
+                                                                          String taskId,
+                                                                          int callIndex,
+                                                                          List<String> historyMessages,
+                                                                          AiAgentClientFlowConfigVO configVO,
+                                                                          String conversationId) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(taskContent);
         String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages, fewshotSamples);
-        return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO, Map.of(),
+        return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO,
+                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_SLOT, Map.of()),
                 structuredOutputValidator.taskIntentRouting(),
                 response -> {
                     IntentRoutingResult parsed = parseResponse(response);
@@ -144,10 +179,17 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     public MultiIntentRoutingResult routeSplit(String userMessage,
                                                List<String> historyMessages,
                                                AiAgentClientFlowConfigVO configVO) {
+        return routeSplit(userMessage, historyMessages, configVO, null);
+    }
+
+    public MultiIntentRoutingResult routeSplit(String userMessage,
+                                               List<String> historyMessages,
+                                               AiAgentClientFlowConfigVO configVO,
+                                               String conversationId) {
         long startedAt = System.currentTimeMillis();
         RoutingExecutionMetrics metrics = emptyMetrics(IntentRoutingMode.SPLIT);
         RoutingCallResult<QueryDecompositionResult> decompositionCall =
-                decomposeQueryWithMetric(userMessage, historyMessages, configVO);
+                decomposeQueryWithMetric(userMessage, historyMessages, configVO, conversationId);
         metrics.addStage(decompositionCall.metric());
         QueryDecompositionResult decomposition = validateOrFallbackDecomposition(
                 decompositionCall.result(), userMessage, decompositionCall.metric());
@@ -159,7 +201,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         for (int i = 0; i < orderedTasks.size(); i++) {
             DecomposedTask task = orderedTasks.get(i);
             RoutingCallResult<IntentRoutingResult> routingCall = routeTaskIntentSlotsWithMetric(
-                    task.getContent(), task.getTaskId(), i + 1, historyMessages, configVO);
+                    task.getContent(), task.getTaskId(), i + 1, historyMessages, configVO, conversationId);
             metrics.addStage(routingCall.metric());
             tasks.add(toSubTask(task, routingCall.result()));
         }
@@ -174,6 +216,21 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         result.setMetrics(metrics);
         logMetrics(metrics);
         return result;
+    }
+
+    Map<String, Object> routingAdvisorContext(String conversationId,
+                                              String scene,
+                                              Map<String, Object> observationContext) {
+        Map<String, Object> context = new HashMap<>();
+        if (observationContext != null) {
+            context.putAll(observationContext);
+        }
+        context.put(ConversationContextAdvisor.CONVERSATION_CONTEXT_SCENE_KEY, scene);
+        context.put(ConversationContextAdvisor.CONVERSATION_CONTEXT_PRELOADED_KEY, true);
+        if (StringUtils.hasText(conversationId)) {
+            context.put(ConversationContextAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY, conversationId);
+        }
+        return context;
     }
 
     public QueryDecompositionResult parseQueryDecompositionResponse(String response, String userMessage) {

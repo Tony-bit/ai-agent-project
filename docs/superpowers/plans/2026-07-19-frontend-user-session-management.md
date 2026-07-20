@@ -1,34 +1,84 @@
-# Frontend User And Session Management Implementation Plan
+# Frontend Login And Session Isolation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** execute task-by-task. Each task has a `status` table. Keep `append` until the task is implemented and verified, then change only that task to `pass`.
 
-**Goal:** 支持在现有前端修改 `userId`、指定 `sessionId`、安全删除指定会话，并保留已经同步到 Mem0 的长期记忆。
+**Goal:** 支持账号密码登录和游客模式，并按当前身份隔离会话；进入后可指定 `sessionId`、删除指定会话，并保留已经同步到 Mem0 的长期记忆。
 
-**Architecture:** 前端维护一份可变的运行时身份状态，并提供设置弹层和单会话删除入口。后端增加统一所有权判定、删除事务和执行/删除互斥，所有读取、续接、同步与删除入口都校验 `userId + sessionId`。
+**Architecture:** 前端增加最小登录界面、游客进入和 token 状态，启动时优先用本地 token 恢复身份，恢复失败再允许创建新游客。所有请求携带 `Authorization: Bearer <token>`。后端增加最小认证服务、游客用户创建、认证过滤器和当前用户上下文。会话列表、历史消息、Agent 执行、股票分析、记忆同步和删除会话都从认证上下文取得当前用户，并复用会话所有权守卫。
 
 **Tech Stack:** Java 17、Spring Boot、Spring MVC、MyBatis、MySQL、Redis、原生 JavaScript、Tailwind CSS、Node.js Test Runner、JUnit、Mockito、Maven。
 
-**Design:** `docs/superpowers/plans/2026-07-19-frontend-user-session-management-design.md`
+**Design:** `docs/superpowers/design/2026-07-19-frontend-user-session-management-design.md`
 
-**API Design:** `docs/superpowers/plans/2026-07-19-session-management-api-design.md`
+**API Design:** `docs/superpowers/design/2026-07-19-session-management-api-design.md`
+
+**Test Cases:** `docs/superpowers/test/2026-07-19-frontend-user-session-management-test-cases.md`
 
 ---
 
 ## File Map
 
-- Create `SessionAccessState` and `SessionOwnershipService` for reusable ownership decisions.
+- Create minimal authentication domain/service objects for account password login and guest identity creation.
+- Create authentication filter and current-user context.
+- Create `SessionAccessState` and `SessionOwnershipService` for reusable ownership decisions based on authenticated user.
 - Create `SessionOperationRegistry` for atomic `EXECUTING`/`DELETING` leases.
 - Create `ChatSessionCommandService` for transactional deletion and post-commit cleanup.
 - Extend chat session/message DAOs and MyBatis XML with conditional delete operations.
-- Modify session, Agent and Trading controllers to enforce ownership.
-- Modify `agent-ui-core.js` for testable ID validation/state updates.
-- Modify `index.html` for settings and single-session deletion interactions.
+- Modify session, Agent and Trading controllers to enforce authentication and ownership.
+- Modify `agent-ui-core.js` for token/session helpers.
+- Modify `index.html` for login, session ID settings and single-session deletion interactions.
 
-### Task 1: Session ownership contract
+### Task 1: Minimal account and guest authentication
 
 | Task | status |
 |------|------|
-| Task 1: Session ownership contract | append |
+| Task 1: Minimal account and guest authentication | append |
+
+**Files:**
+- Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/auth/AuthUser.java`
+- Create: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/service/AuthService.java`
+- Create: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/dao/IAuthUserDao.java`
+- Create/Modify: user table migration or MyBatis mapper for auth users
+- Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/infrastructure/service/AuthServiceTest.java`
+
+- [ ] Write failing tests for successful login, unknown account, wrong password, disabled user, password hash verification and guest creation.
+- [ ] Run focused auth service test; expect failure because auth service does not exist.
+- [ ] Add SQL-based initial account seed for local development, storing only `password_hash` and active account metadata.
+- [ ] Implement minimal user lookup, password hash verification, unified invalid-credentials error and guest user creation.
+- [ ] Generate unique backend-owned guest `userId` values with a `guest_` prefix.
+- [ ] Allow `account` and `password_hash` to be empty only for `GUEST` users; keep `user_id` required and unique.
+- [ ] Ensure no plaintext password is logged or returned.
+- [ ] Re-run focused auth service test; expect `BUILD SUCCESS`.
+- [ ] Commit with `git commit -m "feat: add password login service"`.
+
+### Task 2: Token authentication boundary
+
+| Task | status |
+|------|------|
+| Task 2: Token authentication boundary | append |
+
+**Files:**
+- Create: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trigger/http/AuthController.java`
+- Create: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trigger/http/AuthenticationFilter.java`
+- Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/auth/CurrentUserContext.java`
+- Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/trigger/http/AuthControllerIntegrationTest.java`
+- Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/trigger/http/AuthenticationFilterTest.java`
+
+- [ ] Write failing tests for `POST /api/v1/auth/login`, `POST /api/v1/auth/guest`, `GET /api/v1/auth/me`, missing token, invalid token and disabled user.
+- [ ] Run focused auth controller/filter tests; expect failure.
+- [ ] Add minimal JWT config binding for `auth.jwt.secret` and `auth.jwt.expires-in-seconds`.
+- [ ] Implement login and guest responses with `accessToken`, `tokenType`, `expiresIn` and current user payload.
+- [ ] Ensure `/auth/me` restores valid account and guest tokens, and returns `401` for unparseable, expired or missing users.
+- [ ] Implement Bearer token filter for protected APIs and skip login/static/health paths.
+- [ ] Store authenticated user ID in request context and expose it via `CurrentUserContext`.
+- [ ] Re-run focused tests; expect `BUILD SUCCESS`.
+- [ ] Commit with `git commit -m "feat: secure APIs with login token"`.
+
+### Task 3: Session ownership contract
+
+| Task | status |
+|------|------|
+| Task 3: Session ownership contract | append |
 
 **Files:**
 - Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/chatsession/SessionAccessState.java`
@@ -36,53 +86,33 @@
 - Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/infrastructure/service/SessionOwnershipServiceTest.java`
 
 - [ ] Write failing tests for `AVAILABLE`, `OWNED`, `UNAVAILABLE`, blank IDs, illegal characters and length greater than 64.
-- [ ] Run `mvn -pl ai-agent-study-app -am -Dtest=SessionOwnershipServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`; expect failure because the types do not exist.
-- [ ] Implement:
+- [ ] Run focused ownership test; expect failure because the types do not exist.
+- [ ] Implement ownership resolution using authenticated `currentUserId + sessionId`.
+- [ ] Ensure no API path trusts caller-supplied `userId` for ownership.
+- [ ] Re-run focused test; expect `BUILD SUCCESS`.
+- [ ] Commit with `git commit -m "feat: add authenticated session ownership guard"`.
 
-```java
-public enum SessionAccessState { AVAILABLE, OWNED, UNAVAILABLE }
-
-public SessionAccessState resolve(String userId, String sessionId) {
-    validateId(userId);
-    validateId(sessionId);
-    ChatSessionPO session = chatSessionDao.queryBySessionId(sessionId);
-    if (session == null) return SessionAccessState.AVAILABLE;
-    return userId.equals(session.getUserId()) ? OWNED : UNAVAILABLE;
-}
-```
-
-- [ ] Re-run the focused test; expect `BUILD SUCCESS`.
-- [ ] Commit with `git commit -m "feat: add session ownership guard"`.
-
-### Task 2: Atomic session operation registry
+### Task 4: Atomic session operation registry
 
 | Task | status |
 |------|------|
-| Task 2: Atomic session operation registry | append |
+| Task 4: Atomic session operation registry | append |
 
 **Files:**
 - Create: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/service/SessionOperationRegistry.java`
 - Test: `ai-agent-study-infrastructure/src/test/java/denny/ai/agent/infrastructure/service/SessionOperationRegistryTest.java`
 
 - [ ] Write failing tests proving execution blocks deletion, deletion blocks execution, wrong lease types cannot release each other, and release permits the next operation.
-- [ ] Run `mvn -pl ai-agent-study-infrastructure -am -Dtest=SessionOperationRegistryTest -Dsurefire.failIfNoSpecifiedTests=false test`; expect failure because the registry does not exist.
-- [ ] Implement atomic `putIfAbsent` acquisition and conditional `remove(key, expectedOperation)` release:
-
-```java
-boolean tryAcquireExecution(String userId, String sessionId);
-void releaseExecution(String userId, String sessionId);
-boolean tryAcquireDeletion(String userId, String sessionId);
-void releaseDeletion(String userId, String sessionId);
-```
-
-- [ ] Re-run the focused test; expect `BUILD SUCCESS`.
+- [ ] Run focused registry test; expect failure because the registry does not exist.
+- [ ] Implement atomic acquisition and conditional release for execution and deletion leases keyed by `userId + sessionId`.
+- [ ] Re-run focused test; expect `BUILD SUCCESS`.
 - [ ] Commit with `git commit -m "feat: coordinate session operations"`.
 
-### Task 3: Transactional session deletion
+### Task 5: Transactional session deletion
 
 | Task | status |
 |------|------|
-| Task 3: Transactional session deletion | append |
+| Task 5: Transactional session deletion | append |
 
 **Files:**
 - Modify: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/dao/IChatSessionDao.java`
@@ -93,37 +123,18 @@ void releaseDeletion(String userId, String sessionId);
 - Test: `ai-agent-study-app/src/test/java/denny/ai/agent/test/infrastructure/service/ChatSessionCommandServiceTest.java`
 
 - [ ] Write failing tests for owned deletion, other-user rejection, running-session rejection, delete ordering, rollback and post-commit cleanup without Mem0 calls.
+- [ ] Run focused command service test; expect failure.
+- [ ] Add DAO operations for deleting messages by `sessionId` and deleting sessions by `userId + sessionId`.
+- [ ] Implement one `@Transactional` command that deletes messages before session and requires one affected session row.
+- [ ] Clear runtime memory/activity after commit and never call Mem0 deletion.
+- [ ] Re-run focused tests; expect `BUILD SUCCESS`.
+- [ ] Commit with `git commit -m "feat: delete authenticated user sessions"`.
 
-```java
-service.deleteOwnedSession("user-a", "session-1");
-InOrder order = inOrder(chatMessageDao, chatSessionDao);
-order.verify(chatMessageDao).deleteBySessionId("session-1");
-order.verify(chatSessionDao).deleteByUserIdAndSessionId("user-a", "session-1");
-verify(conversationMemoryService).clearRuntimeMemory("session-1");
-verify(sessionEndDetectionService).removeActivity("user-a", "session-1");
-```
-- [ ] Run `mvn -pl ai-agent-study-app -am -Dtest=ChatSessionCommandServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`; expect failure.
-- [ ] Add exact DAO operations:
-
-```java
-int deleteBySessionId(String sessionId);
-int deleteByUserIdAndSessionId(String userId, String sessionId);
-```
-
-```sql
-DELETE FROM ai_chat_message WHERE session_id = #{sessionId};
-DELETE FROM ai_chat_session WHERE user_id = #{userId} AND session_id = #{sessionId};
-```
-
-- [ ] Implement one `@Transactional` command: acquire deletion lease, require ownership, delete messages before session, require one affected session row, clear runtime memory/activity after commit, release the lease after transaction completion.
-- [ ] Run `ChatSessionCommandServiceTest` and `ChatSessionDaoIntegrationTest`; expect `BUILD SUCCESS`.
-- [ ] Commit with `git commit -m "feat: delete owned chat sessions"`.
-
-### Task 4: Secure session HTTP APIs
+### Task 6: Secure session HTTP APIs
 
 | Task | status |
 |------|------|
-| Task 4: Secure session HTTP APIs | append |
+| Task 6: Secure session HTTP APIs | append |
 
 **Files:**
 - Modify: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/service/ChatSessionQueryService.java`
@@ -131,41 +142,19 @@ DELETE FROM ai_chat_session WHERE user_id = #{userId} AND session_id = #{session
 - Modify: `ai-agent-study-app/src/test/java/denny/ai/agent/test/infrastructure/service/ChatSessionQueryServiceTest.java`
 - Modify: `ai-agent-study-app/src/test/java/denny/ai/agent/test/trigger/http/ChatSessionControllerIntegrationTest.java`
 
-- [ ] Write failing tests for required message-query `userId`, unavailable IDs, absent IDs, owned deletion, foreign deletion and invalid parameters.
-
-```java
-mockMvc.perform(get("/api/v1/session/{id}/messages", "session-1")
-        .param("userId", "user-a"))
-        .andExpect(jsonPath("$.code").value("200"));
-mockMvc.perform(delete("/api/v1/session/{id}", "session-1")
-        .param("userId", "user-a"))
-        .andExpect(jsonPath("$.code").value("200"));
-```
+- [ ] Write failing tests proving session list/messages/delete/sync require token and use current authenticated user.
 - [ ] Run focused query/controller tests; expect failure because the new contracts are missing.
-- [ ] Change the message endpoint and add deletion:
-
-```java
-@GetMapping("/{sessionId}/messages")
-Response<MessageListResult> getSessionMessages(
-        @PathVariable String sessionId,
-        @RequestParam String userId,
-        @RequestParam(required = false) Integer cursorIndex);
-
-@DeleteMapping("/{sessionId}")
-Response<Void> deleteSession(
-        @PathVariable String sessionId,
-        @RequestParam String userId);
-```
-
-- [ ] Add `RequestMethod.DELETE` to CORS and preserve the documented `200/400/404/409/500` response codes.
+- [ ] Remove trusted `userId` query handling from protected session APIs.
+- [ ] Add `DELETE /api/v1/session/{sessionId}` using `CurrentUserContext`.
+- [ ] Add `RequestMethod.DELETE` and allow `Authorization` header in CORS/preflight handling.
 - [ ] Re-run focused tests; expect `BUILD SUCCESS`.
-- [ ] Commit with `git commit -m "feat: expose secure session APIs"`.
+- [ ] Commit with `git commit -m "feat: expose authenticated session APIs"`.
 
-### Task 5: Guard Agent and Trading execution
+### Task 7: Guard Agent and Trading execution
 
 | Task | status |
 |------|------|
-| Task 5: Guard Agent and Trading execution | append |
+| Task 7: Guard Agent and Trading execution | append |
 
 **Files:**
 - Modify: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trigger/http/AiAgentController.java`
@@ -174,111 +163,75 @@ Response<Void> deleteSession(
 - Test: `ai-agent-study-trigger/src/test/java/denny/ai/agent/trigger/http/AiAgentControllerSessionGuardTest.java`
 - Test: `ai-agent-study-trigger/src/test/java/denny/ai/agent/trading/trigger/http/TradingAnalysisControllerSessionGuardTest.java`
 
-- [ ] Write failing tests proving foreign sessions and occupied sessions never submit asynchronous work.
-
-```java
-when(ownershipService.resolve("user-a", "session-1"))
-        .thenReturn(SessionAccessState.UNAVAILABLE);
-controller.autoAgent(request, response);
-verifyNoInteractions(autoAgentExecuteStrategy);
-```
-- [ ] Run the focused trigger tests; expect failure.
-- [ ] Add `userId` to `TradingAnalysisRequestDTO`; resolve ownership and acquire execution before task submission in all three entry points.
-- [ ] Release execution in every completion, exception, timeout and cancellation path:
-
-```java
-finally {
-    operationRegistry.releaseExecution(userId, sessionId);
-}
-```
-
+- [ ] Write failing tests proving unauthenticated requests, foreign sessions and occupied sessions never submit asynchronous work.
+- [ ] Run focused trigger tests; expect failure.
+- [ ] Resolve current user from `CurrentUserContext` before task submission in all Agent and Trading entry points.
+- [ ] Stop treating request-body `userId` as trusted; remove it from DTOs if safe, or ignore it during authorization.
+- [ ] Ensure POST SSE endpoints require `Authorization: Bearer <token>` before creating emitters or submitting async work.
+- [ ] Return `401` for invalid, expired or missing tokens without starting Agent or Trading execution.
+- [ ] Release execution in every completion, exception, timeout and cancellation path.
 - [ ] Re-run focused tests; expect `BUILD SUCCESS`.
-- [ ] Commit with `git commit -m "feat: guard session execution ownership"`.
+- [ ] Commit with `git commit -m "feat: guard authenticated session execution"`.
 
-### Task 6: Frontend runtime identity settings
+### Task 8: Frontend login, guest and token state
 
 | Task | status |
 |------|------|
-| Task 6: Frontend runtime identity settings | append |
+| Task 8: Frontend login, guest and token state | append |
 
 **Files:**
 - Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
 - Modify: `docs/dev-ops/nginx/html/test/agent-ui-core.test.js`
 - Modify: `docs/dev-ops/nginx/html/index.html`
 
-- [ ] Write failing Node tests for valid/invalid IDs, state updates and localStorage fallback.
-
-```javascript
-assert.equal(validateRuntimeId('demo-user_01'), true);
-assert.equal(validateRuntimeId('<script>'), false);
-assert.equal(applyRuntimeIdentity(state, 'user-b', 'session-b').sessionId, 'session-b');
-```
+- [ ] Write failing Node tests for token storage, auth header generation, auth clearing, guest restore fallback and session ID validation.
 - [ ] Run `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js`; expect failure because new helpers are absent.
-- [ ] Implement and export:
-
-```javascript
-const RUNTIME_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
-function validateRuntimeId(value) {
-    return RUNTIME_ID_PATTERN.test(value || '');
-}
-function applyRuntimeIdentity(state, userId, sessionId) {
-    if (!validateRuntimeId(userId) || !validateRuntimeId(sessionId)) {
-        throw new TypeError('Invalid runtime identity');
-    }
-    return { ...state, userId, sessionId };
-}
-```
-
-- [ ] Replace startup constants with `runtimeState.userId` and `runtimeState.sessionId` in all general, Trading, history and memory requests.
-- [ ] Add the settings icon/popover, two inputs, Apply/Cancel, focus restoration, Escape handling, Toast validation, request cancellation, user persistence, cursor reset and history reload.
+- [ ] Implement token helpers and current-user state helpers.
+- [ ] On page start, call `/api/v1/auth/me` when a local token exists; restore identity on success and clear token on failure.
+- [ ] Add login view with account/password inputs, guest entry button and login failure handling.
+- [ ] Before switching from any existing identity to a newly logged-in account or guest, stop active streams and clear old token, current user, sessions, messages, cursors and transient errors.
+- [ ] On login success, store token/current user, load current user if needed, then load session list.
+- [ ] On guest entry success, store token/current guest user and load that guest session list.
+- [ ] Add `Authorization: Bearer <token>` to all protected requests.
+- [ ] Keep streaming requests on `fetch` rather than native `EventSource`, so POST SSE calls can send the `Authorization` header.
+- [ ] Handle SSE `401` by stopping the stream, clearing token/current user and returning to the login view.
+- [ ] Do not place long-lived access tokens in SSE URL query parameters.
+- [ ] Remove editable `userId` settings from the main UI; keep user display read-only.
 - [ ] Re-run Node tests; expect all tests pass.
-- [ ] Commit with `git commit -m "feat: edit frontend user and session ids"`.
+- [ ] Commit with `git commit -m "feat: add frontend login state"`.
 
-### Task 7: Frontend single-session deletion
+### Task 9: Frontend session ID settings and deletion
 
 | Task | status |
 |------|------|
-| Task 7: Frontend single-session deletion | append |
+| Task 9: Frontend session ID settings and deletion | append |
 
 **Files:**
 - Modify: `docs/dev-ops/nginx/html/index.html`
 - Modify: `docs/dev-ops/nginx/html/test/agent-ui-security-smoke.html`
 
-- [ ] Add failing browser assertions for DELETE URL/method, stopped click propagation, confirmation cancellation, current/non-current state transitions and request failure recovery.
-
-```javascript
-assert(deleteUrl.includes('/api/v1/session/session-owned?userId=demo-user'));
-assert.equal(deleteRequest.method, 'DELETE');
-assert.equal(agentDocument.querySelectorAll('[data-session-id="session-owned"]').length, 0);
-```
-- [ ] Add an accessible delete icon to every session list item and confirmation text stating that synchronized long-term memory is retained.
-- [ ] Call:
-
-```javascript
-fetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(targetSessionId)}?userId=${encodeURIComponent(runtimeState.userId)}`), {
-    method: 'DELETE',
-    headers: { Accept: 'application/json' }
-});
-```
-
+- [ ] Add failing browser assertions for session ID apply, DELETE URL/method, auth header, stopped click propagation, confirmation cancellation, current/non-current state transitions and request failure recovery.
+- [ ] Add session ID settings popover with Apply/Cancel, focus restoration, Escape handling and Toast validation.
+- [ ] Add accessible delete icon to every session list item and confirmation text stating synchronized long-term memory is retained.
+- [ ] Call `DELETE /api/v1/session/{sessionId}` with `Authorization` header and no `userId` query parameter.
 - [ ] Reject deletion of the currently running session; reset to a generated session after deleting the current session; otherwise remove only the target item.
-- [ ] Run the browser security smoke page; expect all assertions `PASS` and no console error.
-- [ ] Commit with `git commit -m "feat: delete individual chat sessions"`.
+- [ ] Re-run browser security smoke checks; expect all assertions pass and no console error.
+- [ ] Commit with `git commit -m "feat: manage authenticated chat sessions"`.
 
-### Task 8: Regression and acceptance
+### Task 10: Regression and acceptance
 
 | Task | status |
 |------|------|
-| Task 8: Regression and acceptance | append |
+| Task 10: Regression and acceptance | append |
 
 **Files:**
 - Modify after verification: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
-- Review: all files changed by Tasks 1-7
+- Review: all files changed by Tasks 1-9
 
 - [ ] Run `node --test docs/dev-ops/nginx/html/test/agent-ui-core.test.js`; expect all tests pass.
-- [ ] Run focused backend tests for ownership, registry, deletion, session controller and execution guards; expect `BUILD SUCCESS`.
+- [ ] Run focused backend tests for auth, ownership, registry, deletion, session controller and execution guards; expect `BUILD SUCCESS`.
 - [ ] Run `mvn clean compile -DskipTests`; expect `BUILD SUCCESS`.
-- [ ] Verify desktop `1280x720` and mobile `390x844`: user switch, owned/new/foreign session selection, current/non-current deletion, retained-Mem0 notice, keyboard focus and no overlapping UI.
+- [ ] Verify desktop `1280x720` and mobile `390x844`: login, guest entry, token restore, logout, owned/new/foreign session selection, current/non-current deletion, retained-Mem0 notice, keyboard focus and no overlapping UI.
 - [ ] Update a task status from `append` to `pass` only after every step in that task is executed successfully.
 - [ ] Record executed commands, results and remaining external/manual gaps in the test document.
-- [ ] Commit with `git commit -m "test: verify frontend session management"`.
+- [ ] Commit with `git commit -m "test: verify authenticated session management"`.
