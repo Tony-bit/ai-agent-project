@@ -4,6 +4,7 @@ import denny.ai.agent.api.vo.ChatMessageVO;
 import denny.ai.agent.api.vo.ChatSessionVO;
 import denny.ai.agent.api.vo.MessageListResult;
 import denny.ai.agent.api.vo.SessionListResult;
+import denny.ai.agent.domain.service.chatsession.SessionAccessState;
 import denny.ai.agent.infrastructure.dao.IChatMessageDao;
 import denny.ai.agent.infrastructure.dao.IChatSessionDao;
 import denny.ai.agent.infrastructure.dao.po.ChatMessagePO;
@@ -40,6 +41,9 @@ public class ChatSessionQueryService {
 
     @Resource
     private IChatMessageDao chatMessageDao;
+
+    @Resource
+    private SessionOwnershipService sessionOwnershipService;
 
     /**
      * 获取用户会话列表（支持游标分页）
@@ -155,6 +159,19 @@ public class ChatSessionQueryService {
         return buildMessageResult(messageList);
     }
 
+    public MessageListResult getSessionMessages(String currentUserId,
+                                                String sessionId,
+                                                Integer cursorIndex) {
+        SessionAccessState accessState = sessionOwnershipService.resolve(currentUserId, sessionId);
+        if (accessState == SessionAccessState.UNAVAILABLE) {
+            throw new SessionQueryFailure(FailureReason.UNAVAILABLE, "session id unavailable");
+        }
+        if (accessState == SessionAccessState.AVAILABLE) {
+            return MessageListResult.empty();
+        }
+        return getSessionMessages(sessionId, cursorIndex);
+    }
+
     // ========== 私有方法 ==========
 
     private SessionListResult buildSessionResult(List<ChatSessionPO> sessionList) {
@@ -228,5 +245,23 @@ public class ChatSessionQueryService {
         vo.setLatencyMs(po.getLatencyMs());
         vo.setCreateTime(po.getCreateTime());
         return vo;
+    }
+
+    public enum FailureReason {
+        UNAVAILABLE
+    }
+
+    public static class SessionQueryFailure extends RuntimeException {
+
+        private final FailureReason reason;
+
+        public SessionQueryFailure(FailureReason reason, String message) {
+            super(message);
+            this.reason = reason;
+        }
+
+        public FailureReason getReason() {
+            return reason;
+        }
     }
 }
