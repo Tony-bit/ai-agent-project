@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="denny.ai.agent.infrastructure.dao.IAuthUserDao">
+
+    <resultMap id="AuthUserMap" type="denny.ai.agent.infrastructure.dao.po.AuthUserPO">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="user_type" property="userType"/>
+        <result column="account" property="account"/>
+        <result column="password_hash" property="passwordHash"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="queryByAccount" resultMap="AuthUserMap">
+        SELECT id, user_id, user_type, account, password_hash, status, create_time, update_time
+        FROM ai_auth_user
+        WHERE account = #{account}
+        LIMIT 1
+    </select>
+
+    <select id="queryByUserId" resultMap="AuthUserMap">
+        SELECT id, user_id, user_type, account, password_hash, status, create_time, update_time
+        FROM ai_auth_user
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" parameterType="denny.ai.agent.infrastructure.dao.po.AuthUserPO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_auth_user (user_id, user_type, account, password_hash, status)
+        VALUES (#{userId}, #{userType}, #{account}, #{passwordHash}, #{status})
+    </insert>
+
+</mapper>

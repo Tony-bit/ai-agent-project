@@ -54,4 +54,7 @@ public interface IChatSessionDao {
      * @return 最近活动时间，未查到返回 null
      */
     LocalDateTime queryLastActivityTime(@Param("sessionId") String sessionId);
+
+    int deleteByUserIdAndSessionId(@Param("userId") String userId,
+                                   @Param("sessionId") String sessionId);
 }

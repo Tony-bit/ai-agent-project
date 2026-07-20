@@ -676,6 +676,20 @@
             nav {
                 position: sticky;
                 top: 0;
+                gap: 0.5rem !important;
+                padding-inline: 0.75rem !important;
+            }
+
+            nav > .flex-1 {
+                display: none;
+            }
+
+            nav > div:first-child p {
+                display: none;
+            }
+
+            nav > div:last-child {
+                margin-left: auto;
             }
 
             #agentWorkspace {
@@ -707,14 +721,65 @@
             }
 
             .input-dock {
-                position: sticky;
-                bottom: 0;
+                position: relative;
                 z-index: 20;
+            }
+
+            #sessionStatus {
+                display: flex;
+                max-width: 100%;
+                flex-wrap: wrap;
+                justify-content: center;
+                border-radius: 0.5rem;
+                gap: 0.375rem;
+            }
+
+            #currentUserId {
+                max-width: 8rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #syncMemoryBtn {
+                margin-left: 0 !important;
             }
         }
     </style>
 </head>
-<body class="h-screen flex flex-col font-sans overflow-hidden">
+<body class="h-screen font-sans overflow-hidden">
+<section id="loginView" class="h-screen flex items-center justify-center bg-gray-100 px-4">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-soft-lg p-6">
+        <div class="mb-6">
+            <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold mb-4">AI</div>
+            <h1 class="text-xl font-bold text-gray-900">登录 AI Agent</h1>
+            <p class="mt-1 text-sm text-gray-500">使用账号继续，或创建独立的游客身份</p>
+        </div>
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label for="loginAccount" class="block text-xs font-semibold text-gray-700 mb-1.5">账号</label>
+                <input id="loginAccount" name="account" autocomplete="username" maxlength="128" required
+                       class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500">
+            </div>
+            <div>
+                <label for="loginPassword" class="block text-xs font-semibold text-gray-700 mb-1.5">密码</label>
+                <input id="loginPassword" name="password" type="password" autocomplete="current-password" required
+                       class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500">
+            </div>
+            <p id="loginError" class="hidden text-sm text-red-600" role="alert"></p>
+            <button id="loginBtn" type="submit"
+                    class="w-full px-4 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/40">
+                登录
+            </button>
+            <button id="guestLoginBtn" type="button"
+                    class="w-full px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                游客进入
+            </button>
+        </form>
+    </div>
+</section>
+
+<div id="authenticatedApp" class="hidden h-screen flex flex-col">
 <!-- Top Navigation -->
 <nav class="glass border-b border-white/20 px-4 py-2.5 flex items-center gap-4 sticky top-0 z-30 shadow-soft">
     <div class="flex items-center gap-2">
@@ -735,6 +800,12 @@
     </div>
 
     <div class="flex items-center gap-2">
+        <button id="logoutBtn" type="button" title="退出登录"
+                class="p-2 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
+            </svg>
+        </button>
         <button id="newChatBtn" type="button" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-250 btn-glow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -999,9 +1070,15 @@
 
             <!-- 会话状态 -->
             <div class="mt-3 text-center">
-                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 rounded-full">
+                <div id="sessionStatus" class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100/80 rounded-full">
                     <span class="text-[10px] text-gray-500">会话ID:</span>
                     <span id="sessionId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
+                    <button id="sessionSettingsBtn" type="button" title="设置会话 ID" aria-haspopup="dialog"
+                            class="p-1 text-gray-500 hover:text-primary-600 hover:bg-white rounded focus:outline-none focus:ring-2 focus:ring-primary-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15.5A3.5 3.5 0 1112 8a3.5 3.5 0 010 7.5zM19.4 15a1.7 1.7 0 00.34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 .6l-.04.08H10l-.04-.08a1.7 1.7 0 00-1-.6 1.7 1.7 0 00-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-.6-1l-.08-.04V10l.08-.04a1.7 1.7 0 00.6-1 1.7 1.7 0 00-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-.6l.04-.08h3.92L14 4a1.7 1.7 0 001 .6 1.7 1.7 0 001.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0019.4 9c.08.4.3.75.6 1l.08.04v3.92L20 14c-.3.25-.52.6-.6 1z"/>
+                        </svg>
+                    </button>
                     <span class="text-[10px] text-gray-500">用户:</span>
                     <span id="currentUserId" class="font-mono text-[10px] text-gray-600 bg-white px-1.5 py-0.5 rounded"></span>
                     <span id="currentModeTag" class="ml-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-[10px] font-semibold"></span>
@@ -1018,6 +1095,33 @@
     </div>
 </div>
 
+<div id="sessionSettingsDialog" class="hidden fixed inset-0 z-50 bg-black/30 flex items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="sessionSettingsTitle">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-xl p-5">
+        <h2 id="sessionSettingsTitle" class="text-sm font-bold text-gray-900">设置会话 ID</h2>
+        <input id="sessionIdInput" maxlength="64" autocomplete="off"
+               class="mt-4 w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+        <div class="mt-4 flex justify-end gap-2">
+            <button id="cancelSessionSettingsBtn" type="button" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+            <button id="applySessionSettingsBtn" type="button" class="px-3 py-2 text-sm text-white bg-primary-600 rounded-lg hover:bg-primary-700">应用</button>
+        </div>
+    </div>
+</div>
+
+<div id="deleteSessionDialog" class="hidden fixed inset-0 z-50 bg-black/30 flex items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="deleteSessionTitle">
+    <div class="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-xl p-5">
+        <h2 id="deleteSessionTitle" class="text-sm font-bold text-gray-900">删除会话</h2>
+        <p class="mt-3 text-sm text-gray-600">将删除会话 <strong id="deleteSessionIdLabel" class="font-mono text-gray-900"></strong> 及本站消息记录。</p>
+        <p class="mt-2 text-sm text-gray-600">已经同步到 Mem0 的长期记忆将继续保留。</p>
+        <div class="mt-5 flex justify-end gap-2">
+            <button id="cancelDeleteSessionBtn" type="button" class="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+            <button id="confirmDeleteSessionBtn" type="button" class="px-3 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">删除</button>
+        </div>
+    </div>
+</div>
+</div>
+
 <script>
     const {
         createSseParser,
@@ -1029,6 +1133,8 @@
         validateSseResponse,
         resolveRuntimeConfig,
         buildApiUrl: joinApiUrl,
+        createAuthState,
+        validateSessionId,
         createRequestLifecycle,
         isNearBottom
     } = window.AgentUiCore;
@@ -1050,11 +1156,115 @@
         defaultUserId: 'test-user-f52b2ed1',
         origin: window.location.origin
     });
-    const currentUserId = runtimeConfig.userId;
-    document.getElementById('currentUserId').textContent = currentUserId;
+    const authState = createAuthState({ storage: window.localStorage });
+    let currentUserId = null;
 
     function buildApiUrl(path) {
         return joinApiUrl(runtimeConfig.apiBase, path);
+    }
+
+    function showLoginView(message = '') {
+        document.getElementById('authenticatedApp').classList.add('hidden');
+        document.getElementById('loginView').classList.remove('hidden');
+        const error = document.getElementById('loginError');
+        error.textContent = message;
+        error.classList.toggle('hidden', !message);
+        window.setTimeout(() => document.getElementById('loginAccount').focus(), 0);
+    }
+
+    function showAuthenticatedApp(user) {
+        currentUserId = user.userId;
+        document.getElementById('currentUserId').textContent = currentUserId;
+        document.getElementById('loginView').classList.add('hidden');
+        document.getElementById('authenticatedApp').classList.remove('hidden');
+    }
+
+    function clearIdentityUi() {
+        const chatList = document.getElementById('chatList');
+        if (chatList) chatList.innerHTML = '';
+        document.getElementById('noHistoryTip').classList.add('hidden');
+        sessionCursorTime = null;
+        sessionCursorId = null;
+        messageCursorIndex = null;
+        hasMoreSessions = true;
+        hasMoreMessages = true;
+        currentStepMessages.clear();
+        pendingStreamingRenders.clear();
+        sessionId = generateSessionId();
+        document.getElementById('sessionId').textContent = sessionId;
+        document.getElementById('thinkingMessages').innerHTML = '';
+        document.getElementById('resultMessages').innerHTML = '';
+    }
+
+    function clearAuthentication(message = '') {
+        cancelActiveRequest(false);
+        authState.clear();
+        currentUserId = null;
+        clearIdentityUi();
+        showLoginView(message);
+    }
+
+    async function authenticatedFetch(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: authState.headers(options.headers || {})
+        });
+        if (response.status === 401) {
+            clearAuthentication('登录状态已失效，请重新登录');
+            const error = new Error('HTTP 401');
+            error.status = 401;
+            throw error;
+        }
+        return response;
+    }
+
+    async function acceptAuthentication(result) {
+        if (!result || result.code !== '200' || !result.data || !result.data.accessToken) {
+            throw new Error(result && result.info ? result.info : '认证失败');
+        }
+        cancelActiveRequest(false);
+        authState.clear();
+        clearIdentityUi();
+        authState.setSession(result.data.accessToken, result.data.user);
+        showAuthenticatedApp(result.data.user);
+        await loadSessionList(false);
+        document.getElementById('messageInput').focus();
+    }
+
+    async function submitAuthentication(path, body) {
+        const response = await fetch(buildApiUrl(path), {
+            method: 'POST',
+            headers: body ? { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+                : { 'Accept': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(result && result.info ? result.info : '账号或密码错误');
+        }
+        await acceptAuthentication(result);
+    }
+
+    async function restoreAuthentication() {
+        const token = authState.getAccessToken();
+        if (!token) {
+            showLoginView();
+            return;
+        }
+        try {
+            const response = await fetch(buildApiUrl('/api/v1/auth/me'), {
+                headers: authState.headers({ 'Accept': 'application/json' })
+            });
+            if (!response.ok) throw new Error('restore failed');
+            const result = await response.json();
+            if (result.code !== '200' || !result.data) throw new Error('restore failed');
+            authState.setSession(token, result.data);
+            showAuthenticatedApp(result.data);
+            await loadSessionList(false);
+            document.getElementById('messageInput').focus();
+        } catch (_) {
+            clearAuthentication();
+        }
     }
 
     let isConnected = false;
@@ -1336,12 +1546,12 @@
         }
 
         try {
-            let url = buildApiUrl(`/api/v1/session/list?userId=${encodeURIComponent(currentUserId)}`);
+            let url = buildApiUrl('/api/v1/session/list');
             if (sessionCursorTime && sessionCursorId && append) {
-                url += `&cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
+                url += `?cursorTime=${encodeURIComponent(sessionCursorTime)}&cursorId=${sessionCursorId}`;
             }
 
-            const response = await fetch(url, {
+            const response = await authenticatedFetch(url, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -1408,7 +1618,7 @@
 
     function createSessionItem(session) {
         const li = document.createElement('li');
-        li.className = 'session-item';
+        li.className = 'session-item group relative';
         li.dataset.sessionId = session.sessionId;
 
         const title = truncateText(session.firstQuery, 25);
@@ -1420,7 +1630,15 @@
             : null;
 
         li.innerHTML = `
-            <div class="session-item-title">${escapeHtml(title)}</div>
+            <div class="flex items-start gap-2">
+                <div class="session-item-title flex-1 min-w-0">${escapeHtml(title)}</div>
+                <button type="button" class="session-delete-btn w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                        aria-label="删除会话 ${escapeHtml(session.sessionId)}" title="删除会话">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.87 12.14A2 2 0 0116.14 21H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6M9 7V4h6v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
             <div class="session-item-preview">
                 <span class="session-item-badge badge-user">问</span>${escapeHtml(preview)}
             </div>
@@ -1433,28 +1651,33 @@
         li.addEventListener('click', () => {
             selectSession(session.sessionId, li);
         });
+        li.querySelector('.session-delete-btn').addEventListener('click', (event) => {
+            event.stopPropagation();
+            requestSessionDeletion(session.sessionId, li, event.currentTarget);
+        });
 
         return li;
     }
 
     async function selectSession(selectedSessionId, element) {
         cancelActiveRequest(false);
-        document.querySelectorAll('.session-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        element.classList.add('active');
-
-        sessionId = selectedSessionId;
-        document.getElementById('sessionId').textContent = sessionId;
-
+        const previous = captureSessionView();
         messageCursorIndex = null;
         hasMoreMessages = true;
-
-        await loadSessionMessages(selectedSessionId, false);
+        const loaded = await loadSessionMessages(selectedSessionId, false);
+        if (!loaded) {
+            restoreSessionView(previous);
+            return false;
+        }
+        document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+        if (element) element.classList.add('active');
+        sessionId = selectedSessionId;
+        document.getElementById('sessionId').textContent = sessionId;
+        return true;
     }
 
     async function loadSessionMessages(targetSessionId, append = false) {
-        if (isLoadingMessages || (!append && !hasMoreMessages)) return;
+        if (isLoadingMessages || (!append && !hasMoreMessages)) return false;
 
         isLoadingMessages = true;
 
@@ -1496,7 +1719,7 @@
                 url += `?cursorIndex=${messageCursorIndex}`;
             }
 
-            const response = await fetch(url, {
+            const response = await authenticatedFetch(url, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -1535,6 +1758,8 @@
                 resultDiv.innerHTML = '';
             }
 
+            return true;
+
         } catch (error) {
             console.error('加载会话消息失败:', error);
             if (!append) {
@@ -1552,8 +1777,118 @@
                 `;
                 resultDiv.innerHTML = '';
             }
+            return false;
         } finally {
             isLoadingMessages = false;
+        }
+    }
+
+    function captureSessionView() {
+        return {
+            sessionId,
+            thinkingHtml: document.getElementById('thinkingMessages').innerHTML,
+            resultHtml: document.getElementById('resultMessages').innerHTML,
+            messageCursorIndex,
+            hasMoreMessages,
+            activeSessionId: document.querySelector('.session-item.active')?.dataset.sessionId || null
+        };
+    }
+
+    function restoreSessionView(view) {
+        sessionId = view.sessionId;
+        document.getElementById('sessionId').textContent = sessionId;
+        document.getElementById('thinkingMessages').innerHTML = view.thinkingHtml;
+        document.getElementById('resultMessages').innerHTML = view.resultHtml;
+        messageCursorIndex = view.messageCursorIndex;
+        hasMoreMessages = view.hasMoreMessages;
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.sessionId === view.activeSessionId);
+        });
+    }
+
+    let sessionSettingsReturnFocus = null;
+    let pendingSessionDeletion = null;
+
+    function openSessionSettings() {
+        sessionSettingsReturnFocus = document.activeElement;
+        const dialog = document.getElementById('sessionSettingsDialog');
+        const input = document.getElementById('sessionIdInput');
+        input.value = sessionId;
+        dialog.classList.remove('hidden');
+        input.focus();
+        input.select();
+    }
+
+    function closeSessionSettings() {
+        document.getElementById('sessionSettingsDialog').classList.add('hidden');
+        if (sessionSettingsReturnFocus && sessionSettingsReturnFocus.focus) {
+            sessionSettingsReturnFocus.focus();
+        }
+        sessionSettingsReturnFocus = null;
+    }
+
+    async function applySessionSettings() {
+        const validation = validateSessionId(document.getElementById('sessionIdInput').value);
+        if (!validation.valid) {
+            showToast(validation.error, 'error');
+            return;
+        }
+        const button = document.getElementById('applySessionSettingsBtn');
+        button.disabled = true;
+        try {
+            if (validation.value === sessionId || await selectSession(validation.value, null)) {
+                closeSessionSettings();
+            } else {
+                showToast('无法切换到该会话 ID', 'error');
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function requestSessionDeletion(targetSessionId, element, returnFocus) {
+        if (targetSessionId === sessionId && requestLifecycle.isRunning()) {
+            showToast('请先取消当前会话正在执行的任务', 'info');
+            return;
+        }
+        pendingSessionDeletion = { sessionId: targetSessionId, element, returnFocus };
+        document.getElementById('deleteSessionIdLabel').textContent = targetSessionId;
+        document.getElementById('deleteSessionDialog').classList.remove('hidden');
+        document.getElementById('cancelDeleteSessionBtn').focus();
+    }
+
+    function closeDeleteSessionDialog() {
+        document.getElementById('deleteSessionDialog').classList.add('hidden');
+        const returnFocus = pendingSessionDeletion && pendingSessionDeletion.returnFocus;
+        pendingSessionDeletion = null;
+        if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+    }
+
+    async function confirmSessionDeletion() {
+        if (!pendingSessionDeletion) return;
+        const target = pendingSessionDeletion;
+        const button = document.getElementById('confirmDeleteSessionBtn');
+        button.disabled = true;
+        try {
+            const response = await authenticatedFetch(
+                buildApiUrl(`/api/v1/session/${encodeURIComponent(target.sessionId)}`),
+                { method: 'DELETE', headers: { 'Accept': 'application/json' } }
+            );
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result || result.code !== '200') {
+                throw new Error(result && result.info ? result.info : '删除会话失败');
+            }
+            const deletingCurrent = target.sessionId === sessionId;
+            target.element.remove();
+            closeDeleteSessionDialog();
+            if (deletingCurrent) {
+                createNewChat();
+            }
+            showToast('会话已删除，Mem0 长期记忆已保留', 'success');
+        } catch (error) {
+            if (error.status !== 401) showToast(error.message || '删除会话失败', 'error');
+        } finally {
+            button.disabled = false;
         }
     }
 
@@ -1760,7 +2095,6 @@
         const requestData = {
             message: message,
             sessionId: sessionId,
-            userId: currentUserId,
             maxStep: parseInt(document.getElementById('maxStepSelect').value)
         };
         if (aiAgentId) {
@@ -1769,7 +2103,7 @@
 
         const streamState = createStreamState('general');
 
-        fetch(buildApiUrl('/api/v1/agent/auto_agent'), {
+        authenticatedFetch(buildApiUrl('/api/v1/agent/auto_agent'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2315,7 +2649,7 @@
 
         const streamState = createStreamState('trading');
 
-        fetch(buildApiUrl('/api/v1/trading/analysis'), {
+        authenticatedFetch(buildApiUrl('/api/v1/trading/analysis'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2373,7 +2707,7 @@
         `;
 
         try {
-            const response = await fetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory?userId=${encodeURIComponent(currentUserId)}`), {
+            const response = await authenticatedFetch(buildApiUrl(`/api/v1/session/${encodeURIComponent(sessionId)}/sync-memory`), {
                 method: 'POST',
                 headers: { 'Accept': 'application/json' }
             });
@@ -2417,13 +2751,77 @@
         cancelActiveRequest(true);
     });
 
-    window.addEventListener('load', function() {
-        document.getElementById('messageInput').focus();
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const loginBtn = document.getElementById('loginBtn');
+        const guestBtn = document.getElementById('guestLoginBtn');
+        const error = document.getElementById('loginError');
+        loginBtn.disabled = true;
+        guestBtn.disabled = true;
+        error.classList.add('hidden');
+        try {
+            await submitAuthentication('/api/v1/auth/login', {
+                account: document.getElementById('loginAccount').value.trim(),
+                password: document.getElementById('loginPassword').value
+            });
+            document.getElementById('loginPassword').value = '';
+        } catch (_) {
+            error.textContent = '账号或密码错误';
+            error.classList.remove('hidden');
+        } finally {
+            loginBtn.disabled = false;
+            guestBtn.disabled = false;
+        }
+    });
+
+    document.getElementById('guestLoginBtn').addEventListener('click', async () => {
+        const loginBtn = document.getElementById('loginBtn');
+        const guestBtn = document.getElementById('guestLoginBtn');
+        const error = document.getElementById('loginError');
+        loginBtn.disabled = true;
+        guestBtn.disabled = true;
+        error.classList.add('hidden');
+        try {
+            await submitAuthentication('/api/v1/auth/guest');
+        } catch (_) {
+            error.textContent = '游客身份创建失败，请稍后重试';
+            error.classList.remove('hidden');
+        } finally {
+            loginBtn.disabled = false;
+            guestBtn.disabled = false;
+        }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        clearAuthentication();
+    });
+
+    document.getElementById('sessionSettingsBtn').addEventListener('click', openSessionSettings);
+    document.getElementById('cancelSessionSettingsBtn').addEventListener('click', closeSessionSettings);
+    document.getElementById('applySessionSettingsBtn').addEventListener('click', applySessionSettings);
+    document.getElementById('sessionIdInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applySessionSettings();
+        }
+    });
+    document.getElementById('cancelDeleteSessionBtn').addEventListener('click', closeDeleteSessionDialog);
+    document.getElementById('confirmDeleteSessionBtn').addEventListener('click', confirmSessionDeletion);
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (!document.getElementById('sessionSettingsDialog').classList.contains('hidden')) {
+            closeSessionSettings();
+        } else if (!document.getElementById('deleteSessionDialog').classList.contains('hidden')) {
+            closeDeleteSessionDialog();
+        }
+    });
+
+    window.addEventListener('load', async function() {
         setupDynamicInteractions();
-        loadSessionList(false);
         setupSessionListScroll();
         setupMessageScroll();
         document.getElementById('currentModeTag').textContent = '通用对话';
+        await restoreAuthentication();
     });
 </script>
 </body>

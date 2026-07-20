@@ -1,86 +1,104 @@
 package denny.ai.agent.test.trigger.http;
 
-import denny.ai.agent.api.response.Response;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
-import org.springframework.test.context.junit4.SpringRunner;
+import denny.ai.agent.domain.auth.AuthUser;
+import denny.ai.agent.domain.auth.CurrentUserContext;
+import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatsession.SessionAccessState;
+import denny.ai.agent.infrastructure.service.ChatSessionCommandService;
+import denny.ai.agent.infrastructure.service.ChatSessionQueryService;
+import denny.ai.agent.infrastructure.service.SessionOwnershipService;
+import denny.ai.agent.trigger.http.ChatSessionController;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * ChatSessionController 集成测试
- * 测试同步记忆接口的功能
- * 前置条件：Mem0 Server (localhost:8889)、PostgreSQL 必须已启动
- *
- * @author denny
- */
-@Slf4j
-@RunWith(SpringRunner.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@EnableAutoConfiguration(exclude = {
-        org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration.class
-})
-public class ChatSessionControllerIntegrationTest {
+class ChatSessionControllerIntegrationTest {
 
-    @Autowired
-    private TestRestTemplate restTemplate;
+    private ChatSessionQueryService queryService;
+    private ChatSessionCommandService commandService;
+    private SessionOwnershipService ownershipService;
+    private ISessionMemoryPersistenceService memoryPersistenceService;
+    private MockMvc mockMvc;
 
-    @org.springframework.beans.factory.annotation.Value("${local.server.port}")
-    private int serverPort;
-
-    /**
-     * 获取 Controller 请求基础地址
-     */
-    private String baseUrl() {
-        return "http://localhost:" + serverPort;
+    @BeforeEach
+    void setUp() {
+        queryService = mock(ChatSessionQueryService.class);
+        commandService = mock(ChatSessionCommandService.class);
+        ownershipService = mock(SessionOwnershipService.class);
+        memoryPersistenceService = mock(ISessionMemoryPersistenceService.class);
+        CurrentUserContext currentUserContext = new CurrentUserContext();
+        currentUserContext.setCurrentUser(AuthUser.builder()
+                .userId("user_a")
+                .userType(AuthUser.UserType.ACCOUNT)
+                .status(AuthUser.UserStatus.ACTIVE)
+                .build());
+        mockMvc = MockMvcBuilders.standaloneSetup(new ChatSessionController(
+                queryService, commandService, ownershipService,
+                memoryPersistenceService, currentUserContext)).build();
     }
 
-    /**
-     * 测试正常同步记忆
-     */
     @Test
-    public void testSyncSessionMemory_Success() {
-        String sessionId = "test-session-" + System.currentTimeMillis();
-        String userId = "test-user-sync-" + System.currentTimeMillis();
+    void listUsesAuthenticatedUserAndIgnoresLegacyUserId() throws Exception {
+        mockMvc.perform(get("/api/v1/session/list").param("userId", "user_b"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("200"));
 
-        String url = baseUrl() + "/api/v1/session/" + sessionId + "/sync-memory?userId=" + userId;
-
-        HttpEntity<Void> request = new HttpEntity<>(null);
-        ResponseEntity<Response> response = restTemplate.exchange(url, HttpMethod.POST, request, Response.class);
-
-        log.info("同步记忆响应: code={}, status={}", response.getBody(), response.getStatusCode());
-        assertEquals("同步记忆应返回200", org.springframework.http.HttpStatus.OK, response.getStatusCode());
-        assertEquals("响应code应为200", "200", response.getBody().getCode());
-
-        log.info("testSyncSessionMemory_Success 测试通过, sessionId={}, userId={}", sessionId, userId);
+        verify(queryService).getSessionList("user_a", null, null);
     }
 
-    /**
-     * 测试同步不存在的会话（应正常返回，不抛异常）
-     */
     @Test
-    public void testSyncSessionMemory_NotExist() {
-        String sessionId = "not-exist-session-" + System.currentTimeMillis();
-        String userId = "test-user-sync-" + System.currentTimeMillis();
+    void messagesReturnConflictForForeignSession() throws Exception {
+        when(queryService.getSessionMessages("user_a", "session_1", null))
+                .thenThrow(new ChatSessionQueryService.SessionQueryFailure(
+                        ChatSessionQueryService.FailureReason.UNAVAILABLE, "session id unavailable"));
 
-        String url = baseUrl() + "/api/v1/session/" + sessionId + "/sync-memory?userId=" + userId;
+        mockMvc.perform(get("/api/v1/session/session_1/messages"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("409"))
+                .andExpect(jsonPath("$.info").value("session id unavailable"));
+    }
 
-        HttpEntity<Void> request = new HttpEntity<>(null);
-        ResponseEntity<Response> response = restTemplate.exchange(url, HttpMethod.POST, request, Response.class);
+    @Test
+    void deleteUsesCurrentUserAndMapsNotFoundAndRunning() throws Exception {
+        mockMvc.perform(delete("/api/v1/session/session_1"))
+                .andExpect(status().isOk());
+        verify(commandService).deleteOwnedSession("user_a", "session_1");
 
-        log.info("同步不存在会话响应: code={}, status={}", response.getBody(), response.getStatusCode());
-        assertEquals("应返回200", org.springframework.http.HttpStatus.OK, response.getStatusCode());
-        assertEquals("响应code应为200", "200", response.getBody().getCode());
+        org.mockito.Mockito.doThrow(new ChatSessionCommandService.SessionCommandFailure(
+                        ChatSessionCommandService.FailureReason.NOT_FOUND, "session not found"))
+                .when(commandService).deleteOwnedSession("user_a", "missing_session");
+        mockMvc.perform(delete("/api/v1/session/missing_session"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.info").value("session not found"));
 
-        log.info("testSyncSessionMemory_NotExist 测试通过, sessionId={}", sessionId);
+        org.mockito.Mockito.doThrow(new ChatSessionCommandService.SessionCommandFailure(
+                        ChatSessionCommandService.FailureReason.RUNNING, "session is running"))
+                .when(commandService).deleteOwnedSession("user_a", "running_session");
+        mockMvc.perform(delete("/api/v1/session/running_session"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.info").value("session is running"));
+    }
+
+    @Test
+    void syncMemoryRequiresOwnedSession() throws Exception {
+        when(ownershipService.resolve("user_a", "session_1")).thenReturn(SessionAccessState.OWNED);
+        mockMvc.perform(post("/api/v1/session/session_1/sync-memory"))
+                .andExpect(status().isOk());
+        verify(memoryPersistenceService).syncSessionToMemory("user_a", "session_1");
+
+        when(ownershipService.resolve("user_a", "foreign_session")).thenReturn(SessionAccessState.UNAVAILABLE);
+        mockMvc.perform(post("/api/v1/session/foreign_session/sync-memory"))
+                .andExpect(status().isNotFound());
     }
 }

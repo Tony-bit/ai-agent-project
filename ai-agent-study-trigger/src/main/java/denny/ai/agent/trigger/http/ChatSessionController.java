@@ -3,76 +3,102 @@ package denny.ai.agent.trigger.http;
 import denny.ai.agent.api.response.Response;
 import denny.ai.agent.api.vo.MessageListResult;
 import denny.ai.agent.api.vo.SessionListResult;
+import denny.ai.agent.domain.auth.CurrentUserContext;
 import denny.ai.agent.domain.service.chatsession.ISessionMemoryPersistenceService;
+import denny.ai.agent.domain.service.chatsession.SessionAccessState;
+import denny.ai.agent.infrastructure.service.ChatSessionCommandService;
 import denny.ai.agent.infrastructure.service.ChatSessionQueryService;
-import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import denny.ai.agent.infrastructure.service.SessionOwnershipService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 会话列表查询 HTTP 接口
- *
- * @author denny
- */
-@Slf4j
 @RestController
 @RequestMapping("/api/v1/session")
-@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.OPTIONS})
+@CrossOrigin(origins = "*", allowedHeaders = {"Content-Type", "Authorization"}, methods = {
+        RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class ChatSessionController {
 
-    @Resource
-    private ChatSessionQueryService chatSessionQueryService;
+    private final ChatSessionQueryService queryService;
+    private final ChatSessionCommandService commandService;
+    private final SessionOwnershipService ownershipService;
+    private final ISessionMemoryPersistenceService memoryPersistenceService;
+    private final CurrentUserContext currentUserContext;
 
-    @Resource
-    private ISessionMemoryPersistenceService sessionMemoryPersistenceService;
+    public ChatSessionController(ChatSessionQueryService queryService,
+                                 ChatSessionCommandService commandService,
+                                 SessionOwnershipService ownershipService,
+                                 ISessionMemoryPersistenceService memoryPersistenceService,
+                                 CurrentUserContext currentUserContext) {
+        this.queryService = queryService;
+        this.commandService = commandService;
+        this.ownershipService = ownershipService;
+        this.memoryPersistenceService = memoryPersistenceService;
+        this.currentUserContext = currentUserContext;
+    }
 
-    /**
-     * 获取用户会话列表（支持游标分页）
-     *
-     * @param userId     用户ID
-     * @param cursorTime 游标时间（首次不传）
-     * @param cursorId   游标ID（首次不传）
-     * @return 会话列表
-     */
     @GetMapping("/list")
-    public Response<SessionListResult> getSessionList(
-            @RequestParam(name = "userId") String userId,
+    public ResponseEntity<Response<?>> getSessionList(
             @RequestParam(name = "cursorTime", required = false) String cursorTime,
             @RequestParam(name = "cursorId", required = false) String cursorId) {
-        log.info("获取会话列表: userId={}, cursorTime={}, cursorId={}", userId, cursorTime, cursorId);
-        SessionListResult result = chatSessionQueryService.getSessionList(userId, cursorTime, cursorId);
-        return Response.ok(result);
+        String userId = currentUserContext.currentUserId();
+        SessionListResult result = queryService.getSessionList(userId, cursorTime, cursorId);
+        return ResponseEntity.ok(Response.ok(result));
     }
 
-    /**
-     * 获取会话消息列表（支持游标分页）
-     *
-     * @param sessionId   会话ID
-     * @param cursorIndex 游标索引（首次不传，返回最新的10条）
-     * @return 消息列表
-     */
     @GetMapping("/{sessionId}/messages")
-    public Response<MessageListResult> getSessionMessages(
-            @PathVariable(name = "sessionId") String sessionId,
+    public ResponseEntity<Response<?>> getSessionMessages(
+            @PathVariable("sessionId") String sessionId,
             @RequestParam(name = "cursorIndex", required = false) Integer cursorIndex) {
-        log.info("获取会话消息: sessionId={}, cursorIndex={}", sessionId, cursorIndex);
-        MessageListResult result = chatSessionQueryService.getSessionMessages(sessionId, cursorIndex);
-        return Response.ok(result);
+        try {
+            MessageListResult result = queryService.getSessionMessages(
+                    currentUserContext.currentUserId(), sessionId, cursorIndex);
+            return ResponseEntity.ok(Response.ok(result));
+        } catch (IllegalArgumentException exception) {
+            return error(HttpStatus.BAD_REQUEST, "400", "invalid request");
+        } catch (ChatSessionQueryService.SessionQueryFailure failure) {
+            return error(HttpStatus.CONFLICT, "409", "session id unavailable");
+        }
     }
 
-    /**
-     * 同步会话记忆到 Mem0 长期记忆
-     *
-     * @param sessionId 会话ID
-     * @param userId   用户ID
-     * @return 同步结果
-     */
+    @DeleteMapping("/{sessionId}")
+    public ResponseEntity<Response<?>> deleteSession(@PathVariable("sessionId") String sessionId) {
+        try {
+            commandService.deleteOwnedSession(currentUserContext.currentUserId(), sessionId);
+            return ResponseEntity.ok(Response.ok());
+        } catch (IllegalArgumentException exception) {
+            return error(HttpStatus.BAD_REQUEST, "400", "invalid request");
+        } catch (ChatSessionCommandService.SessionCommandFailure failure) {
+            if (failure.getReason() == ChatSessionCommandService.FailureReason.RUNNING) {
+                return error(HttpStatus.CONFLICT, "409", "session is running");
+            }
+            return error(HttpStatus.NOT_FOUND, "404", "session not found");
+        }
+    }
+
     @PostMapping("/{sessionId}/sync-memory")
-    public Response<Void> syncSessionMemory(
-            @PathVariable("sessionId") String sessionId,
-            @RequestParam("userId") String userId) {
-        log.info("同步会话记忆: sessionId={}, userId={}", sessionId, userId);
-        sessionMemoryPersistenceService.syncSessionToMemory(userId, sessionId);
-        return Response.ok();
+    public ResponseEntity<Response<?>> syncSessionMemory(@PathVariable("sessionId") String sessionId) {
+        String userId = currentUserContext.currentUserId();
+        try {
+            if (ownershipService.resolve(userId, sessionId) != SessionAccessState.OWNED) {
+                return error(HttpStatus.NOT_FOUND, "404", "session not found");
+            }
+            memoryPersistenceService.syncSessionToMemory(userId, sessionId);
+            return ResponseEntity.ok(Response.ok());
+        } catch (IllegalArgumentException exception) {
+            return error(HttpStatus.BAD_REQUEST, "400", "invalid request");
+        }
+    }
+
+    private ResponseEntity<Response<?>> error(HttpStatus status, String code, String info) {
+        return ResponseEntity.status(status).body(Response.error(code, info));
     }
 }

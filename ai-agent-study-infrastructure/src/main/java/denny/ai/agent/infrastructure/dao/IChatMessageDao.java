@@ -29,4 +29,6 @@ public interface IChatMessageDao {
     List<ChatMessagePO> queryByCursor(@Param("sessionId") String sessionId,
                                      @Param("cursorIndex") int cursorIndex,
                                      @Param("limit") int limit);
+
+    int deleteBySessionId(@Param("sessionId") String sessionId);
 }

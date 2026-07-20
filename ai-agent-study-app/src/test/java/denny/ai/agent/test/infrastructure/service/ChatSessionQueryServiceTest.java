@@ -4,11 +4,13 @@ import denny.ai.agent.api.vo.ChatMessageVO;
 import denny.ai.agent.api.vo.ChatSessionVO;
 import denny.ai.agent.api.vo.MessageListResult;
 import denny.ai.agent.api.vo.SessionListResult;
+import denny.ai.agent.domain.service.chatsession.SessionAccessState;
 import denny.ai.agent.infrastructure.dao.IChatMessageDao;
 import denny.ai.agent.infrastructure.dao.IChatSessionDao;
 import denny.ai.agent.infrastructure.dao.po.ChatMessagePO;
 import denny.ai.agent.infrastructure.dao.po.ChatSessionPO;
 import denny.ai.agent.infrastructure.service.ChatSessionQueryService;
+import denny.ai.agent.infrastructure.service.SessionOwnershipService;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,6 +39,9 @@ public class ChatSessionQueryServiceTest {
 
     @Mock
     private IChatMessageDao chatMessageDao;
+
+    @Mock
+    private SessionOwnershipService sessionOwnershipService;
 
     @InjectMocks
     private ChatSessionQueryService chatSessionQueryService;
@@ -260,6 +265,31 @@ public class ChatSessionQueryServiceTest {
         assertNotNull("结果不应为空", result);
         assertEquals("应返回0条数据", 0, result.getSize());
         assertFalse("不应有更多数据", result.isHasMore());
+    }
+
+    @Test
+    public void testGetSessionMessages_NewSessionReturnsEmptyWithoutQueryingMessages() {
+        when(sessionOwnershipService.resolve(TEST_USER_ID, TEST_SESSION_ID))
+                .thenReturn(SessionAccessState.AVAILABLE);
+
+        MessageListResult result = chatSessionQueryService.getSessionMessages(
+                TEST_USER_ID, TEST_SESSION_ID, null);
+
+        assertEquals(0, result.getSize());
+        verifyNoInteractions(chatMessageDao);
+    }
+
+    @Test
+    public void testGetSessionMessages_ForeignSessionIsUnavailable() {
+        when(sessionOwnershipService.resolve(TEST_USER_ID, TEST_SESSION_ID))
+                .thenReturn(SessionAccessState.UNAVAILABLE);
+
+        ChatSessionQueryService.SessionQueryFailure failure = assertThrows(
+                ChatSessionQueryService.SessionQueryFailure.class,
+                () -> chatSessionQueryService.getSessionMessages(TEST_USER_ID, TEST_SESSION_ID, null));
+
+        assertEquals(ChatSessionQueryService.FailureReason.UNAVAILABLE, failure.getReason());
+        verifyNoInteractions(chatMessageDao);
     }
 
     // ========== 辅助方法 ==========

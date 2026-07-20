@@ -32,7 +32,7 @@
 
 | Task | status |
 |------|------|
-| Task 1: Minimal account and guest authentication | append |
+| Task 1: Minimal account and guest authentication | pass |
 
 **Files:**
 - Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/auth/AuthUser.java`
@@ -55,7 +55,7 @@
 
 | Task | status |
 |------|------|
-| Task 2: Token authentication boundary | append |
+| Task 2: Token authentication boundary | pass |
 
 **Files:**
 - Create: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trigger/http/AuthController.java`
@@ -78,7 +78,7 @@
 
 | Task | status |
 |------|------|
-| Task 3: Session ownership contract | append |
+| Task 3: Session ownership contract | pass |
 
 **Files:**
 - Create: `ai-agent-study-domain/src/main/java/denny/ai/agent/domain/service/chatsession/SessionAccessState.java`
@@ -96,7 +96,7 @@
 
 | Task | status |
 |------|------|
-| Task 4: Atomic session operation registry | append |
+| Task 4: Atomic session operation registry | pass |
 
 **Files:**
 - Create: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/service/SessionOperationRegistry.java`
@@ -112,7 +112,7 @@
 
 | Task | status |
 |------|------|
-| Task 5: Transactional session deletion | append |
+| Task 5: Transactional session deletion | pass |
 
 **Files:**
 - Modify: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/dao/IChatSessionDao.java`
@@ -134,7 +134,7 @@
 
 | Task | status |
 |------|------|
-| Task 6: Secure session HTTP APIs | append |
+| Task 6: Secure session HTTP APIs | pass |
 
 **Files:**
 - Modify: `ai-agent-study-infrastructure/src/main/java/denny/ai/agent/infrastructure/service/ChatSessionQueryService.java`
@@ -154,7 +154,7 @@
 
 | Task | status |
 |------|------|
-| Task 7: Guard Agent and Trading execution | append |
+| Task 7: Guard Agent and Trading execution | pass |
 
 **Files:**
 - Modify: `ai-agent-study-trigger/src/main/java/denny/ai/agent/trigger/http/AiAgentController.java`
@@ -177,7 +177,7 @@
 
 | Task | status |
 |------|------|
-| Task 8: Frontend login, guest and token state | append |
+| Task 8: Frontend login, guest and token state | pass |
 
 **Files:**
 - Modify: `docs/dev-ops/nginx/html/js/agent-ui-core.js`
@@ -204,7 +204,7 @@
 
 | Task | status |
 |------|------|
-| Task 9: Frontend session ID settings and deletion | append |
+| Task 9: Frontend session ID settings and deletion | pass |
 
 **Files:**
 - Modify: `docs/dev-ops/nginx/html/index.html`
@@ -222,7 +222,7 @@
 
 | Task | status |
 |------|------|
-| Task 10: Regression and acceptance | append |
+| Task 10: Regression and acceptance | pass |
 
 **Files:**
 - Modify after verification: `docs/superpowers/test/2026-06-21-frontend-product-polish-test.md`
