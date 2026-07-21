@@ -127,26 +127,15 @@ public class AgentRepository implements IAgentRepository {
                     AiClientModelPO model = aiClientModelDao.queryByModelId(modelId);
                     if (model != null && model.getStatus() == 1) {
 
-                        // 3. 查询该模型关联的tool_mcp配置
-                        List<AiClientConfigPO> toolMcpConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId);
-                        List<String> toolMcpIds = new ArrayList<>();
-
-                        for (AiClientConfigPO toolMcpConfig : toolMcpConfigs) {
-                            if (AiAgentEnumVO.AI_CLIENT_TOOL_MCP.getCode().equals(toolMcpConfig.getTargetType()) && toolMcpConfig.getStatus() == 1) {
-                                toolMcpIds.add(toolMcpConfig.getTargetId());
-                            }
-                        }
-
-                        // 4. 解析 extParam 中的重试配置
+                        // 3. 解析 extParam 中的重试配置
                         ModelRuntimeConfig runtimeConfig = parseRuntimeConfig(model);
 
-                        // 5. 转换为VO对象
+                        // 4. 转换为VO对象
                         AiClientModelVO modelVO = AiClientModelVO.builder()
                                 .modelId(model.getModelId())
                                 .apiId(model.getApiId())
                                 .modelName(model.getModelName())
                                 .modelType(model.getModelType())
-                                .toolMcpIds(toolMcpIds)
                                 .retryConfig(runtimeConfig.retryConfig())
                                 .compressionConfig(runtimeConfig.compressionConfig())
                                 .streamingTimeoutConfig(runtimeConfig.streamingTimeoutConfig())
@@ -174,64 +163,49 @@ public class AgentRepository implements IAgentRepository {
         Set<String> processedMcpIds = new HashSet<>();
 
         for (String clientId : clientIdList) {
-            // 1. 通过clientId查询关联的model配置
+            // MCP tools are owned by the client, not by its shared model.
             List<AiClientConfigPO> clientConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT.getCode(), clientId);
 
             for (AiClientConfigPO clientConfig : clientConfigs) {
-                if (AiAgentEnumVO.AI_CLIENT_MODEL.getCode().equals(clientConfig.getTargetType()) && clientConfig.getStatus() == 1) {
-                    String modelId = clientConfig.getTargetId();
+                if (AiAgentEnumVO.AI_CLIENT_TOOL_MCP.getCode().equals(clientConfig.getTargetType()) && clientConfig.getStatus() == 1) {
+                    String mcpId = clientConfig.getTargetId();
 
-                    // 2. 通过modelId查询关联的tool_mcp配置
-                    List<AiClientConfigPO> modelConfigs = aiClientConfigDao.queryBySourceTypeAndId(AiAgentEnumVO.AI_CLIENT_MODEL.getCode(), modelId);
+                    if (!processedMcpIds.add(mcpId)) {
+                        continue;
+                    }
 
-                    for (AiClientConfigPO modelConfig : modelConfigs) {
-                        if (AiAgentEnumVO.AI_CLIENT_TOOL_MCP.getCode().equals(modelConfig.getTargetType()) && modelConfig.getStatus() == 1) {
-                            String mcpId = modelConfig.getTargetId();
+                    AiClientToolMcpPO toolMcp = aiClientToolMcpDao.queryByMcpId(mcpId);
+                    if (toolMcp != null && toolMcp.getStatus() == 1) {
+                        AiClientToolMcpVO mcpVO = AiClientToolMcpVO.builder()
+                                .mcpId(toolMcp.getMcpId())
+                                .mcpName(toolMcp.getMcpName())
+                                .transportType(toolMcp.getTransportType())
+                                .transportConfig(toolMcp.getTransportConfig())
+                                .requestTimeout(toolMcp.getRequestTimeout())
+                                .build();
 
-                            // 避免重复处理相同的mcpId
-                            if (processedMcpIds.contains(mcpId)) {
-                                continue;
+                        String transportConfig = toolMcp.getTransportConfig();
+                        String transportType = toolMcp.getTransportType();
+
+                        try {
+                            if ("sse".equals(transportType)) {
+                                ObjectMapper objectMapper = new ObjectMapper();
+                                AiClientToolMcpVO.TransportConfigSse transportConfigSse = objectMapper.readValue(transportConfig, AiClientToolMcpVO.TransportConfigSse.class);
+                                mcpVO.setTransportConfigSse(transportConfigSse);
+                            } else if ("stdio".equals(transportType)) {
+                                Map<String, AiClientToolMcpVO.TransportConfigStdio.Stdio> stdio = JSON.parseObject(transportConfig,
+                                        new TypeReference<>() {
+                                        });
+
+                                AiClientToolMcpVO.TransportConfigStdio transportConfigStdio = new AiClientToolMcpVO.TransportConfigStdio();
+                                transportConfigStdio.setStdio(stdio);
+
+                                mcpVO.setTransportConfigStdio(transportConfigStdio);
                             }
-                            processedMcpIds.add(mcpId);
-
-                            // 3. 通过mcpId查询ai_client_tool_mcp表获取MCP工具配置
-                            AiClientToolMcpPO toolMcp = aiClientToolMcpDao.queryByMcpId(mcpId);
-                            if (toolMcp != null && toolMcp.getStatus() == 1) {
-                                // 4. 转换为VO对象
-                                AiClientToolMcpVO mcpVO = AiClientToolMcpVO.builder()
-                                        .mcpId(toolMcp.getMcpId())
-                                        .mcpName(toolMcp.getMcpName())
-                                        .transportType(toolMcp.getTransportType())
-                                        .transportConfig(toolMcp.getTransportConfig())
-                                        .requestTimeout(toolMcp.getRequestTimeout())
-                                        .build();
-
-                                String transportConfig = toolMcp.getTransportConfig();
-                                String transportType = toolMcp.getTransportType();
-
-                                try {
-                                    if ("sse".equals(transportType)) {
-                                        // 解析SSE配置
-                                        ObjectMapper objectMapper = new ObjectMapper();
-                                        AiClientToolMcpVO.TransportConfigSse transportConfigSse = objectMapper.readValue(transportConfig, AiClientToolMcpVO.TransportConfigSse.class);
-                                        mcpVO.setTransportConfigSse(transportConfigSse);
-                                    } else if ("stdio".equals(transportType)) {
-                                        // 解析STDIO配置
-                                        Map<String, AiClientToolMcpVO.TransportConfigStdio.Stdio> stdio = JSON.parseObject(transportConfig,
-                                                new TypeReference<>() {
-                                                });
-
-                                        AiClientToolMcpVO.TransportConfigStdio transportConfigStdio = new AiClientToolMcpVO.TransportConfigStdio();
-                                        transportConfigStdio.setStdio(stdio);
-
-                                        mcpVO.setTransportConfigStdio(transportConfigStdio);
-                                    }
-                                } catch (Exception e) {
-                                    log.error("解析传输配置失败: {}", e.getMessage(), e);
-                                }
-                                result.add(mcpVO);
-                            }
+                        } catch (Exception e) {
+                            log.error("解析传输配置失败: {}", e.getMessage(), e);
                         }
+                        result.add(mcpVO);
                     }
                 }
             }

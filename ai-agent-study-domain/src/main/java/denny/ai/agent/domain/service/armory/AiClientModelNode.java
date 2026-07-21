@@ -14,9 +14,7 @@ import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodeExtractor;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
-import io.modelcontextprotocol.client.McpSyncClient;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.chat.model.ChatModel;
@@ -24,7 +22,6 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
@@ -67,21 +64,12 @@ public class AiClientModelNode extends AbstractArmorySupport{
                 throw new RuntimeException("model's api is null");
             }
 
-            // 获取当前模型关联的Tool MCP Bean对象
-            List<McpSyncClient> mcpSyncClientList = new ArrayList<>();
-
-            for (String toolMcpId : modelVO.getToolMcpIds()) {
-                McpSyncClient mcpSyncClient = getBean(AiAgentEnumVO.AI_CLIENT_TOOL_MCP.getBeanName(toolMcpId));
-                mcpSyncClientList.add(mcpSyncClient);
-            }
-
             // 实例化对话模型
             OpenAiChatModel chatModel = OpenAiChatModel.builder()
                     .openAiApi(openAiApi)
                     .defaultOptions(
                             OpenAiChatOptions.builder()
                                     .model(modelVO.getModelName())
-                                    .toolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClientList).getToolCallbacks())
                                     .build()
                     ).build();
 

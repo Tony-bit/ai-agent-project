@@ -39,11 +39,6 @@ public class AiClientModelVO {
     private String modelType;
 
     /**
-     * 模型对应的mcp tool ID列表
-     */
-    private List<String> toolMcpIds;
-
-    /**
      * 重试配置
      */
     private RetryConfig retryConfig;
