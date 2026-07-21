@@ -40,7 +40,7 @@ public class AiAgentController implements IAiAgentService {
     private final SessionExecutionGuard executionGuard;
 
     public AiAgentController(@Qualifier("autoAgentExecuteStrategy") IExecuteStrategy autoAgentExecuteStrategy,
-                             ThreadPoolExecutor threadPoolExecutor,
+                             @Qualifier("threadPoolExecutor") ThreadPoolExecutor threadPoolExecutor,
                              OSSUploadService ossUploadService,
                              CurrentUserContext currentUserContext,
                              SessionExecutionGuard executionGuard) {

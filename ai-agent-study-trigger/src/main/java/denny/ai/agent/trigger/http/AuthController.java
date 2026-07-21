@@ -8,6 +8,7 @@ import denny.ai.agent.infrastructure.service.AuthService;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth")
 @CrossOrigin(origins = "*")
 @AllArgsConstructor
+@Slf4j
 public class AuthController {
 
     private final AuthService authService;
@@ -35,6 +37,28 @@ public class AuthController {
         } catch (AuthService.AuthFailure failure) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Response.error("401", "unauthorized"));
+        }
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<Response<?>> register(@RequestBody RegisterRequest request) {
+        try {
+            return ResponseEntity.ok(authenticationResponse(
+                    authService.register(request.getAccount(), request.getPassword())));
+        } catch (AuthService.AuthFailure failure) {
+            if (failure.getReason() == AuthService.AuthFailureReason.INVALID_REGISTRATION) {
+                return ResponseEntity.badRequest().body(Response.error("400", "invalid registration"));
+            }
+            if (failure.getReason() == AuthService.AuthFailureReason.ACCOUNT_ALREADY_EXISTS) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(Response.error("409", "account already exists"));
+            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Response.error("500", "operation failed"));
+        } catch (RuntimeException exception) {
+            log.error("Account registration failed", exception);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Response.error("500", "operation failed"));
         }
     }
 
@@ -61,6 +85,12 @@ public class AuthController {
 
     @Data
     public static class LoginRequest {
+        private String account;
+        private String password;
+    }
+
+    @Data
+    public static class RegisterRequest {
         private String account;
         private String password;
     }

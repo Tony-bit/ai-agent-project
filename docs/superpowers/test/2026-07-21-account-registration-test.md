@@ -124,9 +124,32 @@ node -e "const fs=require('fs'),vm=require('vm'); const html=fs.readFileSync('do
 | 2026-07-21 | 后端聚焦测试 | 通过 | 19 项，0 失败，0 错误 |
 | 2026-07-21 | 前端 Node 测试 | 通过 | 36 项，0 失败 |
 | 2026-07-21 | HTML 内联脚本语法 | 通过 | 2 段内联脚本均可解析 |
-| 2026-07-21 | 桌面浏览器验证 | 待执行 | 在用户指出文档顺序问题后停止 |
-| 2026-07-21 | 移动浏览器验证 | 待执行 | 在用户指出文档顺序问题后停止 |
-| 2026-07-21 | 完整认证与会话回归 | 待执行 | 聚焦测试后执行 |
+| 2026-07-21 | 认证、会话与执行守卫回归 | 通过 | 10 个指定套件实际生成 9 个 Jupiter 报告，共 42 项，0 失败；JUnit 4 查询套件单独执行 |
+| 2026-07-21 | 会话查询 JUnit 4 回归 | 通过 | `JUnitCore` 实际执行 22 项，全部通过 |
+| 2026-07-21 | 应用模块默认 Jupiter 回归 | 通过 | reactor 安装期间实际执行 41 项，0 失败 |
+| 2026-07-21 | 桌面浏览器验证 | 通过 | `1280x720`，卡片范围 `top=70`、`bottom=650`，无横向溢出 |
+| 2026-07-21 | 移动浏览器验证 | 通过 | `390x844`，卡片范围 `top=132`、`bottom=712`，无横向溢出 |
+| 2026-07-21 | 浏览器注册交互矩阵 | 通过 | 客户端拦截、请求中禁用、请求体、200、400、409、网络失败、退出复位和游客回归均通过 |
+| 2026-07-21 | 浏览器控制台检查 | 通过 | 桌面和移动注册页面均无控制台错误 |
+
+### 浏览器验证产物
+
+- `account-registration-desktop.png`
+- `account-registration-mobile.png`
+
+截图保存在当前 Codex 任务的可视化产物目录中，不写入项目仓库。
+
+### 回归说明
+
+`ChatSessionQueryServiceTest` 使用 JUnit 4，但 `ai-agent-study-app` 的 Surefire 配置固定使用 JUnit Jupiter，常规 Maven 命令会编译该类但不执行。为避免本需求改变全局测试引擎，本次先安装当前 reactor 依赖，再通过以下命令实际运行该类：
+
+```powershell
+mvn -q -pl ai-agent-study-app org.codehaus.mojo:exec-maven-plugin:3.5.0:java '-Dexec.mainClass=org.junit.runner.JUnitCore' '-Dexec.args=denny.ai.agent.test.infrastructure.service.ChatSessionQueryServiceTest' '-Dexec.classpathScope=test'
+```
+
+后续应单独迁移该类到 JUnit 5，或评估在应用模块启用 Vintage Engine。该既有测试配置问题不影响本次注册运行时代码。
+
+本次没有对配置中的远程 MySQL 执行真实账号写入，避免污染共享环境。数据层通过现有唯一索引定义、DAO 插入路径、BCrypt 服务测试和 `DuplicateKeyException` 并发竞争测试覆盖。
 
 ## 通过标准
 

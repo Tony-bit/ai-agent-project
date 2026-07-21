@@ -48,7 +48,9 @@ public class AuthenticationFilter extends OncePerRequestFilter {
         if ("OPTIONS".equalsIgnoreCase(method)) {
             return true;
         }
-        if ("/api/v1/auth/login".equals(path) || "/api/v1/auth/guest".equals(path)) {
+        if ("/api/v1/auth/login".equals(path)
+                || "/api/v1/auth/register".equals(path)
+                || "/api/v1/auth/guest".equals(path)) {
             return true;
         }
         if (path.startsWith("/actuator/health")) {

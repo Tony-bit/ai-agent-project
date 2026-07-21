@@ -78,6 +78,40 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
+    void registerReturnsTokenAndCurrentUser() throws Exception {
+        when(authService.register("new_user", "secure-password")).thenReturn(accountUser());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"account\":\"new_user\",\"password\":\"secure-password\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("200"))
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.user.userType").value("ACCOUNT"))
+                .andExpect(jsonPath("$.data.user.password").doesNotExist())
+                .andExpect(jsonPath("$.data.user.passwordHash").doesNotExist());
+    }
+
+    @Test
+    void registerMapsValidationConflictAndUnexpectedFailures() throws Exception {
+        when(authService.register("invalid", "short")).thenThrow(new AuthService.AuthFailure(
+                AuthService.AuthFailureReason.INVALID_REGISTRATION, "invalid registration"));
+        when(authService.register("existing", "secure-password")).thenThrow(new AuthService.AuthFailure(
+                AuthService.AuthFailureReason.ACCOUNT_ALREADY_EXISTS, "account already exists"));
+        when(authService.register("failed", "secure-password")).thenThrow(new IllegalStateException("database"));
+
+        performRegistration("invalid", "short")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("400"));
+        performRegistration("existing", "secure-password")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("409"));
+        performRegistration("failed", "secure-password")
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.info").value("operation failed"));
+    }
+
+    @Test
     void meReturnsAuthenticatedAccountOrGuest() throws Exception {
         currentUserContext.setCurrentUser(guestUser());
 
@@ -95,5 +129,12 @@ class AuthControllerIntegrationTest {
     private AuthUser guestUser() {
         return AuthUser.builder().userId("guest_123").userType(AuthUser.UserType.GUEST)
                 .status(AuthUser.UserStatus.ACTIVE).build();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions performRegistration(
+            String account, String password) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"account\":\"" + account + "\",\"password\":\"" + password + "\"}"));
     }
 }

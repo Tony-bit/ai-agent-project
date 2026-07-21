@@ -14,9 +14,36 @@ const {
     buildApiUrl,
     createAuthState,
     validateSessionId,
+    validateRegistration,
     createRequestLifecycle,
     isNearBottom
 } = require('../js/agent-ui-core.js');
+
+test('registration validation normalizes valid account and keeps password unchanged', () => {
+    assert.deepEqual(validateRegistration({
+        account: ' new_user ', password: ' secure password ', confirmPassword: ' secure password '
+    }), {
+        valid: true, account: 'new_user', password: ' secure password '
+    });
+});
+
+test('registration validation rejects invalid account password and confirmation', () => {
+    assert.equal(validateRegistration({
+        account: 'a b', password: 'secure-password', confirmPassword: 'secure-password'
+    }).field, 'account');
+    assert.equal(validateRegistration({
+        account: 'valid_user', password: 'short', confirmPassword: 'short'
+    }).field, 'password');
+    assert.equal(validateRegistration({
+        account: 'valid_user', password: 'secure-password', confirmPassword: 'different-password'
+    }).field, 'confirmPassword');
+    assert.equal(validateRegistration({
+        account: 'a'.repeat(33), password: 'secure-password', confirmPassword: 'secure-password'
+    }).valid, false);
+    assert.equal(validateRegistration({
+        account: 'valid_user', password: 'x'.repeat(73), confirmPassword: 'x'.repeat(73)
+    }).valid, false);
+});
 
 test('auth state stores token, builds bearer headers and clears identity', () => {
     const storage = memoryStorage();
@@ -129,7 +156,7 @@ test('resolveRuntimeConfig falls back from invalid URL userId to storage', () =>
     });
 
     assert.equal(config.userId, 'stored-user');
-    assert.equal(config.apiBase, '');
+    assert.equal(config.apiBase, 'http://localhost:8090');
 });
 
 test('resolveRuntimeConfig falls back when storage throws', () => {
@@ -141,7 +168,40 @@ test('resolveRuntimeConfig falls back when storage throws', () => {
         search: '', storage, defaultUserId: 'default-user', origin: 'http://localhost'
     });
 
-    assert.deepEqual(config, { apiBase: '', userId: 'default-user' });
+    assert.deepEqual(config, {
+        apiBase: 'http://localhost:8090',
+        userId: 'default-user'
+    });
+});
+
+test('resolveRuntimeConfig uses the backend port for local static servers', () => {
+    const localhostConfig = resolveRuntimeConfig({
+        search: '', storage: memoryStorage(), defaultUserId: 'default-user',
+        origin: 'http://localhost:63342'
+    });
+    const loopbackConfig = resolveRuntimeConfig({
+        search: '', storage: memoryStorage(), defaultUserId: 'default-user',
+        origin: 'http://127.0.0.1:5500'
+    });
+
+    assert.equal(localhostConfig.apiBase, 'http://localhost:8090');
+    assert.equal(loopbackConfig.apiBase, 'http://127.0.0.1:8090');
+});
+
+test('resolveRuntimeConfig keeps production same-origin and stored API precedence', () => {
+    const productionConfig = resolveRuntimeConfig({
+        search: '', storage: memoryStorage(), defaultUserId: 'default-user',
+        origin: 'https://agent.example.com'
+    });
+    const storedConfig = resolveRuntimeConfig({
+        search: '',
+        storage: memoryStorage({ 'agent.apiBase': 'http://localhost:9000' }),
+        defaultUserId: 'default-user',
+        origin: 'http://localhost:63342'
+    });
+
+    assert.equal(productionConfig.apiBase, '');
+    assert.equal(storedConfig.apiBase, 'http://localhost:9000');
 });
 
 test('buildApiUrl joins same-origin and configured base URLs', () => {

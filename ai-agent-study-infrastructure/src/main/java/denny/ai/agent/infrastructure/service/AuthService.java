@@ -12,13 +12,19 @@ import org.springframework.util.StringUtils;
 
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class AuthService {
 
     private static final int MAX_ACCOUNT_LENGTH = 128;
+    private static final int MIN_REGISTER_ACCOUNT_LENGTH = 3;
+    private static final int MAX_REGISTER_ACCOUNT_LENGTH = 32;
+    private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final int MAX_PASSWORD_LENGTH = 72;
     private static final int MAX_GUEST_INSERT_ATTEMPTS = 3;
     private static final String INVALID_CREDENTIALS_MESSAGE = "invalid credentials";
+    private static final Pattern REGISTER_ACCOUNT_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
 
     private final IAuthUserDao authUserDao;
     private final PasswordEncoder passwordEncoder;
@@ -44,6 +50,29 @@ public class AuthService {
         AuthUserPO user = authUserDao.queryByAccount(normalizedAccount);
         if (user == null || !isActiveAccount(user) || !matches(password, user.getPasswordHash())) {
             throw invalidCredentials();
+        }
+        return toDomain(user);
+    }
+
+    public AuthUser register(String account, String password) {
+        String normalizedAccount = account == null ? null : account.trim();
+        if (!isValidRegistrationAccount(normalizedAccount) || !isValidRegistrationPassword(password)) {
+            throw new AuthFailure(AuthFailureReason.INVALID_REGISTRATION, "invalid registration");
+        }
+        if (authUserDao.queryByAccount(normalizedAccount) != null) {
+            throw accountAlreadyExists();
+        }
+
+        AuthUserPO user = new AuthUserPO();
+        user.setUserId("user_" + UUID.randomUUID().toString().replace("-", ""));
+        user.setUserType(AuthUser.UserType.ACCOUNT.name());
+        user.setAccount(normalizedAccount);
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setStatus(AuthUser.UserStatus.ACTIVE.name());
+        try {
+            authUserDao.insert(user);
+        } catch (DuplicateKeyException exception) {
+            throw accountAlreadyExists();
         }
         return toDomain(user);
     }
@@ -89,6 +118,19 @@ public class AuthService {
         }
     }
 
+    private boolean isValidRegistrationAccount(String account) {
+        return StringUtils.hasText(account)
+                && account.length() >= MIN_REGISTER_ACCOUNT_LENGTH
+                && account.length() <= MAX_REGISTER_ACCOUNT_LENGTH
+                && REGISTER_ACCOUNT_PATTERN.matcher(account).matches();
+    }
+
+    private boolean isValidRegistrationPassword(String password) {
+        return password != null
+                && password.length() >= MIN_PASSWORD_LENGTH
+                && password.length() <= MAX_PASSWORD_LENGTH;
+    }
+
     private AuthUser toDomain(AuthUserPO user) {
         return AuthUser.builder()
                 .userId(user.getUserId())
@@ -102,8 +144,14 @@ public class AuthService {
         return new AuthFailure(AuthFailureReason.INVALID_CREDENTIALS, INVALID_CREDENTIALS_MESSAGE);
     }
 
+    private AuthFailure accountAlreadyExists() {
+        return new AuthFailure(AuthFailureReason.ACCOUNT_ALREADY_EXISTS, "account already exists");
+    }
+
     public enum AuthFailureReason {
         INVALID_CREDENTIALS,
+        INVALID_REGISTRATION,
+        ACCOUNT_ALREADY_EXISTS,
         GUEST_CREATION_FAILED
     }
 

@@ -80,8 +80,9 @@ class AuthenticationFilterTest {
     }
 
     @Test
-    void loginGuestStaticAndOptionsRequestsAreNotFiltered() throws Exception {
+    void loginRegisterGuestStaticAndOptionsRequestsAreNotFiltered() throws Exception {
         assertTrue(filter.isPublicRequest("POST", "/api/v1/auth/login"));
+        assertTrue(filter.isPublicRequest("POST", "/api/v1/auth/register"));
         assertTrue(filter.isPublicRequest("POST", "/api/v1/auth/guest"));
         assertTrue(filter.isPublicRequest("GET", "/index.html"));
         assertTrue(filter.isPublicRequest("OPTIONS", "/api/v1/session/list"));

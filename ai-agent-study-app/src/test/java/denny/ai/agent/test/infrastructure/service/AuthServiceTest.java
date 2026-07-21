@@ -6,6 +6,8 @@ import denny.ai.agent.infrastructure.dao.po.AuthUserPO;
 import denny.ai.agent.infrastructure.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -91,6 +94,57 @@ class AuthServiceTest {
         assertEquals(AuthUser.UserType.GUEST, first.getUserType());
         assertNull(first.getAccount());
         verify(authUserDao, org.mockito.Mockito.times(2)).insert(any(AuthUserPO.class));
+    }
+
+    @Test
+    void registersActiveAccountWithNormalizedNameAndBcryptPassword() {
+        AuthUser result = authService.register(" new_user ", "secure-password");
+
+        ArgumentCaptor<AuthUserPO> captor = ArgumentCaptor.forClass(AuthUserPO.class);
+        verify(authUserDao).insert(captor.capture());
+        AuthUserPO inserted = captor.getValue();
+        assertTrue(inserted.getUserId().startsWith("user_"));
+        assertEquals("ACCOUNT", inserted.getUserType());
+        assertEquals("new_user", inserted.getAccount());
+        assertEquals("ACTIVE", inserted.getStatus());
+        assertNotEquals("secure-password", inserted.getPasswordHash());
+        assertTrue(passwordEncoder.matches("secure-password", inserted.getPasswordHash()));
+        assertEquals(inserted.getUserId(), result.getUserId());
+        assertEquals(AuthUser.UserType.ACCOUNT, result.getUserType());
+    }
+
+    @Test
+    void rejectsInvalidRegistrationInputsWithoutWritingUser() {
+        String[] invalidAccounts = {null, "", "ab", "user name", "user@example.com", "a".repeat(33)};
+        for (String account : invalidAccounts) {
+            AuthService.AuthFailure failure = assertThrows(AuthService.AuthFailure.class,
+                    () -> authService.register(account, "secure-password"));
+            assertEquals(AuthService.AuthFailureReason.INVALID_REGISTRATION, failure.getReason());
+        }
+
+        for (String password : new String[]{"short", "x".repeat(73)}) {
+            AuthService.AuthFailure failure = assertThrows(AuthService.AuthFailure.class,
+                    () -> authService.register("valid_user", password));
+            assertEquals(AuthService.AuthFailureReason.INVALID_REGISTRATION, failure.getReason());
+        }
+        verify(authUserDao, never()).insert(any(AuthUserPO.class));
+    }
+
+    @Test
+    void rejectsExistingAccountAndConcurrentUniqueKeyConflict() {
+        when(authUserDao.queryByAccount("existing"))
+                .thenReturn(accountUser("existing", passwordEncoder.encode("secure-password"), "ACTIVE"));
+        AuthService.AuthFailure existing = assertThrows(AuthService.AuthFailure.class,
+                () -> authService.register("existing", "secure-password"));
+
+        when(authUserDao.queryByAccount("contended")).thenReturn(null);
+        when(authUserDao.insert(any(AuthUserPO.class)))
+                .thenThrow(new DuplicateKeyException("duplicate"));
+        AuthService.AuthFailure contended = assertThrows(AuthService.AuthFailure.class,
+                () -> authService.register("contended", "secure-password"));
+
+        assertEquals(AuthService.AuthFailureReason.ACCOUNT_ALREADY_EXISTS, existing.getReason());
+        assertEquals(AuthService.AuthFailureReason.ACCOUNT_ALREADY_EXISTS, contended.getReason());
     }
 
     private AuthUserPO accountUser(String account, String passwordHash, String status) {

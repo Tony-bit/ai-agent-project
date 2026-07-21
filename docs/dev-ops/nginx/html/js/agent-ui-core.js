@@ -264,6 +264,25 @@
             : { valid: false, value: normalized, error: '会话 ID 需为 1-64 位字母、数字、下划线或连字符' };
     }
 
+    function validateRegistration({ account, password, confirmPassword }) {
+        const normalizedAccount = String(account == null ? '' : account).trim();
+        if (!/^[A-Za-z0-9_-]{3,32}$/.test(normalizedAccount)) {
+            return {
+                valid: false,
+                field: 'account',
+                error: '账号需为 3-32 位字母、数字、下划线或连字符'
+            };
+        }
+        const normalizedPassword = String(password == null ? '' : password);
+        if (normalizedPassword.length < 8 || normalizedPassword.length > 72) {
+            return { valid: false, field: 'password', error: '密码长度需为 8-72 位' };
+        }
+        if (normalizedPassword !== String(confirmPassword == null ? '' : confirmPassword)) {
+            return { valid: false, field: 'confirmPassword', error: '两次输入的密码不一致' };
+        }
+        return { valid: true, account: normalizedAccount, password: normalizedPassword };
+    }
+
     function normalizeApiBase(value, origin) {
         if (!value) return '';
         try {
@@ -271,6 +290,16 @@
             if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return '';
             const path = url.pathname.replace(/\/$/, '');
             return `${url.origin}${path === '' || path === '/' ? '' : path}`;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function resolveLocalApiBase(origin) {
+        try {
+            const url = new URL(origin);
+            if (!['localhost', '127.0.0.1'].includes(url.hostname)) return '';
+            return `http://${url.hostname}:8090`;
         } catch (_) {
             return '';
         }
@@ -288,10 +317,11 @@
 
         const queryApiBase = normalizeApiBase(params.get('apiBase'), origin);
         const storedApiBase = normalizeApiBase(safeStorageGet(storage, 'agent.apiBase'), origin);
+        const localApiBase = resolveLocalApiBase(origin);
         if (queryApiBase) safeStorageSet(storage, 'agent.apiBase', queryApiBase);
 
         return {
-            apiBase: queryApiBase || storedApiBase || '',
+            apiBase: queryApiBase || storedApiBase || localApiBase,
             userId: userId || defaultUserId
         };
     }
@@ -375,6 +405,7 @@
         buildApiUrl,
         createAuthState,
         validateSessionId,
+        validateRegistration,
         createRequestLifecycle,
         isNearBottom
     };
