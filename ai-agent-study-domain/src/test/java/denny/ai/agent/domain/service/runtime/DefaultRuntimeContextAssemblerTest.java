@@ -94,6 +94,18 @@ public class DefaultRuntimeContextAssemblerTest {
         verify(agentRuntimeConfigCache).getAgentFlowConfig("123");
     }
 
+    @Test
+    public void refreshesSessionRuntimeContextAfterTurn() {
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .sessionId("s1")
+                .userId("u1")
+                .build();
+
+        assembler.afterTurn(request, new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(), null);
+
+        verify(sessionRuntimeContextManager).refresh("s1", "u1");
+    }
+
     private void set(Object target, String fieldName, Object value) throws Exception {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);

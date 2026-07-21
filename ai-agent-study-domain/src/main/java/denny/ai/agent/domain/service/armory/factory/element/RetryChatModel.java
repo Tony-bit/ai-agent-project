@@ -113,7 +113,7 @@ public class RetryChatModel implements ChatModel {
                     Exception exception = error instanceof Exception value
                             ? value : new RuntimeException(error);
                     String errorCode = errorCodeExtractor.extract(exception);
-                    if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCode)) {
+                    if (AiErrorCodes.isContextOverflow(errorCode)) {
                         if (!state.compressionEnabled()) {
                             return Flux.error(error);
                         }
@@ -123,7 +123,7 @@ public class RetryChatModel implements ChatModel {
                                             + " compression attempts", error));
                         }
                         try {
-                            state.currentPrompt = state.compress(state.currentPrompt, "1261");
+                            state.currentPrompt = state.compress(state.currentPrompt, errorCode);
                             return streamAttempt(state);
                         } catch (RuntimeException compressionError) {
                             return Flux.error(compressionError);

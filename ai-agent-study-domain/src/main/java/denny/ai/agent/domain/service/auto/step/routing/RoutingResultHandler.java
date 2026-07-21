@@ -31,6 +31,7 @@ public class RoutingResultHandler {
     public static final String INTENT_SPECIFIC_SLOTS_KEY = "intentSpecificSlots";
     public static final String STOCK_SLOT_KEY = "stockSlot";
     public static final String METRICS_KEY = "intentRoutingMetrics";
+    static final String EXECUTOR_OVERRIDE_KEY = "intentRoutingExecutorOverride";
 
     private static final String TRADING_NODE_BEAN_NAME = "tradingIntentRoutingNode";
 
@@ -62,6 +63,7 @@ public class RoutingResultHandler {
             context.setValue(METRICS_KEY, result.getMetrics());
         }
         publishRoutingConfidenceMetadata(context, result);
+        applyLowConfidenceStockSafetyGate(result, context);
         if (Boolean.TRUE.equals(result.getNeedsClarification())) {
             context.setValue("clarificationPrompt", result.getClarificationPrompt());
             context.setValue("missingInfo", result.getMissingInfo());
@@ -139,6 +141,10 @@ public class RoutingResultHandler {
         if (tasks != null && !tasks.isEmpty()) {
             return multiTaskExecutionNode;
         }
+        String executorOverride = context.getValue(EXECUTOR_OVERRIDE_KEY);
+        if ("generalChatNode".equals(executorOverride)) {
+            return generalChatNode;
+        }
         IntentTypeEnum intent = context.getValue(RECOGNIZED_INTENT_KEY);
         if (intent == null) {
             return generalChatNode;
@@ -149,6 +155,35 @@ public class RoutingResultHandler {
             case INSPECTION -> intelligentInspection;
             default -> generalChatNode;
         };
+    }
+
+    private void applyLowConfidenceStockSafetyGate(
+            MultiIntentRoutingResult result,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) {
+        if (result == null || result.getTaskList() == null) {
+            return;
+        }
+        List<SubTask> tasks = result.getTaskList();
+        if (!Boolean.TRUE.equals(result.getMultiTask()) && tasks.size() == 1) {
+            SubTask task = tasks.get(0);
+            if (isLowConfidenceStockAnalysis(task)) {
+                context.setValue(EXECUTOR_OVERRIDE_KEY, "generalChatNode");
+                log.warn("Low confidence stock analysis routed to general chat: taskId={}", task.getTaskId());
+            }
+            return;
+        }
+        for (SubTask task : tasks) {
+            if (isLowConfidenceStockAnalysis(task)) {
+                task.setExecutorNode("generalChatNode");
+                log.warn("Low confidence stock subtask routed to general chat: taskId={}", task.getTaskId());
+            }
+        }
+    }
+
+    private boolean isLowConfidenceStockAnalysis(SubTask task) {
+        return task != null
+                && task.getIntent() == IntentTypeEnum.STOCK_ANALYSIS
+                && task.getConfidence() == ConfidenceEnum.LOW;
     }
 
     @SuppressWarnings("unchecked")

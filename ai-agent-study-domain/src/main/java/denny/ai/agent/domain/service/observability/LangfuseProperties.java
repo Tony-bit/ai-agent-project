@@ -33,4 +33,16 @@ public class LangfuseProperties {
      * 单次批量 flush 的最大事件数
      */
     private int maxBatchSize = 50;
+
+    /** Number of retries after the initial delivery attempt. */
+    private int maxRetries = 2;
+
+    /** Initial retry backoff in milliseconds. */
+    private long retryBackoffMs = 200;
+
+    /** Upper bound for exponential retry backoff in milliseconds. */
+    private long maxRetryBackoffMs = 2000;
+
+    /** Best-effort shutdown drain budget in milliseconds. */
+    private long shutdownDrainTimeoutMs = 3000;
 }

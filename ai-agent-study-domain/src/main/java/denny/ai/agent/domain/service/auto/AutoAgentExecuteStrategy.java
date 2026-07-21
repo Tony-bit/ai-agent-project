@@ -4,6 +4,7 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.excute.IExecuteStrategy;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.model.valobj.runtime.TurnRuntimeContext;
@@ -13,7 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
-import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 自动执行策略
@@ -31,6 +33,9 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
     @Resource
     private RuntimeContextAssembler runtimeContextAssembler;
 
+    @Resource
+    private ObservabilityService observabilityService;
+
     @Override
     public void execute(ExecuteCommandEntity executeCommandEntity, ResponseBodyEmitter emitter) throws Exception {
         // 创建动态上下文并初始化必要字段
@@ -45,19 +50,30 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         log.info(">>> [AutoAgentExecuteStrategy.execute] dynamicContext创建, hashCode={}, dataObjects={}",
                 System.identityHashCode(dynamicContext), dynamicContext.getDataObjects().keySet());
 
-        // 初始化追踪ID
-        String traceId = UUID.randomUUID().toString().replace("-", "");
+        Map<String, Object> traceMetadata = new HashMap<>();
+        traceMetadata.put("traceName", "auto-agent");
+        traceMetadata.put("owner", "auto_agent");
+        if (executeCommandEntity.getUserId() != null) {
+            traceMetadata.put("userId", executeCommandEntity.getUserId());
+        }
+        if (executeCommandEntity.getAiAgentId() != null) {
+            traceMetadata.put("agentId", executeCommandEntity.getAiAgentId());
+        }
+        String traceId = observabilityService.startTrace(
+                executeCommandEntity.getSessionId(), executeCommandEntity.getMessage(), traceMetadata);
         dynamicContext.setTraceId(traceId);
 
-        TurnRuntimeContext turnContext = runtimeContextAssembler.prepare(executeCommandEntity, dynamicContext);
-        RetryRuntimeContext retryContext = RetryRuntimeContext.from(turnContext);
-
-        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
-                = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
-
-        log.info("开始执行处理器链，agentType={}, aiAgentId={}", executeCommandEntity.getAgentType(), executeCommandEntity.getAiAgentId());
-
+        String output = "";
+        Exception traceFailure = null;
         try {
+            TurnRuntimeContext turnContext = runtimeContextAssembler.prepare(executeCommandEntity, dynamicContext);
+            RetryRuntimeContext retryContext = RetryRuntimeContext.from(turnContext);
+            StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
+                    = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
+
+            log.info("开始执行处理器链，agentType={}, aiAgentId={}",
+                    executeCommandEntity.getAgentType(), executeCommandEntity.getAiAgentId());
+
             Exception executionFailure = null;
             String apply;
             try {
@@ -77,15 +93,29 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
                     }
                 }
             }
+            output = apply == null ? "" : apply;
             log.info("测试结果:{}", apply);
         } catch (Exception e) {
+            traceFailure = e;
             log.error("节点链执行异常: {}", e.getMessage(), e);
             safeComplete(emitter, "执行异常：" + e.getMessage());
-            return;
+        } finally {
+            if (traceId != null && !traceId.isBlank()) {
+                Map<String, Object> finalMetadata = new HashMap<>();
+                finalMetadata.put("owner", "auto_agent");
+                finalMetadata.put("success", traceFailure == null);
+                finalMetadata.put("sessionId", executeCommandEntity.getSessionId());
+                if (traceFailure != null) {
+                    finalMetadata.put("error", traceFailure.getMessage());
+                }
+                observabilityService.endTrace(traceId, output, finalMetadata);
+            }
         }
 
         // 关闭 SSE 流
-        safeComplete(emitter, null);
+        if (traceFailure == null) {
+            safeComplete(emitter, null);
+        }
     }
 
     /**

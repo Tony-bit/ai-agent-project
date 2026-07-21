@@ -3,6 +3,7 @@ package denny.ai.agent.domain.service.intent;
 import denny.ai.agent.domain.adapter.repository.IIntentFewshotSampleRepository;
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
 import denny.ai.agent.domain.service.auto.step.routing.RoutingStructuredOutputValidator;
 import denny.ai.agent.domain.service.auto.step.routing.UnifiedRoutingOutput;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +12,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -51,8 +51,8 @@ public class IntentFewshotService {
     @Resource
     private RoutingStructuredOutputValidator structuredOutputValidator;
 
-    @Value("${intent.routing.fewshot.top-k:5}")
-    private int defaultTopK = 5;
+    @Resource
+    private IntentRoutingProperties intentRoutingProperties;
 
     /**
      * 从 PGvector 检索 Top-K 相似样本
@@ -61,28 +61,58 @@ public class IntentFewshotService {
      * @param k     检索数量
      * @return 相似样本列表
      */
+    public List<IntentFewshotSample> retrieveTopK(String query) {
+        return retrieveTopK(query, intentRoutingProperties.getFewshot().getTopK());
+    }
+
     public List<IntentFewshotSample> retrieveTopK(String query, int k) {
         if (!StringUtils.hasText(query)) {
             log.warn("Few-Shot 检索 query 为空，降级为空列表");
             return List.of();
         }
         try {
+            double similarityThreshold = intentRoutingProperties.getFewshot().getSimilarityThreshold();
+            logQuery(query, k, similarityThreshold);
             SearchRequest request = SearchRequest.builder()
                     .query(query)
                     .topK(k)
-                    .similarityThreshold(0.5)
+                    .similarityThreshold(similarityThreshold)
                     .build();
             List<Document> docs = intentFewshotVectorStore.similaritySearch(request);
-            return docs.stream()
+            List<IntentFewshotSample> samples = docs.stream()
                     .map(this::documentToSample)
                     .filter(this::isValidPromptSample)
                     .limit(k)
                     .collect(Collectors.toList());
+            logResults(docs.size(), samples);
+            return samples;
         } catch (Exception e) {
-            log.warn("Few-Shot PGvector 检索异常，降级为空列表: query={}, error={}",
-                    query, e.getMessage());
+            log.warn("Few-Shot PGvector 检索异常，降级为空列表: queryLength={}, error={}",
+                    query.length(), e.getMessage());
             return List.of();
         }
+    }
+
+    private void logQuery(String query, int topK, double similarityThreshold) {
+        IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+        if (log.isDebugEnabled() && debug.isEnabled() && debug.isIncludeQuery()) {
+            log.debug("Intent Few-Shot retrieval: query={}, topK={}, similarityThreshold={}",
+                    debug.truncate(query), topK, similarityThreshold);
+        }
+    }
+
+    private void logResults(int rawCount, List<IntentFewshotSample> samples) {
+        IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+        if (!log.isDebugEnabled() || !debug.isEnabled() || !debug.isIncludeResults()) {
+            return;
+        }
+        List<String> summaries = samples.stream()
+                .map(sample -> "id=" + sample.getId()
+                        + ", intent=" + sample.getIntentCode()
+                        + ", queryText=" + debug.truncate(sample.getQueryText()))
+                .toList();
+        log.debug("Intent Few-Shot results: rawCount={}, validCount={}, hits={}",
+                rawCount, samples.size(), summaries);
     }
 
     /**

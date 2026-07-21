@@ -37,7 +37,6 @@ import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -79,6 +78,7 @@ public class IntentRoutingServiceTest {
 
         setField(intentRoutingService, "armoryObjectRegistry", armoryObjectRegistry);
         setField(intentRoutingService, "intentFewshotService", intentFewshotService);
+        setField(intentRoutingService, "intentRoutingProperties", new IntentRoutingProperties());
     }
 
     @Test
@@ -270,7 +270,7 @@ public class IntentRoutingServiceTest {
     @Test
     public void testRouteUnified_WhenFewshotFails_StillWorks() throws Exception {
         doThrow(new RuntimeException("vector store unavailable"))
-                .when(intentFewshotService).retrieveTopK("解释向量数据库", 5);
+                .when(intentFewshotService).retrieveTopK("解释向量数据库");
         mockLLMResponse("""
                 {
                   "multiTask": false,
@@ -650,7 +650,7 @@ public class IntentRoutingServiceTest {
         MultiIntentRoutingResult result = intentRoutingService.routeUnified("\u4f60\u597d", List.of(), configVO);
 
         assertEquals(IntentTypeEnum.GENERAL_CHAT, result.getTaskList().get(0).getIntent());
-        verify(intentFewshotService, never()).retrieveTopK(anyString(), anyInt());
+        verify(intentFewshotService, never()).retrieveTopK(anyString());
     }
 
     @Test
@@ -761,7 +761,7 @@ public class IntentRoutingServiceTest {
                 {"intent":"PE_RETRIEVAL","confidence":"HIGH","reasoning":"retrieval task",
                  "baseSlot":{"topic":"RAG docs","sentiment":"neutral"},"intentSpecificSlots":{}}
                 """);
-        when(intentFewshotService.retrieveTopK("summarize RAG docs", 5))
+        when(intentFewshotService.retrieveTopK("summarize RAG docs"))
                 .thenReturn(List.of(IntentFewshotSample.builder()
                         .queryText("检索 RAG 架构资料")
                         .exampleJson("{\"intent\":\"PE_RETRIEVAL\"}")
@@ -772,13 +772,13 @@ public class IntentRoutingServiceTest {
         MultiIntentRoutingResult result = intentRoutingService.routeSplit("combined", List.of(), configVO);
 
         assertEquals(IntentTypeEnum.PE_RETRIEVAL, result.getTaskList().get(0).getIntent());
-        verify(intentFewshotService).retrieveTopK("summarize RAG docs", 5);
-        verify(intentFewshotService, never()).retrieveTopK("combined", 5);
+        verify(intentFewshotService).retrieveTopK("summarize RAG docs");
+        verify(intentFewshotService, never()).retrieveTopK("combined");
     }
 
     @Test
     public void should_retrieve_fewshot_realtime_for_repeated_unified_query() {
-        when(intentFewshotService.retrieveTopK("分析贵州茅台", 5))
+        when(intentFewshotService.retrieveTopK("分析贵州茅台"))
                 .thenReturn(List.of(IntentFewshotSample.builder()
                         .queryText("分析平安银行")
                         .exampleJson("{\"intent\":\"STOCK_ANALYSIS\"}")
@@ -799,13 +799,13 @@ public class IntentRoutingServiceTest {
         intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
         intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
 
-        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台", 5);
+        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台");
         verify(chatModel, times(2)).call(any(Prompt.class));
     }
 
     @Test
     public void should_not_cache_fewshot_failure_for_next_unified_query() {
-        when(intentFewshotService.retrieveTopK("分析贵州茅台", 5))
+        when(intentFewshotService.retrieveTopK("分析贵州茅台"))
                 .thenThrow(new RuntimeException("pgvector down"))
                 .thenReturn(List.of(IntentFewshotSample.builder()
                         .queryText("分析招商银行")
@@ -823,7 +823,7 @@ public class IntentRoutingServiceTest {
         intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
         intentRoutingService.routeUnified("分析贵州茅台", List.of(), configVO);
 
-        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台", 5);
+        verify(intentFewshotService, times(2)).retrieveTopK("分析贵州茅台");
         verify(chatModel, times(2)).call(any(Prompt.class));
     }
 

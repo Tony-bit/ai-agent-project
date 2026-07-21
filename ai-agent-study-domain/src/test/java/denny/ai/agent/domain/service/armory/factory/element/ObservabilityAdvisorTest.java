@@ -14,6 +14,7 @@ import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
@@ -29,6 +30,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -74,7 +76,7 @@ public class ObservabilityAdvisorTest {
         verify(observabilityService).logGeneration(
                 eq("trace-1"),
                 eq("span-1"),
-                eq("chat-client"),
+                eq("test-model"),
                 eq("用户问题"),
                 eq("模型输出内容"),
                 anyMap(),
@@ -122,7 +124,7 @@ public class ObservabilityAdvisorTest {
         verify(observabilityService).logGeneration(
                 eq("trace-1"),
                 eq("span-1"),
-                eq("chat-client"),
+                eq("test-model"),
                 promptCaptor.capture(),
                 outputCaptor.capture(),
                 anyMap(),
@@ -135,6 +137,42 @@ public class ObservabilityAdvisorTest {
         assertEquals("你好", outputCaptor.getValue());
     }
 
+    @Test
+    public void sharedTraceShouldEndSpanButNotRootTrace() {
+        when(observabilityService.startSpan(eq("root-trace"), anyString(), anyMap())).thenReturn("span-1");
+        Map<String, Object> context = new HashMap<>();
+        context.put("trace_id", "root-trace");
+        ChatClientRequest advisedRequest = observabilityAdvisor.before(
+                new ChatClientRequest(new Prompt("hello"), context), callAdvisorChain);
+
+        observabilityAdvisor.after(buildResponse("world", advisedRequest.context()), callAdvisorChain);
+
+        verify(observabilityService, never()).startTrace(anyString(), anyString(), anyMap());
+        verify(observabilityService).endSpan("span-1", true, null);
+        verify(observabilityService, never()).endTrace(anyString(), anyString(), anyMap());
+    }
+
+    @Test
+    public void observationNameShouldNameSpanAndGeneration() {
+        when(observabilityService.startSpan(eq("root-trace"), eq("unified-routing"), anyMap()))
+                .thenReturn("span-1");
+        Map<String, Object> context = new HashMap<>();
+        context.put("trace_id", "root-trace");
+        context.put("observation_name", "unified-routing");
+
+        ChatClientRequest advisedRequest = observabilityAdvisor.before(
+                new ChatClientRequest(new Prompt("route me"), context), callAdvisorChain);
+        observabilityAdvisor.after(buildResponse("routed", advisedRequest.context()), callAdvisorChain);
+
+        verify(observabilityService).startSpan(eq("root-trace"), eq("unified-routing"), anyMap());
+        verify(observabilityService).logGeneration(
+                eq("root-trace"), eq("span-1"), eq("test-model"),
+                eq("route me"), eq("routed"),
+                org.mockito.ArgumentMatchers.argThat(metadata ->
+                        "unified-routing".equals(metadata.get("observationName"))),
+                anyMap());
+    }
+
     private ChatClientRequest buildRequest(String userText) {
         return ChatClientRequest.builder()
                 .prompt(new Prompt(new UserMessage(userText)))
@@ -143,7 +181,9 @@ public class ObservabilityAdvisorTest {
     }
 
     private ChatClientResponse buildResponse(String output, Map<String, Object> context) {
-        ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage(output))));
+        ChatResponse chatResponse = new ChatResponse(
+                List.of(new Generation(new AssistantMessage(output))),
+                ChatResponseMetadata.builder().model("test-model").build());
         return ChatClientResponse.builder()
                 .chatResponse(chatResponse)
                 .context(context)
@@ -156,6 +196,7 @@ public class ObservabilityAdvisorTest {
         context.put("span_id", "span-1");
         context.put("observe_start_at", String.valueOf(System.currentTimeMillis() - 5));
         context.put("input", "用户问题");
+        context.put("observability_trace_owned", true);
         context.put("qa_retrieved_documents", "doc1\ndoc2");
         return context;
     }

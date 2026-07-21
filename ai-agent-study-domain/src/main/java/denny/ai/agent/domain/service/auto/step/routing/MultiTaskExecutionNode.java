@@ -227,7 +227,11 @@ public class MultiTaskExecutionNode extends AbstractExecuteSupport {
 
         ChatClient chatClient = getChatClientByClientId("3001", 0);
 
-        String fullContent = chatClient.prompt(summaryPrompt).call().content();
+        String fullContent = chatClient.prompt(summaryPrompt)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, dynamicContext.getValue("sessionId"))
+                        .param("trace_id", dynamicContext.getTraceId()))
+                .call().content();
         return fullContent;
     }
 

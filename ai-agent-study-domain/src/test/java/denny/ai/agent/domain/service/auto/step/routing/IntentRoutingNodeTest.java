@@ -89,6 +89,7 @@ public class IntentRoutingNodeTest {
     public void setUp() throws Exception {
         intentRoutingNode = new IntentRoutingNode();
         setField(intentRoutingNode, "intentRoutingService", intentRoutingService);
+        setField(intentRoutingNode, "analysisDepthFollowUpResolver", new AnalysisDepthFollowUpResolver());
         setField(intentRoutingNode, "conversationContextProvider", conversationContextProvider);
         setField(intentRoutingNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(intentRoutingNode, "intelligentInspection", intelligentInspection);
@@ -303,6 +304,35 @@ public class IntentRoutingNodeTest {
                 anyString(), historyCaptor.capture(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123"));
         assertEquals(preparedHistory, historyCaptor.getValue());
         verify(conversationContextProvider, never()).getRoutingContext(anyString());
+    }
+
+    @Test
+    public void should_use_resolved_analysis_depth_query_for_routing_and_downstream_execution() throws Exception {
+        request.setMessage("我要进行完整投资分析");
+        List<String> history = List.of(
+                "user: 给我分析一下中国平安",
+                "assistant: 你需要快速了解，还是进行完整投资分析？");
+        dynamicContext.setValue(RuntimeContextKeys.RECENT_HISTORY_MESSAGES, history);
+        when(intentRoutingService.routeUnified(
+                eq("给我分析一下中国平安；进行完整投资分析"), eq(history),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
+                .thenReturn(MultiIntentRoutingResult.builder()
+                        .multiTask(false)
+                        .needsClarification(true)
+                        .missingInfo(List.of("stockCode"))
+                        .clarificationPrompt("请提供股票代码")
+                        .taskList(List.of())
+                        .build());
+        when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingIntentRoutingNode);
+
+        intentRoutingNode.doApply(request, dynamicContext);
+
+        ArgumentCaptor<ExecuteCommandEntity> requestCaptor = ArgumentCaptor.forClass(ExecuteCommandEntity.class);
+        verify(tradingIntentRoutingNode).apply(requestCaptor.capture(), eq(dynamicContext));
+        assertEquals("给我分析一下中国平安；进行完整投资分析", requestCaptor.getValue().getMessage());
+        assertEquals("我要进行完整投资分析", request.getMessage());
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS,
+                dynamicContext.getValue(IntentRoutingNode.RECOGNIZED_INTENT_KEY));
     }
 
     @Test

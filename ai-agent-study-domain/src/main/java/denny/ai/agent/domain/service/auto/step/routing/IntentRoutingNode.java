@@ -5,6 +5,7 @@ import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
+import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
@@ -19,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service("intentRoutingNode")
@@ -31,6 +33,8 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
 
     @Resource
     private IntentRoutingService intentRoutingService;
+    @Resource
+    private AnalysisDepthFollowUpResolver analysisDepthFollowUpResolver;
     @Resource
     private ConversationContextProvider conversationContextProvider;
     @Resource
@@ -56,9 +60,18 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         if (config == null) {
             throw new IllegalStateException("Missing INTENT_ROUTING client configuration");
         }
-        MultiIntentRoutingResult result = intentRoutingService.routeUnified(
-                request.getMessage(), getRecentHistoryMessages(request.getSessionId(), context), config,
-                request.getSessionId());
+        List<String> historyMessages = getRecentHistoryMessages(request.getSessionId(), context);
+        AnalysisDepthFollowUpResolver.Resolution followUp = followUpResolver()
+                .resolve(request.getMessage(), historyMessages);
+        log.debug("Routing history prepared: sessionId={}, historyCount={}, analysisDepthFollowUpResolved={}",
+                request.getSessionId(), historyMessages.size(), followUp.resolved());
+        String effectiveQuery = followUp.effectiveQuery();
+        Map<String, Object> observationContext = observationContext(context);
+        MultiIntentRoutingResult result = observationContext.isEmpty()
+                ? intentRoutingService.routeUnified(effectiveQuery, historyMessages, config, request.getSessionId())
+                : intentRoutingService.routeUnified(
+                        effectiveQuery, historyMessages, config, request.getSessionId(), observationContext);
+        result = followUpResolver().enforce(result, followUp);
         if (!Boolean.TRUE.equals(result.getNeedsClarification())) {
             try {
                 validator().validateSubTasks(result.getTaskList());
@@ -67,7 +80,11 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                 result = intentRoutingService.fallbackMultiIntentResult("Task graph validation failed: " + e.getMessage());
             }
         }
-        String response = handler().handle(request, context, result);
+        logRoutingOutcome(request.getSessionId(), result);
+        ExecuteCommandEntity effectiveRequest = followUp.resolved()
+                ? copyWithMessage(request, effectiveQuery)
+                : request;
+        String response = handler().handle(effectiveRequest, context, result);
         if (Boolean.TRUE.equals(result.getNeedsClarification())) {
             sendClarificationAndComplete(context, request.getSessionId(), response);
         }
@@ -104,6 +121,41 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                         return List.of();
                     }
                 });
+    }
+
+    private void logRoutingOutcome(String sessionId, MultiIntentRoutingResult result) {
+        List<SubTask> tasks = result.getTaskList() == null ? List.of() : result.getTaskList();
+        List<String> outcomes = tasks.stream()
+                .map(task -> String.valueOf(task.getIntent()) + ":" + String.valueOf(task.getConfidence()))
+                .toList();
+        log.info("Intent routing outcome: sessionId={}, multiTask={}, needsClarification={}, tasks={}, missingInfo={}",
+                sessionId, result.getMultiTask(), result.getNeedsClarification(), outcomes, result.getMissingInfo());
+    }
+
+    private Map<String, Object> observationContext(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) {
+        return context.getTraceId() == null || context.getTraceId().isBlank()
+                ? Map.of()
+                : Map.of("trace_id", context.getTraceId());
+    }
+
+    private AnalysisDepthFollowUpResolver followUpResolver() {
+        return analysisDepthFollowUpResolver == null
+                ? new AnalysisDepthFollowUpResolver()
+                : analysisDepthFollowUpResolver;
+    }
+
+    private ExecuteCommandEntity copyWithMessage(ExecuteCommandEntity request, String message) {
+        return ExecuteCommandEntity.builder()
+                .aiAgentId(request.getAiAgentId())
+                .message(message)
+                .sessionId(request.getSessionId())
+                .maxStep(request.getMaxStep())
+                .inputType(request.getInputType())
+                .file(request.getFile())
+                .userId(request.getUserId())
+                .agentType(request.getAgentType())
+                .build();
     }
 
     private void sendClarificationAndComplete(

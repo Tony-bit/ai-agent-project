@@ -85,7 +85,7 @@ public class DefaultPromptCompressionService implements PromptCompressionService
             summary = RetryRuntimeContextHolder.withContext(compressionContext,
                     () -> clientSelection.client().prompt(request).call().content());
         } catch (RuntimeException error) {
-            if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCodeExtractor.extract(error))) {
+            if (AiErrorCodes.isContextOverflow(errorCodeExtractor.extract(error))) {
                 throw new CompressionExhaustedException(
                         "compression request exceeds compression model context window", error);
             }

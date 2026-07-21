@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.auto.step.routing;
 
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
+import denny.ai.agent.domain.model.valobj.IntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.MultiIntentRoutingResult;
 import denny.ai.agent.domain.model.valobj.RoutingExecutionMetrics;
 import denny.ai.agent.domain.model.valobj.SubTask;
@@ -16,6 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import org.springframework.context.ApplicationContext;
 
 import java.util.List;
@@ -26,6 +28,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -36,6 +39,8 @@ public class RoutingResultHandlerTest {
     @Mock private MultiTaskExecutionNode multiTaskExecutionNode;
     @Mock private ApplicationContext applicationContext;
     @Mock private ObservabilityService observabilityService;
+    @Mock private StrategyHandler<ExecuteCommandEntity,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> tradingNode;
 
     private RoutingResultHandler handler;
     private ExecuteCommandEntity request;
@@ -141,6 +146,56 @@ public class RoutingResultHandlerTest {
         assertEquals(IntentTypeEnum.STOCK_ANALYSIS,
                 context.getValue(RoutingResultHandler.RECOGNIZED_INTENT_KEY));
         verify(generalChatNode).apply(any(), any());
+    }
+
+    @Test
+    public void routesLowConfidenceStockAnalysisToGeneralChatWithoutResolvingTradingBean() throws Exception {
+        MultiIntentRoutingResult result = result(false, List.of(
+                task("sub-1", 1, 1, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.LOW)));
+
+        handler.handle(request, context, result);
+
+        IntentRoutingResult diagnosticResult = context.getValue(RoutingResultHandler.ROUTING_RESULT_KEY);
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS,
+                context.getValue(RoutingResultHandler.RECOGNIZED_INTENT_KEY));
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, diagnosticResult.getIntent());
+        assertEquals(ConfidenceEnum.LOW, diagnosticResult.getConfidence());
+        assertEquals(generalChatNode, handler.select(context));
+        verify(generalChatNode).apply(any(), any());
+        verify(applicationContext, never()).getBean("tradingIntentRoutingNode");
+    }
+
+    @Test
+    public void keepsMediumConfidenceStockAnalysisOnTradingPath() throws Exception {
+        when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingNode);
+        MultiIntentRoutingResult result = result(false, List.of(
+                task("sub-1", 1, 1, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.MEDIUM)));
+
+        handler.handle(request, context, result);
+
+        verify(applicationContext).getBean("tradingIntentRoutingNode");
+        verify(tradingNode).apply(request, context);
+    }
+
+    @Test
+    public void sanitizesOnlyLowConfidenceStockSubtasksBeforeMultiTaskExecution() throws Exception {
+        SubTask lowStock = task("sub-1", 1, 3, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.LOW);
+        lowStock.setExecutorNode("tradingStarter");
+        SubTask mediumStock = task("sub-2", 2, 3, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.MEDIUM);
+        mediumStock.setExecutorNode("tradingStarter");
+        SubTask general = task("sub-3", 3, 3, IntentTypeEnum.GENERAL_CHAT, ConfidenceEnum.LOW);
+        general.setExecutorNode("generalChatNode");
+
+        handler.handle(request, context, result(true, List.of(lowStock, mediumStock, general)));
+
+        List<SubTask> storedTasks = context.getValue(MultiTaskExecutionNode.TASK_LIST_KEY);
+        assertEquals("generalChatNode", storedTasks.get(0).getExecutorNode());
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, storedTasks.get(0).getIntent());
+        assertEquals(ConfidenceEnum.LOW, storedTasks.get(0).getConfidence());
+        assertEquals("tradingStarter", storedTasks.get(1).getExecutorNode());
+        assertEquals("generalChatNode", storedTasks.get(2).getExecutorNode());
+        verify(multiTaskExecutionNode).apply(any(), any());
+        verify(applicationContext, never()).getBean("tradingIntentRoutingNode");
     }
 
     private MultiIntentRoutingResult result(boolean multiTask, List<SubTask> tasks) {

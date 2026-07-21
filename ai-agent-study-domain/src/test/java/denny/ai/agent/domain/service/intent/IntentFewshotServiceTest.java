@@ -1,7 +1,12 @@
 package denny.ai.agent.domain.service.intent;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import denny.ai.agent.domain.adapter.repository.IIntentFewshotSampleRepository;
 import denny.ai.agent.domain.model.entity.IntentFewshotSample;
+import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingProperties;
 import denny.ai.agent.domain.service.auto.step.routing.RoutingStructuredOutputValidator;
 import denny.ai.agent.domain.service.auto.step.routing.TaskGraphValidator;
 import org.junit.Before;
@@ -14,6 +19,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -44,6 +50,55 @@ public class IntentFewshotServiceTest {
         ReflectionTestUtils.setField(service, "intentFewshotSampleRepository", repository);
         ReflectionTestUtils.setField(service, "structuredOutputValidator",
                 new RoutingStructuredOutputValidator(new TaskGraphValidator()));
+        ReflectionTestUtils.setField(service, "intentRoutingProperties", new IntentRoutingProperties());
+    }
+
+    @Test
+    public void retrieveTopKUsesConfiguredSearchParameters() {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.getFewshot().setTopK(3);
+        properties.getFewshot().setSimilarityThreshold(0.72d);
+        ReflectionTestUtils.setField(service, "intentRoutingProperties", properties);
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+
+        service.retrieveTopK("configured query");
+
+        ArgumentCaptor<SearchRequest> request = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(vectorStore).similaritySearch(request.capture());
+        assertEquals(3, request.getValue().getTopK());
+        assertEquals(0.72d, request.getValue().getSimilarityThreshold(), 0.0001d);
+    }
+
+    @Test
+    public void debugLoggingRequiresConfigAndOmitsExampleJson() {
+        IntentRoutingProperties properties = new IntentRoutingProperties();
+        properties.getDebug().setEnabled(true);
+        properties.getDebug().setIncludeQuery(true);
+        properties.getDebug().setIncludeResults(true);
+        ReflectionTestUtils.setField(service, "intentRoutingProperties", properties);
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                document(1L, "sample query", "FINANCIAL_GENERAL",
+                        taskExample("FINANCIAL_GENERAL"), 1)));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(IntentFewshotService.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        try {
+            service.retrieveTopK("user query");
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+        }
+
+        String logs = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+        org.junit.Assert.assertTrue(logs.contains("query=user query"));
+        org.junit.Assert.assertTrue(logs.contains("queryText=sample query"));
+        org.junit.Assert.assertFalse(logs.contains(taskExample("FINANCIAL_GENERAL")));
     }
 
     @Test

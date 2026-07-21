@@ -71,14 +71,27 @@ public class AiErrorCodeExtractorTest {
     @Test
     public void testExtractOpenAiRateLimit() {
         Exception e = new Exception("{\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"rate limit\"}}");
-        assertEquals("rate_limit_exceeded", extractor.extract(e));
+        assertEquals("429", extractor.extract(e));
     }
 
     @Test
     public void testExtractOpenAiModelNotFound() {
         Exception e = new Exception("{\"error\":{\"code\":\"model_not_found\"}}");
         assertEquals("model_not_found", extractor.extract(e));
+    }    @Test
+    public void testExtractOpenAiNormalizationToHttpCode() {
+        // DeepSeek body code normalized to HTTP status code for uniform retry config
+        Exception e = new Exception("{\"error\":{\"code\":\"insufficient_balance\",\"message\":\"...\"}}");
+        assertEquals("402", extractor.extract(e));
     }
+
+    @Test
+    public void testExtractOpenAiAuthErrorNormalized() {
+        Exception e = new Exception("{\"error\":{\"code\":\"authentication_error\",\"message\":\"...\"}}");
+        assertEquals("401", extractor.extract(e));
+    }
+
+
 
     @Test
     public void testExtractOpenAiSpecialChars() {

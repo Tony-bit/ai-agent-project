@@ -112,6 +112,26 @@ public class MultiTaskExecutionNodeTest {
         verify(generalChatNode, times(1)).executeSubTask(any(SubTask.class), any());
     }
 
+    @Test
+    public void executesSanitizedLowConfidenceStockTaskWithGeneralChatAndPreservesDiagnostics() throws Exception {
+        SubTask subTask = SubTask.builder()
+                .taskId("sub-low-stock").taskIndex(1).totalTasks(1)
+                .content("分析中国平安").intent(IntentTypeEnum.STOCK_ANALYSIS)
+                .executorNode("generalChatNode").confidence(ConfidenceEnum.LOW)
+                .status(SubTask.SubTaskStatus.PENDING).build();
+        when(generalChatNode.executeSubTask(any(SubTask.class), any())).thenReturn("轻量概览");
+
+        String result = multiTaskExecutionNode.executeSubTask(subTask, dynamicContext);
+
+        assertEquals("轻量概览", result);
+        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, subTask.getIntent());
+        assertEquals(ConfidenceEnum.LOW, subTask.getConfidence());
+        assertEquals("generalChatNode", subTask.getExecutorNode());
+        verify(generalChatNode).executeSubTask(argThat(task ->
+                task.getIntent() == IntentTypeEnum.STOCK_ANALYSIS
+                        && task.getConfidence() == ConfidenceEnum.LOW), eq(dynamicContext));
+    }
+
     /**
      * TC-MTE-002: executorNode=step1AnalyzerNode，执行成功
      */

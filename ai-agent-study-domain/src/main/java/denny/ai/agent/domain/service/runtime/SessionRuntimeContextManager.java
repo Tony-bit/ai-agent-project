@@ -32,17 +32,33 @@ public class SessionRuntimeContextManager {
         long now = System.currentTimeMillis();
         CacheEntry entry = cache.get(sessionId);
         if (entry != null && !entry.isExpired(now, ttlMs)) {
+            log.debug("Session runtime context cache hit: sessionId={}, version={}, historyCount={}",
+                    sessionId, entry.value().getVersion(), entry.value().getRecentHistoryMessages().size());
             return entry.value();
         }
         SessionRuntimeContext context = load(sessionId, userId, now);
         cache.put(sessionId, new CacheEntry(context, now));
+        log.debug("Session runtime context loaded: sessionId={}, version={}, historyCount={}",
+                sessionId, context.getVersion(), context.getRecentHistoryMessages().size());
         return context;
     }
 
     public void clear(String sessionId) {
         if (sessionId != null) {
             cache.remove(sessionId);
+            log.debug("Session runtime context invalidated: sessionId={}", sessionId);
         }
+    }
+
+    public void refresh(String sessionId, String userId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        SessionRuntimeContext context = load(sessionId, userId, now);
+        cache.put(sessionId, new CacheEntry(context, now));
+        log.debug("Session runtime context refreshed: sessionId={}, version={}, historyCount={}",
+                sessionId, context.getVersion(), context.getRecentHistoryMessages().size());
     }
 
     public void clearAll() {

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service("queryDecompositionNode")
@@ -37,10 +38,13 @@ public class QueryDecompositionNode extends AbstractExecuteSupport {
                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) throws Exception {
         long startedAt = System.currentTimeMillis();
         AiAgentClientFlowConfigVO config = requireConfig(context);
-        IntentRoutingService.RoutingCallResult<QueryDecompositionResult> call =
-                intentRoutingService.decomposeQueryWithMetric(
-                        request.getMessage(), history(request.getSessionId(), context), config,
-                        request.getSessionId());
+        Map<String, Object> observationContext = observationContext(context);
+        List<String> history = history(request.getSessionId(), context);
+        IntentRoutingService.RoutingCallResult<QueryDecompositionResult> call = observationContext.isEmpty()
+                ? intentRoutingService.decomposeQueryWithMetric(
+                        request.getMessage(), history, config, request.getSessionId())
+                : intentRoutingService.decomposeQueryWithMetric(
+                        request.getMessage(), history, config, request.getSessionId(), observationContext);
         QueryDecompositionResult result = call.result();
         try {
             taskGraphValidator.validateDecomposedTasks(result.getTaskList());
@@ -94,5 +98,12 @@ public class QueryDecompositionNode extends AbstractExecuteSupport {
                         return List.of();
                     }
                 });
+    }
+
+    private Map<String, Object> observationContext(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) {
+        return context.getTraceId() == null || context.getTraceId().isBlank()
+                ? Map.of()
+                : Map.of("trace_id", context.getTraceId());
     }
 }

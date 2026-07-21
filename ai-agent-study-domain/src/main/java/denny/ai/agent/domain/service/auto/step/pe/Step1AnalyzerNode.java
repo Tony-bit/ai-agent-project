@@ -51,7 +51,11 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport implements Executo
         String prompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
                 request.getMessage(), 1, 1, "[子任务执行]", dynamicContext.getValue("persona"));
 
-        return chatClient.prompt(prompt).call().content();
+        return chatClient.prompt(prompt)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
+                        .param("trace_id", dynamicContext.getTraceId()))
+                .call().content();
     }
 
     @Override
@@ -99,7 +103,6 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport implements Executo
 
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
 
-            long startAt = System.currentTimeMillis();
             String analysisResult = chatClient
                     .prompt(analysisPrompt)
                     .advisors(a -> a
@@ -110,25 +113,6 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport implements Executo
 
             assert analysisResult != null;
             parseAnalysisResult(dynamicContext, analysisResult, requestParameter.getSessionId());
-
-            long latencyMs = System.currentTimeMillis() - startAt;
-            Map<String, Object> generationMetadata = new HashMap<>();
-            generationMetadata.put("node", "step1_analyzer");
-            generationMetadata.put("latencyMs", latencyMs);
-            generationMetadata.put("step", dynamicContext.getStep());
-            generationMetadata.put("analysisLength", analysisResult.length());
-            generationMetadata.put("taskStatus", extractTaskStatus(analysisResult));
-            generationMetadata.put("progress", extractProgress(analysisResult));
-            Map<String, Object> tokenUsage = new HashMap<>();
-            observabilityService.logGeneration(
-                    traceId,
-                    spanId,
-                    aiAgentClientFlowConfigVO.getClientId(),
-                    analysisPrompt,
-                    analysisResult,
-                    generationMetadata,
-                    tokenUsage
-            );
 
             // 将分析结果保存到动态上下文中，供下一步使用
             dynamicContext.setValue("analysisResult", analysisResult);

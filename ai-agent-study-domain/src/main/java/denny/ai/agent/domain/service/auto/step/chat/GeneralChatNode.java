@@ -96,7 +96,8 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
 
         promptBuilder.user(request.getMessage())
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024)
+                        .param("trace_id", dynamicContext.getTraceId()));
 
         String response = streamToEmitter(dynamicContext, promptBuilder, "general_chat_response", request.getSessionId());
 
@@ -138,7 +139,8 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
         var promptBuilder = chatClient.prompt()
                 .user(multimodalMessage)
                 .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0));
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 0)
+                        .param("trace_id", dynamicContext.getTraceId()));
 
         String response = streamToEmitter(dynamicContext, promptBuilder, "multimodal_response", request.getSessionId());
 

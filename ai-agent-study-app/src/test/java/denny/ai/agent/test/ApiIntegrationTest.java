@@ -1,82 +1,71 @@
 package denny.ai.agent.test;
 
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.reader.tika.TikaDocumentReader;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.junit4.SpringRunner;
 
-import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
-@RunWith(SpringRunner.class)
-@SpringBootTest
 public class ApiIntegrationTest {
 
-    @Resource
-    private TokenTextSplitter tokenTextSplitter;
-
-    @Resource
-    private PgVectorStore pgVectorStore;
-
     @Test
-    public void test() {
-        log.info("测试完成");
-    }
-
-    @Test
-    public void testDeepSeekChatClient() {
-        String apiKey = "xxxxxcfc05";
-        assertNotNull("Please set the DEEPSEEK_API_KEY environment variable", apiKey);
-        assertFalse("DEEPSEEK_API_KEY must not be blank", apiKey.isBlank());
+    public void testDeepSeekStreamingChatClient() {
+        String baseUrl = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
+        String apiKey = "sk-ff8961676bbc4d62abfe2c2dad6f2c20";
+        assertNotNull(apiKey, "Please set the DEEPSEEK_API_KEY environment variable");
+        assertFalse(apiKey.isBlank(), "DEEPSEEK_API_KEY must not be blank");
 
         OpenAiApi openAiApi = OpenAiApi.builder()
-                .baseUrl("https://api.deepseek.com")
+                .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .build();
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("deepseek-v4-flash")
+                        .model("deepseek-v4-pro")
                         .build())
                 .build();
         ChatClient chatClient = ChatClient.builder(chatModel).build();
 
-        String content = chatClient.prompt()
+        long startedAt = System.nanoTime();
+        AtomicLong firstContentAt = new AtomicLong();
+        AtomicInteger chunkCount = new AtomicInteger();
+        StringBuilder fullContent = new StringBuilder();
+
+        chatClient.prompt()
                 .user("请只回答 deepseek api ok")
-                .call()
-                .content();
+                .stream()
+                .content()
+                .doOnNext(chunk -> {
+                    if (chunk != null && !chunk.isBlank()) {
+                        firstContentAt.compareAndSet(0L, System.nanoTime());
+                        chunkCount.incrementAndGet();
+                        fullContent.append(chunk);
+                        log.info("DeepSeek stream chunk: {}", chunk);
+                    }
+                })
+                .blockLast();
 
-        assertNotNull("DeepSeek response must not be null", content);
-        assertFalse("DeepSeek response must not be blank", content.isBlank());
-        log.info("DeepSeek API response: {}", content);
-    }
+        String content = fullContent.toString();
+        assertNotNull(content, "DeepSeek response must not be null");
+        assertFalse(content.isBlank(), "DeepSeek response must not be blank");
+        assertTrue(chunkCount.get() > 0, "DeepSeek stream must contain at least one chunk");
 
-    @Test
-    public void upload() {
-        TikaDocumentReader reader = new TikaDocumentReader("classpath:/data/file.text");
-
-        List<Document> documents = reader.get();
-        List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
-
-        documents.forEach(doc -> doc.getMetadata().put("knowledge", "知识库名称"));
-        documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", "知识库名称"));
-
-        pgVectorStore.accept(documentSplitterList);
-
-        log.info("上传完成");
+        long completedAt = System.nanoTime();
+        long firstContentLatencyMs = (firstContentAt.get() - startedAt) / 1_000_000L;
+        long totalLatencyMs = (completedAt - startedAt) / 1_000_000L;
+        log.info("DeepSeek streaming completed: content={}, firstContentLatencyMs={}, "
+                        + "totalLatencyMs={}, chunkCount={}",
+                content, firstContentLatencyMs, totalLatencyMs, chunkCount.get());
     }
 
 }

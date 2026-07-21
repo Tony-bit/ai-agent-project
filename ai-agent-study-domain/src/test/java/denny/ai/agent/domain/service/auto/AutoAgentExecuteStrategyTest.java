@@ -4,6 +4,7 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.model.valobj.runtime.TurnRuntimeContext;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
@@ -22,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +40,9 @@ public class AutoAgentExecuteStrategyTest {
     private RuntimeContextAssembler runtimeContextAssembler;
 
     @Mock
+    private ObservabilityService observabilityService;
+
+    @Mock
     private StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> strategyHandler;
 
     private DefaultAutoAgentExecuteStrategyFactory.DynamicContext capturedContext;
@@ -48,8 +53,10 @@ public class AutoAgentExecuteStrategyTest {
         autoAgentExecuteStrategy = new AutoAgentExecuteStrategy();
         inject("defaultAutoAgentExecuteStrategyFactory", defaultAutoAgentExecuteStrategyFactory);
         inject("runtimeContextAssembler", runtimeContextAssembler);
+        inject("observabilityService", observabilityService);
 
         when(defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler()).thenReturn(strategyHandler);
+        when(observabilityService.startTrace(any(), any(), any())).thenReturn("root-trace-001");
         turnContext = TurnRuntimeContext.builder()
                 .sessionId("session-001")
                 .traceId("trace-001")
@@ -87,7 +94,36 @@ public class AutoAgentExecuteStrategyTest {
         autoAgentExecuteStrategy.execute(request, new ResponseBodyEmitter());
 
         org.mockito.Mockito.verify(runtimeContextAssembler).prepare(org.mockito.Mockito.eq(request), any());
-        assertNotNull(capturedContext.getTraceId());
+        assertEquals("root-trace-001", capturedContext.getTraceId());
+    }
+
+    @Test
+    public void executeStartsAndEndsRootTraceExactlyOnceOnSuccess() throws Exception {
+        autoAgentExecuteStrategy.execute(request(), new ResponseBodyEmitter());
+
+        verify(observabilityService, times(1)).startTrace(eq("session-001"), eq("define vector database"), any());
+        verify(observabilityService, times(1)).endTrace(eq("root-trace-001"), eq("ok"), any());
+    }
+
+    @Test
+    public void prepareFailureStillEndsRootTraceExactlyOnce() throws Exception {
+        doThrow(new IllegalStateException("prepare failed"))
+                .when(runtimeContextAssembler).prepare(any(), any());
+
+        autoAgentExecuteStrategy.execute(request(), new ResponseBodyEmitter());
+
+        verify(observabilityService, times(1)).startTrace(eq("session-001"), eq("define vector database"), any());
+        verify(observabilityService, times(1)).endTrace(eq("root-trace-001"), eq(""), any());
+        verify(runtimeContextAssembler, never()).afterTurn(any(), any(), any());
+    }
+
+    @Test
+    public void handlerFailureEndsRootTraceExactlyOnce() throws Exception {
+        when(strategyHandler.apply(any(), any())).thenThrow(new RuntimeException("handler failed"));
+
+        autoAgentExecuteStrategy.execute(request(), new ResponseBodyEmitter());
+
+        verify(observabilityService, times(1)).endTrace(eq("root-trace-001"), eq(""), any());
     }
 
     @Test

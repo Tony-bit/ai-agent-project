@@ -65,16 +65,13 @@ public abstract class RetryStrategy<T> {
 
         while (modelCalls < maxModelCalls) {
             modelCalls++;
-            log.info("[Retry] traceId={}, sessionId={}, modelCall={}/{}, ordinaryRetriesRemaining={}, promptTokens={}",
-                    traceId(), sessionId(), modelCalls, maxModelCalls, ordinaryRetriesRemaining,
-                    TokenCountUtils.estimate(currentPrompt.toString()));
             try {
                 return doExecute(currentPrompt);
             } catch (Exception error) {
                 String errorCode = errorCodeExtractor.extract(error);
                 log.warn("[Retry] traceId={}, sessionId={}, modelCall={}/{}, errorCode={}",
                         traceId(), sessionId(), modelCalls, maxModelCalls, errorCode);
-                if (AiErrorCodes.CONTEXT_OVERFLOW.equals(errorCode)) {
+                if (AiErrorCodes.isContextOverflow(errorCode)) {
                     if (!compressionEnabled()) {
                         return onExhausted(toRuntimeException(error));
                     }
@@ -82,7 +79,7 @@ public abstract class RetryStrategy<T> {
                         throw new CompressionExhaustedException(
                                 "context overflow after " + compressionAttempts + " compression attempts", error);
                     }
-                    currentPrompt = compress(currentPrompt, ++compressionAttempts, "1261");
+                    currentPrompt = compress(currentPrompt, ++compressionAttempts, errorCode);
                     continue;
                 }
 

@@ -72,6 +72,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     private IntentFewshotService intentFewshotService;
 
     @Resource
+    private IntentRoutingProperties intentRoutingProperties;
+
+    @Resource
     private TaskGraphValidator taskGraphValidator = new TaskGraphValidator();
 
     @Resource
@@ -136,9 +139,17 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                                          List<String> historyMessages,
                                                                          AiAgentClientFlowConfigVO configVO,
                                                                          String conversationId) {
+        return decomposeQueryWithMetric(userMessage, historyMessages, configVO, conversationId, Map.of());
+    }
+
+    RoutingCallResult<QueryDecompositionResult> decomposeQueryWithMetric(String userMessage,
+                                                                         List<String> historyMessages,
+                                                                         AiAgentClientFlowConfigVO configVO,
+                                                                         String conversationId,
+                                                                         Map<String, Object> observationContext) {
         String prompt = IntentRoutingPrompt.buildQueryDecompositionPrompt(userMessage, historyMessages);
         return callRoutingModel("query-decomposition", null, 0, prompt, configVO,
-                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_DECOMPOSITION, Map.of()),
+                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_DECOMPOSITION, observationContext),
                 structuredOutputValidator.queryDecomposition(),
                 response -> parseQueryDecompositionResponse(response, userMessage),
                 error -> fallbackDecomposition(userMessage, error));
@@ -164,10 +175,21 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                                           List<String> historyMessages,
                                                                           AiAgentClientFlowConfigVO configVO,
                                                                           String conversationId) {
+        return routeTaskIntentSlotsWithMetric(
+                taskContent, taskId, callIndex, historyMessages, configVO, conversationId, Map.of());
+    }
+
+    RoutingCallResult<IntentRoutingResult> routeTaskIntentSlotsWithMetric(String taskContent,
+                                                                          String taskId,
+                                                                          int callIndex,
+                                                                          List<String> historyMessages,
+                                                                          AiAgentClientFlowConfigVO configVO,
+                                                                          String conversationId,
+                                                                          Map<String, Object> observationContext) {
         List<IntentFewshotSample> fewshotSamples = retrieveFewshotSamples(taskContent);
         String prompt = IntentRoutingPrompt.buildTaskRoutingSlotPrompt(taskContent, historyMessages, fewshotSamples);
         return callRoutingModel("task-routing-slot", taskId, callIndex, prompt, configVO,
-                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_SLOT, Map.of()),
+                routingAdvisorContext(conversationId, ConversationContextAdvisor.SCENE_SLOT, observationContext),
                 structuredOutputValidator.taskIntentRouting(),
                 response -> {
                     IntentRoutingResult parsed = parseResponse(response);
@@ -186,10 +208,18 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                                                List<String> historyMessages,
                                                AiAgentClientFlowConfigVO configVO,
                                                String conversationId) {
+        return routeSplit(userMessage, historyMessages, configVO, conversationId, Map.of());
+    }
+
+    public MultiIntentRoutingResult routeSplit(String userMessage,
+                                               List<String> historyMessages,
+                                               AiAgentClientFlowConfigVO configVO,
+                                               String conversationId,
+                                               Map<String, Object> observationContext) {
         long startedAt = System.currentTimeMillis();
         RoutingExecutionMetrics metrics = emptyMetrics(IntentRoutingMode.SPLIT);
         RoutingCallResult<QueryDecompositionResult> decompositionCall =
-                decomposeQueryWithMetric(userMessage, historyMessages, configVO, conversationId);
+                decomposeQueryWithMetric(userMessage, historyMessages, configVO, conversationId, observationContext);
         metrics.addStage(decompositionCall.metric());
         QueryDecompositionResult decomposition = validateOrFallbackDecomposition(
                 decompositionCall.result(), userMessage, decompositionCall.metric());
@@ -201,7 +231,8 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         for (int i = 0; i < orderedTasks.size(); i++) {
             DecomposedTask task = orderedTasks.get(i);
             RoutingCallResult<IntentRoutingResult> routingCall = routeTaskIntentSlotsWithMetric(
-                    task.getContent(), task.getTaskId(), i + 1, historyMessages, configVO, conversationId);
+                    task.getContent(), task.getTaskId(), i + 1, historyMessages, configVO,
+                    conversationId, observationContext);
             metrics.addStage(routingCall.metric());
             tasks.add(toSubTask(task, routingCall.result()));
         }
@@ -297,14 +328,21 @@ public class IntentRoutingService extends AbstractExecuteSupport {
 
     private List<IntentFewshotSample> retrieveFewshotSamples(String userMessage) {
         if (shouldSkipFewshotRetrieval(userMessage)) {
-            log.debug("Few-Shot bypassed for trivial general chat input: userMessage={}", userMessage);
+            IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+            if (log.isDebugEnabled() && debug.isEnabled() && debug.isIncludeQuery()) {
+                log.debug("Few-Shot bypassed for trivial general chat input: userMessage={}",
+                        debug.truncate(userMessage));
+            } else {
+                log.debug("Few-Shot bypassed for trivial general chat input: inputLength={}",
+                        userMessage == null ? 0 : userMessage.length());
+            }
             return List.of();
         }
         try {
-            return intentFewshotService.retrieveTopK(userMessage, 5);
+            return intentFewshotService.retrieveTopK(userMessage);
         } catch (Exception e) {
-            log.warn("Few-Shot 检索失败，降级为空样本: userMessage={}, error={}",
-                    userMessage, e.getMessage());
+            log.warn("Few-Shot 检索失败，降级为空样本: inputLength={}, error={}",
+                    userMessage == null ? 0 : userMessage.length(), e.getMessage());
             return List.of();
         }
     }
@@ -577,12 +615,14 @@ public class IntentRoutingService extends AbstractExecuteSupport {
         String content = "";
         ChatResponse response = null;
         try {
+            logFinalPrompt(stageName, prompt);
             ChatClient chatClient = getChatClientByClientId(configVO.getClientId(), 0);
             Map<String, Object> advisorContext = new HashMap<>();
             if (observationContext != null) {
                 advisorContext.putAll(observationContext);
             }
             advisorContext.putIfAbsent("client_id", configVO.getClientId());
+            advisorContext.putIfAbsent("observation_name", stageName);
             response = ResponseValidationContext.withValidator(validator,
                     () -> chatClient.prompt(prompt)
                             .options(jsonObjectOptions())
@@ -595,6 +635,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             content = response == null || response.getResult() == null
                     || response.getResult().getOutput() == null
                     ? null : response.getResult().getOutput().getText();
+            logModelResponse(stageName, content);
             RoutingStageMetric metric = buildMetric(stageName, taskId, callIndex, configVO.getClientId(),
                     startedAt, prompt, content, response, true, null, null);
             metric.setJsonModeEnabled(true);
@@ -606,7 +647,9 @@ public class IntentRoutingService extends AbstractExecuteSupport {
                 return new RoutingCallResult<>(fallback.apply(metric.getErrorMessage()), metric);
             }
             try {
-                return new RoutingCallResult<>(parser.apply(content), metric);
+                T parsed = parser.apply(content);
+                logParsedResult(stageName, parsed);
+                return new RoutingCallResult<>(parsed, metric);
             } catch (ResponseValidationException e) {
                 metric.setSuccess(false);
                 metric.setErrorMessage(e.getMessage());
@@ -621,6 +664,30 @@ public class IntentRoutingService extends AbstractExecuteSupport {
             metric.setSchemaValidationEnabled(validator != null);
             log.error("Routing model call failed: stage={}, taskId={}, error={}", stageName, taskId, e.getMessage(), e);
             return new RoutingCallResult<>(fallback.apply("LLM调用异常: " + e.getMessage()), metric);
+        }
+    }
+
+    private void logFinalPrompt(String stageName, String prompt) {
+        IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+        if (log.isDebugEnabled() && debug.isEnabled() && debug.isIncludeFinalPrompt()) {
+            log.debug("Intent routing final prompt: stage={}, prompt={}",
+                    stageName, debug.truncate(prompt));
+        }
+    }
+
+    private void logModelResponse(String stageName, String content) {
+        IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+        if (log.isDebugEnabled() && debug.isEnabled() && debug.isIncludeModelResponse()) {
+            log.debug("Intent routing raw model response: stage={}, response={}",
+                    stageName, debug.truncate(content));
+        }
+    }
+
+    private void logParsedResult(String stageName, Object result) {
+        IntentRoutingProperties.Debug debug = intentRoutingProperties.getDebug();
+        if (log.isDebugEnabled() && debug.isEnabled() && debug.isIncludeResults()) {
+            log.debug("Intent routing parsed result: stage={}, result={}",
+                    stageName, debug.truncate(JSON.toJSONString(result)));
         }
     }
 

@@ -67,7 +67,6 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport {
             // 获取对话客户端
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), taskType);
 
-            long startAt = System.currentTimeMillis();
             String executionResult;
             if (taskType == 3) {
                 // 知识检索任务：UserMessage 只放用户问题，AssistantMessage 放分析结果
@@ -101,32 +100,6 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport {
 
             assert executionResult != null;
             parseExecutionResult(dynamicContext, executionResult, requestParameter.getSessionId());
-
-            long latencyMs = System.currentTimeMillis() - startAt;
-            Map<String, Object> generationMetadata = new HashMap<>();
-            generationMetadata.put("node", "step2_precision_executor");
-            generationMetadata.put("latencyMs", latencyMs);
-            generationMetadata.put("step", dynamicContext.getStep());
-            generationMetadata.put("taskType", taskType);
-            generationMetadata.put("executionLength", executionResult.length());
-            generationMetadata.put("analysisLength", analysisResult.length());
-            generationMetadata.put("isRagTask", taskType == 3);
-            Map<String, Object> tokenUsage = new HashMap<>();
-
-            // 构建输入文本用于日志记录：RAG 分支用用户问题 + 分析结果拼接，非 RAG 用完整的 executionPrompt
-            String logInput = (taskType == 3)
-                    ? requestParameter.getMessage() + "\n\n【任务分析结果】\n" + analysisResult
-                    : String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
-                            requestParameter.getMessage(), analysisResult);
-            observabilityService.logGeneration(
-                    traceId,
-                    spanId,
-                    aiAgentClientFlowConfigVO.getClientId(),
-                    logInput,
-                    executionResult,
-                    generationMetadata,
-                    tokenUsage
-            );
 
             // 将执行结果保存到动态上下文中，供下一步使用
             dynamicContext.setValue("executionResult", executionResult);

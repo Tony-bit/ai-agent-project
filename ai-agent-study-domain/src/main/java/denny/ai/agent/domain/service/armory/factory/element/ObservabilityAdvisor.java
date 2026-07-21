@@ -30,6 +30,8 @@ public class ObservabilityAdvisor implements BaseAdvisor {
     private static final String START_AT_KEY = "observe_start_at";
     private static final String SESSION_ID_KEY = "chat_memory_conversation_id";
     private static final String INPUT_KEY = "input";
+    private static final String TRACE_OWNED_KEY = "observability_trace_owned";
+    private static final String OBSERVATION_NAME_KEY = "observation_name";
 
     private final ObservabilityService observabilityService;
 
@@ -48,18 +50,22 @@ public class ObservabilityAdvisor implements BaseAdvisor {
                 ? String.valueOf(context.get(TRACE_ID_KEY))
                 : "";
 
-        if (StringUtils.isBlank(traceId)) {
+        boolean ownsTrace = StringUtils.isBlank(traceId);
+        if (ownsTrace) {
             Map<String, Object> traceMetadata = new HashMap<>();
             traceMetadata.put("advisor", getName());
             traceMetadata.put("sessionId", sessionId);
             traceId = observabilityService.startTrace(sessionId, input, traceMetadata);
             context.put(TRACE_ID_KEY, traceId);
         }
+        context.put(TRACE_OWNED_KEY, ownsTrace);
 
         Map<String, Object> spanMetadata = new HashMap<>();
         spanMetadata.put("advisor", getName());
         spanMetadata.put("sessionId", sessionId);
-        String spanId = observabilityService.startSpan(traceId, "chat_client_call", spanMetadata);
+        String observationName = observationName(context, "chat_client_call");
+        spanMetadata.put("observationName", observationName);
+        String spanId = observabilityService.startSpan(traceId, observationName, spanMetadata);
 
         context.put(INPUT_KEY, input);
         context.put(SPAN_ID_KEY, spanId);
@@ -101,6 +107,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         Map<String, Object> generationMetadata = new HashMap<>();
         generationMetadata.put("advisor", getName());
         generationMetadata.put("latencyMs", latencyMs);
+        generationMetadata.put("observationName", observationName(context, "llm-generation"));
 
         String retrievedDocuments = asString(context.get("qa_retrieved_documents"));
         generationMetadata.put("ragRetrievedChars", retrievedDocuments.length());
@@ -108,9 +115,9 @@ public class ObservabilityAdvisor implements BaseAdvisor {
 
         if (StringUtils.isNotBlank(traceId) && StringUtils.isNotBlank(spanId)) {
             Map<String, Object> tokenUsage = extractTokenUsage(chatClientResponse);
-            observabilityService.logGeneration(traceId, spanId, "chat-client", input, output, generationMetadata, tokenUsage);
+            observabilityService.logGeneration(traceId, spanId, model, input, output, generationMetadata, tokenUsage);
             observabilityService.endSpan(spanId, true, null);
-            observabilityService.endTrace(traceId, output, buildTraceMetadata(context, latencyMs, model));
+            endOwnedTrace(context, traceId, output, buildTraceMetadata(context, latencyMs, model));
         }
 
         ChatResponse.Builder chatResponseBuilder = ChatResponse.builder().from(chatClientResponse.chatResponse());
@@ -136,9 +143,7 @@ public class ObservabilityAdvisor implements BaseAdvisor {
             if (StringUtils.isNotBlank(spanId)) {
                 observabilityService.endSpan(spanId, false, e.getMessage());
             }
-            if (StringUtils.isNotBlank(traceId)) {
-                observabilityService.endTrace(traceId, "", buildErrorTraceMetadata(context, e));
-            }
+            endOwnedTrace(context, traceId, "", buildErrorTraceMetadata(context, e));
             throw e;
         }
     }
@@ -440,14 +445,14 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         observabilityService.logGeneration(
                 traceId,
                 spanId,
-                "chat-client",
+                model,
                 input,
                 output,
                 buildGenerationMetadata(context, latencyMs),
                 extractTokenUsage(lastResponse)
         );
         observabilityService.endSpan(spanId, true, null);
-        observabilityService.endTrace(traceId, output, buildTraceMetadata(context, latencyMs, model));
+        endOwnedTrace(context, traceId, output, buildTraceMetadata(context, latencyMs, model));
     }
 
     private void endObservationOnError(Map<String, Object> context, Throwable error) {
@@ -456,8 +461,16 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         if (StringUtils.isNotBlank(spanId)) {
             observabilityService.endSpan(spanId, false, error != null ? error.getMessage() : null);
         }
-        if (StringUtils.isNotBlank(traceId)) {
-            observabilityService.endTrace(traceId, "", buildErrorTraceMetadata(context, error));
+        endOwnedTrace(context, traceId, "", buildErrorTraceMetadata(context, error));
+    }
+
+    private void endOwnedTrace(Map<String, Object> context,
+                               String traceId,
+                               String output,
+                               Map<String, Object> metadata) {
+        if (StringUtils.isNotBlank(traceId)
+                && Boolean.parseBoolean(asString(context.get(TRACE_OWNED_KEY)))) {
+            observabilityService.endTrace(traceId, output, metadata);
         }
     }
 
@@ -465,11 +478,17 @@ public class ObservabilityAdvisor implements BaseAdvisor {
         Map<String, Object> generationMetadata = new HashMap<>();
         generationMetadata.put("advisor", getName());
         generationMetadata.put("latencyMs", latencyMs);
+        generationMetadata.put("observationName", observationName(context, "llm-generation"));
 
         String retrievedDocuments = asString(context.get("qa_retrieved_documents"));
         generationMetadata.put("ragRetrievedChars", retrievedDocuments.length());
         generationMetadata.put("ragRetrievedHitCount", countRetrievedHits(retrievedDocuments));
         return generationMetadata;
+    }
+
+    private String observationName(Map<String, Object> context, String fallback) {
+        String configured = context == null ? "" : asString(context.get(OBSERVATION_NAME_KEY));
+        return StringUtils.isBlank(configured) ? fallback : configured;
     }
 
     private Map<String, Object> buildTraceMetadata(Map<String, Object> context, long latencyMs, String model) {

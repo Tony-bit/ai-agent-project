@@ -4,6 +4,16 @@ server:
 intent:
   routing:
     mode: UNIFIED
+    fewshot:
+      top-k: ${INTENT_ROUTING_FEWSHOT_TOP_K:5}
+      similarity-threshold: ${INTENT_ROUTING_FEWSHOT_SIMILARITY_THRESHOLD:0.5}
+    debug:
+      enabled: ${INTENT_ROUTING_DEBUG_ENABLED:false}
+      include-query: ${INTENT_ROUTING_DEBUG_INCLUDE_QUERY:false}
+      include-results: ${INTENT_ROUTING_DEBUG_INCLUDE_RESULTS:false}
+      include-final-prompt: ${INTENT_ROUTING_DEBUG_INCLUDE_FINAL_PROMPT:false}
+      include-model-response: ${INTENT_ROUTING_DEBUG_INCLUDE_MODEL_RESPONSE:false}
+      max-content-length: ${INTENT_ROUTING_DEBUG_MAX_CONTENT_LENGTH:12000}
 
 # 线程池配置
 thread:

@@ -5,6 +5,7 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.runtime.TurnRuntimeContext;
 import denny.ai.agent.domain.service.auto.AutoAgentExecuteStrategy;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.domain.service.observability.ObservabilityService;
 import denny.ai.agent.domain.service.runtime.RuntimeContextAssembler;
 import org.junit.Before;
 import org.junit.Test;
@@ -95,11 +96,14 @@ public class AutoAgentStrategyTest {
         AutoAgentExecuteStrategy strategy = new AutoAgentExecuteStrategy();
         DefaultAutoAgentExecuteStrategyFactory localFactory = mock(DefaultAutoAgentExecuteStrategyFactory.class);
         RuntimeContextAssembler localRuntimeContextAssembler = mock(RuntimeContextAssembler.class);
+        ObservabilityService observabilityService = mock(ObservabilityService.class);
         @SuppressWarnings("unchecked")
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> localHandler =
                 mock(StrategyHandler.class);
         inject(strategy, "defaultAutoAgentExecuteStrategyFactory", localFactory);
         inject(strategy, "runtimeContextAssembler", localRuntimeContextAssembler);
+        inject(strategy, "observabilityService", observabilityService);
+        when(observabilityService.startTrace(anyString(), anyString(), any())).thenReturn("trace-123");
         when(localFactory.armoryStrategyHandler()).thenReturn(localHandler);
         when(localRuntimeContextAssembler.prepare(any(), any())).thenReturn(TurnRuntimeContext.builder()
                 .sessionId("test-session-123")
@@ -120,6 +124,7 @@ public class AutoAgentStrategyTest {
         strategy.execute(request, countingEmitter);
 
         assertEquals(1, countingEmitter.completeCount);
+        verify(observabilityService).endTrace(eq("trace-123"), eq("ok"), any());
     }
 
     /**

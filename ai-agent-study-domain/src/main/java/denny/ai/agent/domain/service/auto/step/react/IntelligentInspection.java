@@ -55,7 +55,11 @@ public class IntelligentInspection extends AbstractExecuteSupport implements Exe
                 java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                 request.getSessionId());
 
-        return chatClient.prompt(prompt).call().content();
+        return chatClient.prompt(prompt)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, request.getSessionId())
+                        .param("trace_id", dynamicContext.getTraceId()))
+                .call().content();
     }
 
     @Override
@@ -86,7 +90,6 @@ public class IntelligentInspection extends AbstractExecuteSupport implements Exe
             // 获取对话客户端
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId(), 0);
 
-            long startAt = System.currentTimeMillis();
             String inspectionResult = chatClient
                     .prompt(inspectionPrompt)
                     .advisors(a -> a
@@ -98,39 +101,12 @@ public class IntelligentInspection extends AbstractExecuteSupport implements Exe
             assert inspectionResult != null;
             log.info("\n🔍 === 巡检结果 ===\n{}", inspectionResult);
 
-            long latencyMs = System.currentTimeMillis() - startAt;
-            if (StringUtils.isNotBlank(traceId) && StringUtils.isNotBlank(spanId)) {
-                Map<String, Object> generationMetadata = new HashMap<>();
-                generationMetadata.put("node", "intelligent_inspection");
-                generationMetadata.put("latencyMs", latencyMs);
-                generationMetadata.put("inspectionLength", inspectionResult.length());
-                Map<String, Object> tokenUsage = new HashMap<>();
-                observabilityService.logGeneration(
-                        traceId,
-                        spanId,
-                        aiAgentClientFlowConfigVO.getClientId(),
-                        inspectionPrompt,
-                        inspectionResult,
-                        generationMetadata,
-                        tokenUsage
-                );
-            }
-
             // 发送巡检报告到前端
             sendInspectionReport(dynamicContext, inspectionResult, executeCommandEntity.getSessionId());
 
             // 标记任务完成
             dynamicContext.setCompleted(true);
             sendCompleteResult(dynamicContext, executeCommandEntity.getSessionId());
-
-            if (StringUtils.isNotBlank(traceId)) {
-                Map<String, Object> traceMetadata = new HashMap<>();
-                traceMetadata.put("node", "intelligent_inspection");
-                traceMetadata.put("completed", true);
-                traceMetadata.put("sessionId", executeCommandEntity.getSessionId());
-                traceMetadata.put("inspectionLength", inspectionResult.length());
-                observabilityService.endTrace(traceId, inspectionResult, traceMetadata);
-            }
 
             if (StringUtils.isNotBlank(spanId)) {
                 observabilityService.endSpan(spanId, true, null);

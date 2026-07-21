@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service("taskRoutingSlotNode")
@@ -49,12 +50,15 @@ public class TaskRoutingSlotNode extends AbstractExecuteSupport {
                 .sorted(Comparator.comparing(DecomposedTask::getTaskIndex))
                 .toList();
         List<SubTask> tasks = new ArrayList<>();
+        Map<String, Object> observationContext = observationContext(context);
         for (int i = 0; i < ordered.size(); i++) {
             DecomposedTask task = ordered.get(i);
-            IntentRoutingService.RoutingCallResult<IntentRoutingResult> call =
-                    intentRoutingService.routeTaskIntentSlotsWithMetric(
+            IntentRoutingService.RoutingCallResult<IntentRoutingResult> call = observationContext.isEmpty()
+                    ? intentRoutingService.routeTaskIntentSlotsWithMetric(
+                            task.getContent(), task.getTaskId(), i + 1, history, config, request.getSessionId())
+                    : intentRoutingService.routeTaskIntentSlotsWithMetric(
                             task.getContent(), task.getTaskId(), i + 1, history, config,
-                            request.getSessionId());
+                            request.getSessionId(), observationContext);
             metrics.addStage(call.metric());
             tasks.add(intentRoutingService.toSubTask(task, call.result()));
         }
@@ -90,5 +94,12 @@ public class TaskRoutingSlotNode extends AbstractExecuteSupport {
                         return List.of();
                     }
                 });
+    }
+
+    private Map<String, Object> observationContext(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context) {
+        return context.getTraceId() == null || context.getTraceId().isBlank()
+                ? Map.of()
+                : Map.of("trace_id", context.getTraceId());
     }
 }

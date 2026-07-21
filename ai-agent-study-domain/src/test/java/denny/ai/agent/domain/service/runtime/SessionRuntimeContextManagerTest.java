@@ -76,6 +76,25 @@ public class SessionRuntimeContextManagerTest {
     }
 
     @Test
+    public void refreshesCacheWithPersistedHistoryForNextTurn() {
+        when(chatMemoryPersistenceService.getConversationHistory("s1"))
+                .thenReturn(List.of())
+                .thenReturn(List.of(
+                        ChatMessageEntity.builder().role("user").content("analyze Ping An").messageIndex(1).build(),
+                        ChatMessageEntity.builder().role("assistant").content("choose depth").messageIndex(2).build()
+                ));
+
+        SessionRuntimeContext beforePersistence = manager.getOrLoad("s1", "guest");
+        manager.refresh("s1", "guest");
+        SessionRuntimeContext afterPersistence = manager.getOrLoad("s1", "guest");
+
+        assertEquals(List.of(), beforePersistence.getRecentHistoryMessages());
+        assertEquals(List.of("user: analyze Ping An", "assistant: choose depth"),
+                afterPersistence.getRecentHistoryMessages());
+        verify(chatMemoryPersistenceService, times(2)).getConversationHistory("s1");
+    }
+
+    @Test
     public void blankSessionIdDoesNotLoadOrCacheHistory() {
         SessionRuntimeContext context = manager.getOrLoad(" ", "u1");
 

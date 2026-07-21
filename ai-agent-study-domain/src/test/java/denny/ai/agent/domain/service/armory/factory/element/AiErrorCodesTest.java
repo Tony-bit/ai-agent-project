@@ -61,13 +61,15 @@ public class AiErrorCodesTest {
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("403"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("408"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("409"));
+        assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("402"));
+        assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("422"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("429"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("500"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("502"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("503"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("504"));
         assertTrue(AiErrorCodes.HTTP_STATUS_CODES.contains("529"));
-        assertEquals(11, AiErrorCodes.HTTP_STATUS_CODES.size());
+        assertEquals(13, AiErrorCodes.HTTP_STATUS_CODES.size());
     }
 
     @Test

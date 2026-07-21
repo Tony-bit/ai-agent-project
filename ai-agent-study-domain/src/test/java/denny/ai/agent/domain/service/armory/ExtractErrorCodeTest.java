@@ -39,7 +39,7 @@ public class ExtractErrorCodeTest {
     public void testExtractOpenAIFormat() {
         String code = extractor.extract(
                 new RuntimeException("{\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit exceeded\"}}"));
-        assertEquals("rate_limit_exceeded", code);
+        assertEquals("429", code);
     }
 
     // TC-Retry-043: 从类名推断 errorCode
@@ -83,7 +83,7 @@ public class ExtractErrorCodeTest {
     public void testExtractErrorCode_Lowercase() {
         String code = extractor.extract(
                 new RuntimeException("{\"error\":{\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"...\"}}"));
-        assertEquals("rate_limit_exceeded", code);
+        assertEquals("429", code);
     }
 
     // TC-Retry-046: 兜底返回原始消息（小写化）

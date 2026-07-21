@@ -4,14 +4,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * AI 错误码提取器
  * <p>
  * 从异常消息和类名中提取错误码，支持多种格式：
  * <ul>
+ *   <li>OpenAI/DeepSeek 格式: {"error":{"code":"rate_limit_exceeded","message":"..."}}（优先匹配）</li>
  *   <li>Zhipu 格式: {"error":{"code":"1002","message":"..."}}</li>
- *   <li>OpenAI 格式: {"error":{"code":"rate_limit_exceeded","message":"..."}}</li>
  *   <li>异常类名推断</li>
  *   <li>HTTP 状态码</li>
  *   <li>Fallback 消息截取</li>
@@ -29,8 +31,26 @@ public class AiErrorCodeExtractor {
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern HTTP_CODE_PATTERN = Pattern.compile(
-            "\\b(400|401|403|408|409|429|500|502|503|504|529)\\b"
+            "\\b(400|401|402|403|408|409|422|429|500|502|503|504|529)\\b"
     );
+
+    /**
+     * DeepSeek/OpenAI body error code to HTTP status code normalization.
+     * Maps string body codes to standard HTTP codes so retry config works uniformly
+     * across GLM (numeric codes) and DeepSeek (OpenAI-compatible string codes).
+     */
+    private static final Map<String, String> CODE_NORMALIZATION = new HashMap<>();
+    static {
+        CODE_NORMALIZATION.put("invalid_request_error", AiErrorCodes.HTTP_400);
+        CODE_NORMALIZATION.put("authentication_error", AiErrorCodes.HTTP_401);
+        CODE_NORMALIZATION.put("invalid_api_key", AiErrorCodes.HTTP_401);
+        CODE_NORMALIZATION.put("insufficient_balance", AiErrorCodes.HTTP_402);
+        CODE_NORMALIZATION.put("insufficient_funds", AiErrorCodes.HTTP_402);
+        CODE_NORMALIZATION.put("rate_limit_exceeded", AiErrorCodes.HTTP_429);
+        CODE_NORMALIZATION.put("rate_limit_error", AiErrorCodes.HTTP_429);
+        CODE_NORMALIZATION.put("server_error", AiErrorCodes.HTTP_500);
+        CODE_NORMALIZATION.put("internal_error", AiErrorCodes.HTTP_500);
+    }
 
     public String extract(Exception e) {
         if (e == null) {
@@ -43,11 +63,13 @@ public class AiErrorCodeExtractor {
         while (current != null && depth < 8) {
             String msg = current.getMessage() != null ? current.getMessage() : "";
 
+            // DeepSeek (OpenAI-compatible) checked first -- priority
+            String openaiCode = extractOpenAICode(msg);
+            if (openaiCode != null) return normalizeCode(openaiCode);
+
+            // Zhipu/GLM numeric codes -- fallback
             String zhipuCode = extractZhipuCode(msg);
             if (zhipuCode != null) return zhipuCode;
-
-            String openaiCode = extractOpenAICode(msg);
-            if (openaiCode != null) return openaiCode;
 
             String classNameCode = extractFromClassName(current);
             if (classNameCode != null) return classNameCode;
@@ -105,6 +127,14 @@ public class AiErrorCodeExtractor {
                 : fallback;
         fallback = maskSensitiveInfo(fallback);
         return fallback.length() > 64 ? fallback.substring(0, 64).toLowerCase() : fallback.toLowerCase();
+    }
+
+    /**
+     * Normalize DeepSeek/OpenAI string error codes to standard HTTP status codes.
+     * Non-matching codes (including Zhipu numeric codes) pass through unchanged.
+     */
+    private String normalizeCode(String code) {
+        return CODE_NORMALIZATION.getOrDefault(code, code);
     }
 
     private String maskSensitiveInfo(String text) {

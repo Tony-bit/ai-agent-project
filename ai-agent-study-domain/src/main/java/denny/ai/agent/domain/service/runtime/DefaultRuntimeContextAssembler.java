@@ -49,4 +49,13 @@ public class DefaultRuntimeContextAssembler implements RuntimeContextAssembler {
         dynamicContext.setAiAgentClientFlowConfigVOMap(flowConfigMap);
         return turnContext;
     }
+
+    @Override
+    public void afterTurn(ExecuteCommandEntity request,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                          TurnRuntimeContext turnContext) {
+        if (request != null) {
+            sessionRuntimeContextManager.refresh(request.getSessionId(), request.getUserId());
+        }
+    }
 }
