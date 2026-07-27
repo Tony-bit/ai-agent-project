@@ -1,20 +1,20 @@
-# MySQL Read-only Codex Skill Design
+# MySQL 只读 Codex Skill 设计书
 
-## Goal
+## 目标
 
-Create a personal Codex skill at `C:\Users\Denny\.codex\skills\mysql-readonly` that converts natural-language database questions into safe, read-only MySQL inspection and query operations. Connection details are read exclusively from local environment variables and are never stored in the skill or workspace.
+在 `C:\Users\Denny\.codex\skills\mysql-readonly` 创建一个个人 Codex skill，将自然语言数据库问题转换为安全的 MySQL 只读检查和查询操作。数据库连接信息只从本地环境变量读取，不存入 skill 或工作区。
 
-## Scope
+## 范围
 
-The skill supports connectivity checks, table discovery, table descriptions, query explanation, read-only SQL execution, and structured result export. It does not support data mutation, schema changes, stored procedure execution, administrative commands, transactions controlled by the caller, or credential management.
+本 skill 支持连接检查、数据表发现、表结构查看、查询执行计划、只读 SQL 查询和结构化结果导出。不支持数据修改、表结构变更、存储过程调用、管理命令、由调用方控制的事务或凭据管理。
 
-## Alternatives Considered
+## 方案比较
 
-1. A Python read-only executor is selected because it provides deterministic validation, structured output, predictable error handling, and no dependency on a separately installed MySQL CLI.
-2. Calling `mysql.exe` directly was rejected because client availability, password handling, and structured output vary across local environments.
-3. A MySQL MCP server was deferred because it requires a separately installed and maintained service and is larger than the requested personal skill.
+1. 采用 Python 只读执行器。它能提供确定性的校验、结构化输出和可预测的错误处理，也不依赖本机单独安装 MySQL 命令行客户端。
+2. 不采用直接调用 `mysql.exe` 的方案，因为不同本地环境中的客户端可用性、密码处理和结构化输出方式不一致。
+3. 暂不采用 MySQL MCP Server，因为它需要单独安装和维护服务，范围大于本次个人 skill 的需求。
 
-## Skill Structure
+## Skill 结构
 
 ```text
 mysql-readonly/
@@ -26,92 +26,92 @@ mysql-readonly/
     `-- test_mysql_readonly.py
 ```
 
-`SKILL.md` defines natural-language triggers, the schema-first query workflow, security rules, dependency checks, output expectations, and troubleshooting guidance. `agents/openai.yaml` exposes concise UI metadata. `mysql_readonly.py` is the deterministic connection and query boundary. Its unit tests cover parsing, validation, configuration, redaction, and output limits without requiring a live database.
+`SKILL.md` 定义自然语言触发方式、schema 优先的查询流程、安全规则、依赖检查、输出约定和故障排查方式。`agents/openai.yaml` 提供简洁的界面元数据。`mysql_readonly.py` 是确定性的连接和查询边界。单元测试覆盖解析、校验、配置、敏感信息脱敏和输出限制，且不要求连接真实数据库。
 
-No README, sample credential file, or redundant reference file will be added.
+不添加 README、示例凭据文件或内容重复的参考文档。
 
-## Configuration Contract
+## 配置契约
 
-Required environment variables:
+必需的环境变量：
 
-- `MYSQL_URL`: `mysql://host:port/database`; credentials must not be embedded in this URL.
-- `MYSQL_USER`: MySQL username.
-- `MYSQL_PASSWORD`: MySQL password.
+- `MYSQL_URL`：格式为 `mysql://host:port/database`，URL 中不得包含账号或密码。
+- `MYSQL_USER`：MySQL 用户名。
+- `MYSQL_PASSWORD`：MySQL 密码。
 
-Optional environment variables:
+可选的环境变量：
 
-- `MYSQL_CONNECT_TIMEOUT`: positive integer seconds, default `10`.
-- `MYSQL_SSL_CA`: path to a CA certificate; when present, TLS certificate verification is enabled.
+- `MYSQL_CONNECT_TIMEOUT`：正整数秒数，默认值为 `10`。
+- `MYSQL_SSL_CA`：CA 证书路径；设置后启用 TLS 证书验证。
 
-The executor reports missing variable names but never prints variable values. URL query parameters and embedded credentials are rejected to keep configuration behavior explicit and prevent accidental credential disclosure.
+执行器可以报告缺少哪些环境变量，但绝不打印变量值。禁止在 URL 中使用查询参数或嵌入凭据，以保持配置行为明确并避免意外泄露凭据。
 
-## Command Interface
+## 命令接口
 
-The executor provides these subcommands:
+执行器提供以下子命令：
 
-- `ping`: verify configuration and database connectivity.
-- `tables`: list visible tables and views in the configured database.
-- `describe <table>`: return column metadata for one validated identifier.
-- `query --sql <statement>`: run one approved read-only statement.
+- `ping`：检查配置和数据库连接。
+- `tables`：列出当前数据库中可见的表和视图。
+- `describe <table>`：返回一个经过标识符校验的表的字段元数据。
+- `query --sql <statement>`：执行一条通过安全校验的只读语句。
 
-Query output defaults to JSON for reliable machine interpretation. `query` also supports CSV output to a caller-selected workspace path. Console results are capped at 200 rows by default; a caller may request a lower or higher positive limit up to a fixed safety ceiling of 10,000 rows. The executor reports whether results were truncated.
+查询默认输出 JSON，便于机器可靠解析。`query` 也支持将 CSV 输出到调用方明确指定的工作区路径。控制台结果默认最多返回 200 行；调用方可以指定其他正整数上限，但不得超过固定安全上限 10,000 行。执行器会明确说明结果是否被截断。
 
-## Data Flow
+## 数据流
 
-1. Codex identifies the requested database question and checks that it is read-only.
-2. Codex runs `ping` when connection state is unknown.
-3. Codex uses `tables` and `describe` only as needed to confirm real schema names and types.
-4. Codex writes the smallest sufficient SQL statement and passes it to `query`.
-5. The executor loads and validates configuration, validates SQL, opens the connection without multi-statement capability, starts a read-only transaction, executes the statement, serializes results, and rolls back before closing.
-6. Codex summarizes the answer, query scope, row count, truncation state, and any limitations. It does not echo credentials.
+1. Codex 识别数据库问题，并确认请求属于只读范围。
+2. 当连接状态未知时，Codex 先执行 `ping`。
+3. Codex 仅在需要确认真实表名和字段类型时调用 `tables` 和 `describe`。
+4. Codex 编写满足问题所需的最小 SQL，并将其传给 `query`。
+5. 执行器加载并校验配置，校验 SQL，在不启用多语句能力的情况下连接数据库，开启只读事务，执行语句并序列化结果，最后回滚并关闭连接。
+6. Codex 汇总结论、查询范围、行数、截断状态和限制，不回显凭据。
 
-## Read-only Enforcement
+## 只读安全约束
 
-Read-only behavior uses defense in depth:
+只读能力采用多层防护：
 
-1. Accept exactly one statement and allow only `SELECT`, `SHOW`, `DESCRIBE`/`DESC`, and `EXPLAIN` statement families.
-2. Reject comments used to obscure statement boundaries, multi-statements, DML, DDL, privilege operations, transaction control, prepared statements, stored program calls, locking clauses, and server file operations such as `INTO OUTFILE`, `INTO DUMPFILE`, and `LOAD_FILE`.
-3. Do not enable the driver's multi-statement client flag.
-4. Execute queries in a read-only transaction and always roll back.
-5. Require the operator to use a database account granted only the minimum `SELECT` and metadata permissions for the intended schema. Client checks are supplemental and do not replace server-side privileges.
+1. 每次只接受一条语句，只允许 `SELECT`、`SHOW`、`DESCRIBE`/`DESC` 和 `EXPLAIN` 语句族。
+2. 拒绝用于混淆语句边界的注释、多语句、DML、DDL、权限操作、事务控制、预处理语句、存储程序调用、锁定子句，以及 `INTO OUTFILE`、`INTO DUMPFILE`、`LOAD_FILE` 等服务器文件操作。
+3. 不启用数据库驱动的多语句客户端标志。
+4. 在只读事务中执行查询，并始终回滚事务。
+5. 要求操作者使用专用数据库账号，并且只对目标 schema 授予最小化的 `SELECT` 和元数据权限。客户端检查只是补充措施，不能代替服务端权限控制。
 
-If a statement cannot be classified confidently, reject it and explain the unsupported construct rather than attempting execution.
+如果无法可靠判断一条语句的类型，执行器必须拒绝执行并说明不支持的结构，不能尝试运行。
 
-## Dependency Strategy
+## 依赖策略
 
-Use Python 3.9 or later and PyMySQL. The skill performs a preflight import check and gives the shortest local installation command when PyMySQL is missing. It does not install packages automatically or modify the user's Python environment without an explicit request.
+使用 Python 3.9 或更高版本以及 PyMySQL。skill 先检查 PyMySQL 能否导入；缺少依赖时，给出最短的本地安装命令。未经用户明确请求，不自动安装包或修改用户的 Python 环境。
 
-## Error Handling
+## 错误处理
 
-Errors are divided into configuration, dependency, validation, connectivity/authentication, authorization, SQL, and output errors. User-facing messages remain concise and redact passwords and connection secrets. Database exception details may include safe server codes and messages, but configuration values and driver connection representations are never emitted.
+错误分为配置、依赖、校验、连接或认证、授权、SQL 和输出错误。面向用户的错误信息保持简洁，并对密码和连接机密脱敏。数据库异常可以包含安全的服务端错误码和消息，但不得输出配置值或驱动连接对象的文本表示。
 
-An empty result is reported as a valid empty result, not a connection failure. Partial console output is explicitly marked as truncated. CSV files are written only to paths explicitly requested by the caller.
+空结果应作为有效的空查询结果报告，而不是连接失败。控制台输出不完整时必须明确标记为已截断。只有调用方明确指定输出路径时才写入 CSV 文件。
 
-## Testing And Validation
+## 测试与验证
 
-Unit tests must verify:
+单元测试必须覆盖：
 
-- valid URL and environment parsing;
-- missing and malformed configuration errors;
-- accepted statement families;
-- rejection of mutations, DDL, calls, locks, files, comments, and multi-statements;
-- identifier validation for `describe`;
-- password redaction;
-- row limiting and truncation metadata;
-- JSON and CSV serialization.
+- 合法 URL 和环境变量解析；
+- 缺少配置和配置格式错误；
+- 允许的语句族；
+- 对修改、DDL、调用、锁、文件操作、注释和多语句的拒绝；
+- `describe` 使用的标识符校验；
+- 密码脱敏；
+- 行数限制和截断元数据；
+- JSON 和 CSV 序列化。
 
-The implementation must pass the unit tests, Python syntax compilation, and the skill creator's `quick_validate.py`. A live smoke test runs only when the user has configured a disposable or approved read-only database connection.
+实现必须通过单元测试、Python 语法编译检查和 skill creator 的 `quick_validate.py`。只有用户配置了可用于测试或已批准的只读数据库连接后，才执行真实连接冒烟测试。
 
-## Operator Setup
+## 操作者配置
 
-The operator creates a dedicated MySQL account with only the permissions required for the target schema, then sets the required variables in the environment used to launch Codex. The operator does not provide secrets in chat or commit them to files. Restarting Codex may be necessary after changing persistent environment variables so the desktop process inherits them.
+操作者需要创建一个专用 MySQL 账号，只授予目标 schema 所需的最小权限，并在启动 Codex 的本地环境中设置必需变量。不得在聊天中提供密码，也不得将密码提交到文件。修改持久化环境变量后，可能需要重启 Codex 桌面应用，让新进程继承变量。
 
-## Acceptance Criteria
+## 验收标准
 
-- Codex discovers and can explicitly invoke `$mysql-readonly`.
-- No credential is stored under the skill or workspace.
-- The executor can inspect schema and run approved read-only queries with structured output.
-- Unsupported or potentially mutating SQL is rejected before connecting or executing.
-- Results have bounded output and explicit truncation metadata.
-- Automated validation passes without access to a live database.
-- A live `ping` and harmless `SELECT 1` succeed after the operator configures an approved read-only account.
+- Codex 能发现并显式调用 `$mysql-readonly`。
+- skill 和工作区中不存储任何凭据。
+- 执行器能检查 schema，并以结构化输出执行通过校验的只读查询。
+- 不支持或可能产生修改的 SQL 在连接或执行前被拒绝。
+- 查询结果具有明确的输出上限和截断元数据。
+- 无需真实数据库即可通过自动化验证。
+- 操作者配置经过批准的只读账号后，真实的 `ping` 和无副作用的 `SELECT 1` 能成功执行。
