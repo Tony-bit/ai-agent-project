@@ -87,5 +87,22 @@ public interface IAiClientSystemPromptDao {
      * 批量查询指定 promptType 的所有生效记录（解决 N+1 问题）
      */
     List<AiClientSystemPromptPO> queryActivePromptsByPromptType(@Param("promptType") Integer promptType);
-}
 
+    List<AiClientSystemPromptPO> queryVersionSet(
+            @Param("promptIds") java.util.Set<String> promptIds,
+            @Param("promptType") Integer promptType,
+            @Param("version") Integer version);
+
+    List<AiClientSystemPromptPO> queryActiveSet(
+            @Param("promptIds") java.util.Set<String> promptIds,
+            @Param("promptType") Integer promptType);
+
+    int deactivatePromptSet(
+            @Param("promptIds") java.util.Set<String> promptIds,
+            @Param("promptType") Integer promptType);
+
+    int activatePromptSetVersion(
+            @Param("promptIds") java.util.Set<String> promptIds,
+            @Param("promptType") Integer promptType,
+            @Param("version") Integer version);
+}

@@ -3,6 +3,7 @@ package denny.ai.agent.trading.domain.config;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
+import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
 import denny.ai.agent.trading.domain.node.AggressiveRiskAnalystNode;
 import denny.ai.agent.trading.domain.node.ConservativeRiskAnalystNode;
 import denny.ai.agent.trading.domain.node.NeutralRiskAnalystNode;
@@ -86,7 +87,7 @@ class TradingDispatcherRiskSequencingTest {
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         dynamicContext.setValue("taskLatch", flowDone);
 
-        TradingStateContext stateContext = new TradingStateContext(
+        TradingStateContext stateContext = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 createRequest(),
                 dynamicContext,
                 (type, event) -> events.add("sse:" + type)
@@ -123,7 +124,7 @@ class TradingDispatcherRiskSequencingTest {
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         dynamicContext.setValue("taskLatch", flowDone);
 
-        TradingStateContext stateContext = new TradingStateContext(
+        TradingStateContext stateContext = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 createRequest(),
                 dynamicContext,
                 (type, event) -> {
@@ -157,7 +158,7 @@ class TradingDispatcherRiskSequencingTest {
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             events.add("aggressive:start");
             TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getRiskDebate().getAggressiveHistory().add("aggressive opinion");
+            context.getRiskDebate().getAggressiveHistory().add(risk("AGGRESSIVE", "aggressive opinion"));
             events.add("aggressive:end");
             TradingDriver.getCurrent().riskDebateComplete();
             return "aggressive_done";
@@ -182,7 +183,7 @@ class TradingDispatcherRiskSequencingTest {
             started.countDown();
             assertTrue(release.await(5, TimeUnit.SECONDS), "test should release conservative node");
             TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getRiskDebate().getConservativeHistory().add("conservative opinion");
+            context.getRiskDebate().getConservativeHistory().add(risk("CONSERVATIVE", "conservative opinion"));
             events.add("conservative:end");
             TradingDriver.getCurrent().riskDebateComplete();
             return "conservative_done";
@@ -204,7 +205,7 @@ class TradingDispatcherRiskSequencingTest {
             events.add("neutral:start");
             started.countDown();
             TradingContextVO context = dynamicContext.getValue("trading_context");
-            context.getRiskDebate().getNeutralHistory().add("neutral opinion");
+            context.getRiskDebate().getNeutralHistory().add(risk("NEUTRAL", "neutral opinion"));
             events.add("neutral:end");
             TradingDriver.getCurrent().riskDebateComplete();
             return "neutral_done";
@@ -224,5 +225,10 @@ class TradingDispatcherRiskSequencingTest {
             events.add("portfolio:start");
             return "portfolio_done";
         }
+    }
+
+    private static RiskAssessmentPayload risk(String perspective, String summary) {
+        return new RiskAssessmentPayload(
+                perspective, 3, List.of("risk"), List.of("mitigation"), summary, null);
     }
 }

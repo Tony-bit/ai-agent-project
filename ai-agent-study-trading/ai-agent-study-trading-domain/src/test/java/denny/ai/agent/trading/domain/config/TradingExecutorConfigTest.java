@@ -47,7 +47,7 @@ class TradingExecutorConfigTest {
         taskExecutor = config.tradingTaskExecutor();
         exportExecutor = config.tradingExportExecutor();
 
-        TradingStateContext stateContext = new TradingStateContext(
+        TradingStateContext stateContext = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 createRequest(),
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 (type, event) -> {

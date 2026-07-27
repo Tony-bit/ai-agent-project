@@ -10,12 +10,14 @@ import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
+import denny.ai.agent.trading.domain.execution.NodeCommitResult;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
+import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
 
 @Component
 @Order(40)
@@ -117,18 +119,23 @@ public class RiskManagementStage implements TradingStage {
 
     private boolean executeRisk(TradingStateContext context,
                                 String nodeName,
-                                Callable<String> prepare,
-                                Consumer<String> contextWriter,
+                                Callable<RiskAssessmentPayload> prepare,
+                                Consumer<RiskAssessmentPayload> contextWriter,
                                 String eventSubtype) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<String> result = nodeInvoker.invokeScoped(nodeName, scope, prepare);
-        boolean committed = committer().commit(result, TradingPhase.RISK_MANAGEMENT,
-                context::getCurrentPhase, contextWriter);
-        if (!committed) {
-            context.sendError(nodeName + " 执行失败");
+        NodeExecutionResult<RiskAssessmentPayload> result = nodeInvoker.invokeScoped(nodeName, scope, prepare);
+        NodeCommitResult commit = committer().commitValidated(result,
+                TradingPhase.RISK_MANAGEMENT, context, nodeName, contextWriter);
+        if (!commit.committed()) {
+            if (commit.validationFailed()) {
+                context.sendValidationError(nodeName, commit.validationErrors());
+            } else {
+                context.sendError(nodeName + " 执行失败");
+            }
             return false;
         }
-        context.sendSseResult("risk_debate", eventSubtype, result.value(), false);
+        context.sendSseResult("risk_debate", eventSubtype,
+                com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
         return TradingPipelineSseGuard.shouldContinue(context);
     }
 

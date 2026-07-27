@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import denny.ai.agent.trading.api.vo.payload.TargetEchoPayload;
 
 /**
  * 技术面分析报告值对象。
@@ -40,4 +41,6 @@ public class TechnicalReportVO {
      * 技术指标数据
      */
     private TechnicalIndicatorsVO indicators;
+
+    private TargetEchoPayload targetEcho;
 }

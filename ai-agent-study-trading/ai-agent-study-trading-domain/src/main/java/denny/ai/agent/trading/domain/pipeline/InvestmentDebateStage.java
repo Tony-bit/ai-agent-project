@@ -10,6 +10,9 @@ import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
+import denny.ai.agent.trading.domain.execution.NodeCommitResult;
+import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
+import denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -96,55 +99,55 @@ public class InvestmentDebateStage implements TradingStage {
     private boolean executeBull(TradingStateContext context,
                                 TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<String> result = nodeInvoker.invokeScoped("BullResearcherNode", scope,
+        NodeExecutionResult<ResearchArgumentPayload> result = nodeInvoker.invokeScoped("BullResearcherNode", scope,
                 () -> bullResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
-        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
-                context::getCurrentPhase, thesis -> {
+        NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
+                context, "BullResearcherNode", thesis -> {
                     debate.addBullArgument(thesis);
-                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] " + thesis);
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] " + thesis.summary());
                 });
-        if (!committed) {
-            context.sendError("多头研究员执行失败");
+        if (!commit.committed()) {
+            sendCommitError(context, commit, "BullResearcherNode", "多头研究员执行失败");
             return false;
         }
-        context.sendSseResult("debate", "bull_thesis", result.value(), false);
+        context.sendSseResult("debate", "bull_thesis", com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
         return TradingPipelineSseGuard.shouldContinue(context);
     }
 
     private boolean executeBear(TradingStateContext context,
                                 TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<String> result = nodeInvoker.invokeScoped("BearResearcherNode", scope,
+        NodeExecutionResult<ResearchArgumentPayload> result = nodeInvoker.invokeScoped("BearResearcherNode", scope,
                 () -> bearResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
-        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
-                context::getCurrentPhase, thesis -> {
+        NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
+                context, "BearResearcherNode", thesis -> {
                     debate.addBearArgument(thesis);
-                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] " + thesis);
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] " + thesis.summary());
                 });
-        if (!committed) {
-            context.sendError("空头研究员执行失败");
+        if (!commit.committed()) {
+            sendCommitError(context, commit, "BearResearcherNode", "空头研究员执行失败");
             return false;
         }
-        context.sendSseResult("debate", "bear_thesis", result.value(), false);
+        context.sendSseResult("debate", "bear_thesis", com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
         return TradingPipelineSseGuard.shouldContinue(context);
     }
 
     private boolean executeResearchManager(TradingStateContext context,
                                            TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<ResearchManagerNode.DebateEvaluation> result =
+        NodeExecutionResult<ResearchManagerPayload> result =
                 nodeInvoker.invokeScoped("ResearchManagerNode", scope,
                         () -> researchManagerNode.prepare(
                                 context.getTradingContext(), context.getDynamicContext()));
-        boolean committed = committer().commit(result, TradingPhase.INVESTMENT_DEBATE,
-                context::getCurrentPhase, evaluation -> {
+        NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
+                context, "ResearchManagerNode", evaluation -> {
                     debate.setOverallScore(evaluation.overallScore());
                     debate.setConclusion(evaluation.conclusion());
                     debate.setJudgeDecision(evaluation.conclusion());
                     debate.setNeedMoreDebate(evaluation.needMoreDebate());
                 });
-        if (!committed) {
-            context.sendError("研究主管执行失败");
+        if (!commit.committed()) {
+            sendCommitError(context, commit, "ResearchManagerNode", "研究主管执行失败");
             return false;
         }
         return TradingPipelineSseGuard.shouldContinue(context);
@@ -152,5 +155,16 @@ public class InvestmentDebateStage implements TradingStage {
 
     private NodeResultCommitter committer() {
         return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
+    }
+
+    private void sendCommitError(TradingStateContext context,
+                                 NodeCommitResult result,
+                                 String nodeName,
+                                 String executionMessage) {
+        if (result.validationFailed()) {
+            context.sendValidationError(nodeName, result.validationErrors());
+        } else {
+            context.sendError(executionMessage);
+        }
     }
 }

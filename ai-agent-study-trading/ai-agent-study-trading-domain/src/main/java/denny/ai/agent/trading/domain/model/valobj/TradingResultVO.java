@@ -190,8 +190,12 @@ public class TradingResultVO {
             builder.investmentDebate(InvestmentDebateSummary.builder()
                     .overallScore(d.getOverallScore())
                     .conclusion(d.getConclusion())
-                    .bullArguments(d.getBullHistory())
-                    .bearArguments(d.getBearHistory())
+                    .bullArguments(d.getBullHistory().stream()
+                            .map(denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload::summary)
+                            .toList())
+                    .bearArguments(d.getBearHistory().stream()
+                            .map(denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload::summary)
+                            .toList())
                     .build());
         }
 
@@ -215,9 +219,12 @@ public class TradingResultVO {
                     .riskLevel(r.getRiskLevel())
                     .riskItems(r.getRiskItems())
                     .mitigations(r.getMitigations())
-                    .aggressiveHistory(r.getAggressiveHistory())
-                    .conservativeHistory(r.getConservativeHistory())
-                    .neutralHistory(r.getNeutralHistory())
+                    .aggressiveHistory(r.getAggressiveHistory().stream()
+                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
+                    .conservativeHistory(r.getConservativeHistory().stream()
+                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
+                    .neutralHistory(r.getNeutralHistory().stream()
+                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
                     .build());
         }
 

@@ -6,7 +6,11 @@ import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
+import denny.ai.agent.trading.api.vo.TargetContext;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.domain.prompt.TradingPromptSnapshot;
+import denny.ai.agent.trading.domain.validation.NodeValidationRegistry;
+import denny.ai.agent.trading.domain.validation.TradingValidationError;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,12 +32,17 @@ public class TradingStateContext {
             AnalystTypeEnum.SENTIMENT, AnalystTypeEnum.NEWS);
     private static final String SSE_DISCONNECTED_KEY = "sseDisconnected";
     private static final String SSE_EVENT_SINK_KEY = "sseEventSink";
+    public static final String VALIDATION_REGISTRY_KEY = "tradingValidationRegistry";
+    public static final String TRADING_SESSION_ID_KEY = "tradingSessionId";
 
     private final StockAnalysisRequestVO request;
     private final DynamicContext dynamicContext;
     private final SseEventSender sseSender;
     private final TradingContextVO tradingContext;
+    private final TargetContext targetContext;
+    private final TradingPromptSnapshot promptSnapshot;
     private final List<AnalystTypeEnum> selectedAnalysts;
+    private final NodeValidationRegistry validationRegistry;
 
     @Getter
     private TradingPhase currentPhase;
@@ -42,15 +51,29 @@ public class TradingStateContext {
     private String latestDebateSpeaker;
     private String latestRiskSpeaker;
     private String errorMessage;
+    private String validationFailureNode;
+    private List<String> validationFailureCodes = List.of();
     private final AtomicBoolean terminal = new AtomicBoolean(false);
 
     public TradingStateContext(StockAnalysisRequestVO request,
                                DynamicContext dynamicContext,
-                               SseEventSender sseSender) {
+                               SseEventSender sseSender,
+                               TargetContext targetContext,
+                               TradingPromptSnapshot promptSnapshot) {
         this.request = request;
         this.dynamicContext = dynamicContext;
         this.sseSender = sseSender;
-        this.tradingContext = TradingContextVO.empty();
+        this.targetContext = java.util.Objects.requireNonNull(targetContext, "targetContext must not be null");
+        this.promptSnapshot = java.util.Objects.requireNonNull(promptSnapshot, "promptSnapshot must not be null");
+        if (!targetContext.runId().equals(promptSnapshot.runId())) {
+            throw new IllegalArgumentException("targetContext and promptSnapshot runId must match");
+        }
+        this.tradingContext = TradingContextVO.forTarget(targetContext);
+        this.validationRegistry = new NodeValidationRegistry();
+        this.dynamicContext.setValue(VALIDATION_REGISTRY_KEY, this.validationRegistry);
+        String sessionId = request == null ? null : request.getSessionId();
+        this.dynamicContext.setValue(TRADING_SESSION_ID_KEY,
+                sessionId == null || sessionId.isBlank() ? "no-session" : sessionId);
         this.currentPhase = TradingPhase.INIT;
         this.analystIndex = 0;
         this.riskDebateRound = 0;
@@ -78,6 +101,13 @@ public class TradingStateContext {
     public void sendError(String msg) {
         sendTerminalErrorOnce(msg);
         countDownTaskLatch();
+    }
+
+    public void sendValidationError(String nodeName, List<TradingValidationError> errors) {
+        this.validationFailureNode = nodeName;
+        this.validationFailureCodes = errors == null ? List.of()
+                : errors.stream().map(error -> error.code().name()).distinct().toList();
+        sendError("NODE_VALIDATION_FAILED");
     }
 
     public boolean isTerminal() {
@@ -127,6 +157,16 @@ public class TradingStateContext {
         }
 
         String lowerMsg = originalMsg.toLowerCase();
+
+        if (lowerMsg.startsWith("node_validation_failed")) {
+            return com.alibaba.fastjson.JSON.toJSONString(java.util.Map.of(
+                    "message", "节点数据校验失败，本次分析已停止",
+                    "runId", targetContext.runId(),
+                    "targetId", targetContext.targetId(),
+                    "nodeName", validationFailureNode == null ? "unknown" : validationFailureNode,
+                    "validationStatus", "INVALID",
+                    "validationErrors", validationFailureCodes));
+        }
 
         // Prompt 超长
         if (lowerMsg.contains("prompt exceeds max length") || lowerMsg.contains("max length")

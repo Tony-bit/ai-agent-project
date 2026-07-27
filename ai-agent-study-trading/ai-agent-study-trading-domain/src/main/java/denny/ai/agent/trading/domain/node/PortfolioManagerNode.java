@@ -12,6 +12,9 @@ import denny.ai.agent.trading.api.vo.TradeDecisionEnum;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.model.valobj.TradingResultVO;
 import denny.ai.agent.trading.domain.prompt.PortfolioManagerPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.PortfolioDecisionPayload;
 import denny.ai.agent.trading.domain.service.TradingResultExportService;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +37,9 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
     @Resource
     private TradingResultExportService tradingResultExportService;
+
+    @Resource private TradingRolePromptService rolePromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -60,11 +66,8 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
 
         sendFinalEvent(dynamicContext, "portfolio_manager_start", "组合经理开始最终审批...");
 
-        String riskSummary = buildRiskSummary(context);
-
-        String decisionJson = generateFinalDecision(ticker, context, riskSummary, dynamicContext);
-
-        TradingContextVO.FinalTradeDecisionVO decision = parseFinalDecision(decisionJson);
+        PortfolioDecisionPayload payload = generateFinalDecision(context, dynamicContext);
+        TradingContextVO.FinalTradeDecisionVO decision = toDecision(payload);
         log.info("组合经理决策完成: ticker={}, decision={}", ticker, decision.getDecision());
         return decision;
     }
@@ -95,32 +98,49 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         return sb.length() > 0 ? sb.toString() : "No risk debate available.";
     }
 
-    private String generateFinalDecision(String ticker, TradingContextVO context,
-                                     String riskSummary,
+    private PortfolioDecisionPayload generateFinalDecision(TradingContextVO context,
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = PortfolioManagerPromptTemplate.PORTFOLIO_MANAGER_PROMPT.formatted(
-                ticker,
-                context.getInvestmentPlan() != null ? JSON.toJSONString(context.getInvestmentPlan()) : "{}",
-                context.getInvestmentDebate() != null ? context.getInvestmentDebate().getConclusion() : "No debate conclusion",
-                riskSummary
-        );
+        java.util.Map<String, Object> reports = new java.util.LinkedHashMap<>();
+        reports.put("fundamental", context.getFundamentalReport());
+        reports.put("technical", context.getTechnicalReport());
+        reports.put("sentiment", context.getSentimentReport());
+        reports.put("news", context.getNewsReport());
+        reports.put("investmentPlan", context.getInvestmentPlan());
+        String prompt = rolePromptService.render("6009", context, dynamicContext,
+                java.util.Map.of(
+                        "analystReports", structuredPayloadCodec.toJson(reports),
+                        "debateHistory", structuredPayloadCodec.toJson(context.getInvestmentDebate()),
+                        "riskReports", structuredPayloadCodec.toJson(context.getRiskDebate()),
+                        "validationStatus", structuredPayloadCodec.toJson(context.getDataWarnings())),
+                PortfolioDecisionPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6009", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("组合经理调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过组合经理LLM调用");
-            return "";
+            throw new IllegalStateException("SSE已关闭，取消组合经理调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "PortfolioManagerNode"),
                 "PortfolioManagerNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("组合经理LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return response;
+        return structuredPayloadCodec.parse(response, PortfolioDecisionPayload.class);
+    }
+
+    private TradingContextVO.FinalTradeDecisionVO toDecision(PortfolioDecisionPayload payload) {
+        return TradingContextVO.FinalTradeDecisionVO.builder()
+                .decision(payload.decision())
+                .confidence(payload.confidence())
+                .overallRating(payload.overallRating())
+                .reasoning(payload.reasoning())
+                .warnings(payload.warnings())
+                .targetEcho(payload.targetEcho())
+                .build();
     }
 
     private TradingContextVO.FinalTradeDecisionVO parseFinalDecision(String llmResponse) {

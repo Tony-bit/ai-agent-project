@@ -9,6 +9,7 @@ import java.util.function.BooleanSupplier;
 public class NodeExecutionScope {
 
     private final Instant deadline;
+    private final Instant startedAt;
     private final BooleanSupplier requestCancelled;
     private final Clock clock;
     private final AtomicReference<NodeExecutionState> state =
@@ -22,6 +23,7 @@ public class NodeExecutionScope {
         this.deadline = Objects.requireNonNull(deadline, "deadline");
         this.requestCancelled = requestCancelled == null ? () -> false : requestCancelled;
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.startedAt = clock.instant();
     }
 
     public Instant deadline() {
@@ -70,5 +72,9 @@ public class NodeExecutionScope {
 
     public boolean isRequestCancelled() {
         return requestCancelled.getAsBoolean();
+    }
+
+    public long elapsedMillis() {
+        return Math.max(0L, java.time.Duration.between(startedAt, clock.instant()).toMillis());
     }
 }

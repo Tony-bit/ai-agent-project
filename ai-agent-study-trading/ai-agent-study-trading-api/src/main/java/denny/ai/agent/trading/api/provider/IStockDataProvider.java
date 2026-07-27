@@ -15,6 +15,23 @@ import java.util.List;
 public interface IStockDataProvider {
 
     /**
+     * 按候选代码查询权威股票身份。生产实现必须保留全部匹配记录，交由领域层校验唯一性。
+     */
+    default List<StockIdentityVO> findStockIdentities(String ticker) {
+        StockInfoVO stockInfo = getStockInfo(ticker);
+        if (stockInfo == null) {
+            return List.of();
+        }
+        String code = ticker == null ? null : ticker.trim().toUpperCase(java.util.Locale.ROOT);
+        if (code != null && code.matches("^[0-9]{6}$")) {
+            char first = code.charAt(0);
+            code += first == '0' || first == '1' || first == '2' || first == '3'
+                    ? ".SZ" : first == '4' || first == '8' || first == '9' ? ".BJ" : ".SH";
+        }
+        return List.of(new StockIdentityVO(code, stockInfo.getName(), stockInfo.getIndustry()));
+    }
+
+    /**
      * 获取股票基本信息。
      *
      * @param ticker 股票代码，如 NVDA、AAPL

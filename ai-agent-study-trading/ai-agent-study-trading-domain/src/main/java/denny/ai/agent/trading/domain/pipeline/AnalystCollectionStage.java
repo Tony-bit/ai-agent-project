@@ -16,6 +16,8 @@ import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
+import denny.ai.agent.trading.domain.execution.NodeCommitResult;
+import denny.ai.agent.trading.domain.guard.DataSanityGuard;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -35,6 +37,7 @@ public class AnalystCollectionStage implements TradingStage {
     private final SentimentAnalystNode sentimentAnalystNode;
     private final NewsAnalystNode newsAnalystNode;
     private final ExecutorService tradingTaskExecutor;
+    private final DataSanityGuard dataSanityGuard;
 
     @jakarta.annotation.Resource
     private TradingAgentProperties tradingAgentProperties;
@@ -46,12 +49,14 @@ public class AnalystCollectionStage implements TradingStage {
                                   TechnicalAnalystNode technicalAnalystNode,
                                   SentimentAnalystNode sentimentAnalystNode,
                                   NewsAnalystNode newsAnalystNode,
-                                  @Qualifier("tradingTaskExecutor") ExecutorService tradingTaskExecutor) {
+                                  @Qualifier("tradingTaskExecutor") ExecutorService tradingTaskExecutor,
+                                  DataSanityGuard dataSanityGuard) {
         this.fundamentalAnalystNode = fundamentalAnalystNode;
         this.technicalAnalystNode = technicalAnalystNode;
         this.sentimentAnalystNode = sentimentAnalystNode;
         this.newsAnalystNode = newsAnalystNode;
         this.tradingTaskExecutor = tradingTaskExecutor;
+        this.dataSanityGuard = dataSanityGuard;
     }
 
     @Override
@@ -107,6 +112,9 @@ public class AnalystCollectionStage implements TradingStage {
             context.sendError("所有分析师均执行失败或超时");
             return;
         }
+
+        context.getTradingContext().setDataWarnings(
+                dataSanityGuard.check(context.getTradingContext()));
 
         StockAnalysisRequestVO request = context.getRequest();
         int maxRounds = request != null && request.getMaxDebateRounds() > 0
@@ -164,17 +172,34 @@ public class AnalystCollectionStage implements TradingStage {
 
     @SuppressWarnings("unchecked")
     private boolean commitAnalyst(AnalystTask task, TradingStateContext context) {
+        if (!TradingPipelineSseGuard.shouldContinue(context)) {
+            return false;
+        }
         NodeExecutionResult<Object> result = (NodeExecutionResult<Object>) task.future().getNow(null);
         if (result == null) {
             return false;
         }
-        boolean committed = committer().commit(result, TradingPhase.INIT,
-                context::getCurrentPhase,
+        String nodeName = analystNodeName(task.analyst());
+        NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INIT,
+                context, nodeName,
                 value -> writeAnalystResult(task.analyst(), context.getTradingContext(), value));
-        if (committed) {
+        if (commit.validationFailed()) {
+            context.sendValidationError(nodeName, commit.validationErrors());
+            return false;
+        }
+        if (commit.committed()) {
             context.sendSseResult("analyst", "analyst_report", JSON.toJSONString(result.value()), false);
         }
-        return committed;
+        return commit.committed();
+    }
+
+    private String analystNodeName(AnalystTypeEnum analyst) {
+        return switch (analyst) {
+            case FUNDAMENTAL -> "FundamentalAnalystNode";
+            case TECHNICAL -> "TechnicalAnalystNode";
+            case SENTIMENT -> "SentimentAnalystNode";
+            case NEWS -> "NewsAnalystNode";
+        };
     }
 
     private void writeAnalystResult(AnalystTypeEnum analyst,

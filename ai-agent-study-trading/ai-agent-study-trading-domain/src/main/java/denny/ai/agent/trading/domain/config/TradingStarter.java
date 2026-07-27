@@ -1,20 +1,27 @@
 package denny.ai.agent.trading.domain.config;
 
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory.DynamicContext;
+import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.sse.SseEventSender;
 import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
+import denny.ai.agent.trading.api.vo.TargetContext;
 import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
 import denny.ai.agent.trading.domain.pipeline.TradingPipelineException;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.domain.service.TargetContextFactory;
+import denny.ai.agent.trading.domain.prompt.TradingPromptSnapshot;
+import denny.ai.agent.trading.domain.prompt.TradingPromptSnapshotFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -43,6 +50,12 @@ public class TradingStarter {
     @Resource
     private TradingPipeline tradingPipeline;
 
+    @Resource
+    private TargetContextFactory targetContextFactory;
+
+    @Resource
+    private TradingPromptSnapshotFactory promptSnapshotFactory;
+
     @Value("${spring.ai.trading.sync-pipeline-enabled:true}")
     private boolean syncPipelineEnabled = true;
 
@@ -58,8 +71,21 @@ public class TradingStarter {
     public void start(StockAnalysisRequestVO request,
                       DynamicContext dynamicContext,
                       SseEventSender sseSender) {
-        // 1. 创建请求级上下文
-        TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, sseSender);
+        TargetContext targetContext;
+        TradingPromptSnapshot promptSnapshot;
+        try {
+            targetContext = createTargetContext(request);
+            promptSnapshot = promptSnapshotFactory.create(targetContext);
+        } catch (RuntimeException error) {
+            log.error("交易标的初始化失败: ticker={}, error={}",
+                    request != null ? request.getTicker() : null, error.getMessage(), error);
+            sendInitializationError(dynamicContext, sseSender);
+            completeOwnedSseSession(dynamicContext);
+            return;
+        }
+
+        TradingStateContext stateContext = new TradingStateContext(
+                request, dynamicContext, sseSender, targetContext, promptSnapshot);
 
         if (!syncPipelineEnabled) {
             runLegacyAsyncDispatcherWithLatch(stateContext, dynamicContext);
@@ -67,6 +93,8 @@ public class TradingStarter {
         }
 
         try {
+            exposeRunContext(stateContext);
+
             // 2. 填充股票信息
             populateStockInfo(stateContext);
 
@@ -160,13 +188,17 @@ public class TradingStarter {
         if (request == null) {
             throw new IllegalStateException("股票分析请求为空");
         }
-        StockInfoVO stockInfo = dataProvider.getStockInfo(request.getTicker());
+        TargetContext targetContext = stateContext.getTargetContext();
+        StockInfoVO stockInfo = dataProvider.getStockInfo(targetContext.stockCode());
         if (stockInfo == null) {
-            throw new IllegalStateException("无法获取股票信息 ticker=" + request.getTicker());
+            throw new IllegalStateException("无法获取股票信息 targetId=" + targetContext.targetId());
+        }
+        if (stockInfo.getName() == null || !targetContext.stockName().equals(stockInfo.getName().trim())) {
+            throw new IllegalStateException("股票行情身份与权威标的不一致 targetId=" + targetContext.targetId());
         }
         stateContext.getTradingContext().setStockInfo(stockInfo);
-        log.info("交易 Agent 初始化完成: ticker={}, analysts={}",
-                stockInfo.getTicker(), stateContext.getSelectedAnalysts());
+        log.info("交易 Agent 初始化完成: runId={}, targetId={}, analysts={}",
+                targetContext.runId(), targetContext.targetId(), stateContext.getSelectedAnalysts());
     }
 
     /**
@@ -200,7 +232,18 @@ public class TradingStarter {
         StringBuilder resultBuilder = new StringBuilder();
         SseEventSender noOpSseSender = (type, event) -> true;
 
-        TradingStateContext stateContext = new TradingStateContext(request, dynamicContext, noOpSseSender);
+        TargetContext targetContext;
+        TradingPromptSnapshot promptSnapshot;
+        try {
+            targetContext = createTargetContext(request);
+            promptSnapshot = promptSnapshotFactory.create(targetContext);
+        } catch (RuntimeException error) {
+            log.error("子任务交易标的初始化失败: ticker={}", request.getTicker(), error);
+            return "无法确认股票身份: " + error.getMessage();
+        }
+        TradingStateContext stateContext = new TradingStateContext(
+                request, dynamicContext, noOpSseSender, targetContext, promptSnapshot);
+        exposeRunContext(stateContext);
 
         if (!syncPipelineEnabled) {
             return startForSubTaskLegacy(dynamicContext, stateContext);
@@ -237,6 +280,44 @@ public class TradingStarter {
             return "交易分析完成（无详细结果）";
         }
         return result;
+    }
+
+    private TargetContext createTargetContext(StockAnalysisRequestVO request) {
+        if (request == null) {
+            throw new IllegalArgumentException("股票分析请求为空");
+        }
+        if (request.getTradeDate() == null || request.getTradeDate().isBlank()) {
+            throw new IllegalArgumentException("数据截止日期为空");
+        }
+        try {
+            return targetContextFactory.create(request.getTicker(), LocalDate.parse(request.getTradeDate()));
+        } catch (DateTimeParseException error) {
+            throw new IllegalArgumentException("数据截止日期格式必须为 yyyy-MM-dd", error);
+        }
+    }
+
+    private void exposeRunContext(TradingStateContext stateContext) {
+        DynamicContext dynamicContext = stateContext.getDynamicContext();
+        TargetContext target = stateContext.getTargetContext();
+        dynamicContext.setValue("target_context", target);
+        dynamicContext.setValue("trading_run_id", target.runId());
+        dynamicContext.setValue("trading_target_id", target.targetId());
+        dynamicContext.setValue("trading_prompt_snapshot", stateContext.getPromptSnapshot());
+    }
+
+    private void sendInitializationError(DynamicContext dynamicContext, SseEventSender sseSender) {
+        if (dynamicContext == null || sseSender == null) {
+            return;
+        }
+        AutoAgentExecuteResultEntity event = AutoAgentExecuteResultEntity.builder()
+                .type("trading")
+                .subType("error")
+                .step(dynamicContext.getStep())
+                .content("无法确认股票身份，本次分析已停止")
+                .completed(true)
+                .timestamp(System.currentTimeMillis())
+                .build();
+        sseSender.send("trading", event);
     }
 
     private String startForSubTaskLegacy(DynamicContext dynamicContext, TradingStateContext stateContext) {

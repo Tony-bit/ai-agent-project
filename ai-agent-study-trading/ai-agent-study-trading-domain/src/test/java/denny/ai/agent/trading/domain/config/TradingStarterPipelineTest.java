@@ -7,6 +7,8 @@ import denny.ai.agent.domain.service.sse.SseSessionState;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
+import denny.ai.agent.trading.domain.service.TargetContextFactory;
+import denny.ai.agent.trading.domain.prompt.*;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -21,6 +23,30 @@ import java.util.concurrent.CountDownLatch;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TradingStarterPipelineTest {
+
+    @Test
+    void startCreatesAndExposesOneRunIdentity() {
+        TradingStarter starter = createStarter(new CompletingPipeline(true));
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext first =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext second =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+
+        starter.start(createRequest(), first, (type, event) -> true);
+        starter.start(createRequest(), second, (type, event) -> true);
+
+        TargetContext firstTarget = first.getValue("target_context");
+        TargetContext secondTarget = second.getValue("target_context");
+        TradingContextVO firstTrading = first.getValue("trading_context");
+        assertNotNull(firstTarget);
+        assertEquals("000001.SZ", firstTarget.targetId());
+        assertEquals(firstTarget.runId(), first.getValue("trading_run_id"));
+        assertEquals(firstTarget.targetId(), first.getValue("trading_target_id"));
+        TradingPromptSnapshot snapshot = first.getValue("trading_prompt_snapshot");
+        assertEquals(firstTarget.runId(), snapshot.runId());
+        assertSame(firstTarget, firstTrading.getTargetContext());
+        assertNotEquals(firstTarget.runId(), secondTarget.runId());
+    }
 
     @Test
     void embeddedTradingDoesNotCompleteOuterEmitter() {
@@ -76,6 +102,27 @@ class TradingStarterPipelineTest {
     }
 
     @Test
+    void stockSubTasksDoNotReuseRunOrMutableTradingContext() {
+        TradingStarter starter = createStarter(new CompletingPipeline(true));
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+
+        starter.startForSubTask("分析平安银行", Map.of("stockCode", "000001"), dynamicContext);
+        TargetContext firstTarget = dynamicContext.getValue("target_context");
+        TradingContextVO firstContext = dynamicContext.getValue("trading_context");
+
+        starter.startForSubTask("分析浦发银行", Map.of("stockCode", "600000"), dynamicContext);
+        TargetContext secondTarget = dynamicContext.getValue("target_context");
+        TradingContextVO secondContext = dynamicContext.getValue("trading_context");
+
+        assertNotEquals(firstTarget.runId(), secondTarget.runId());
+        assertNotEquals(firstTarget.targetId(), secondTarget.targetId());
+        assertNotSame(firstContext, secondContext);
+        assertSame(firstTarget, firstContext.getTargetContext());
+        assertSame(secondTarget, secondContext.getTargetContext());
+    }
+
+    @Test
     void startReturnsWhenLegacyLatchWouldRemainUnreleased() {
         TradingStarter starter = createStarter(new CompletingPipeline(false));
         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
@@ -93,6 +140,11 @@ class TradingStarterPipelineTest {
     private TradingStarter createStarter(TradingPipeline pipeline) {
         TradingStarter starter = new TradingStarter();
         ReflectionTestUtils.setField(starter, "dataProvider", new StubStockDataProvider());
+        ReflectionTestUtils.setField(starter, "targetContextFactory",
+                new TargetContextFactory(new StubStockDataProvider()));
+        ReflectionTestUtils.setField(starter, "promptSnapshotFactory",
+                new TradingPromptSnapshotFactory(
+                        new StubPromptRepository(), new TradingPromptRenderer()));
         ReflectionTestUtils.setField(starter, "tradingPipeline", pipeline);
         ReflectionTestUtils.setField(starter, "tradingDispatcher", new TradingDispatcher());
         return starter;
@@ -213,6 +265,30 @@ class TradingStarterPipelineTest {
         @Override
         public List<StockSearchResultVO> searchByName(String name) {
             return List.of();
+        }
+    }
+
+    private static class StubPromptRepository implements TradingPromptRepository {
+        @Override
+        public List<TradingPromptRecord> findVersionSet(
+                java.util.Set<String> promptIds, int promptType, int version) {
+            return List.of();
+        }
+
+        @Override
+        public List<TradingPromptRecord> findActiveSet(
+                java.util.Set<String> promptIds, int promptType) {
+            return promptIds.stream()
+                    .map(id -> new TradingPromptRecord(Long.valueOf(id), id, 2, 1,
+                            new TradingPromptRenderer().requiredPlaceholders(id).stream()
+                                    .map(name -> "{{" + name + "}}")
+                                    .collect(java.util.stream.Collectors.joining("\n")), true))
+                    .toList();
+        }
+
+        @Override public void deactivateAll(java.util.Set<String> promptIds, int promptType) { }
+        @Override public int activateVersion(java.util.Set<String> promptIds, int promptType, int version) {
+            return promptIds.size();
         }
     }
 }

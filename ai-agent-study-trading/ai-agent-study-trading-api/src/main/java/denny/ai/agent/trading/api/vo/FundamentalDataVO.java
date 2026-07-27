@@ -22,7 +22,7 @@ public class FundamentalDataVO {
     private Double psRatio;
     private Double pegRatio;
 
-    // === 盈利能力 ===
+    // === 盈利能力（百分数值，例如 12.5 表示 12.5%） ===
     private Double roe;
     private Double roa;
     private Double grossMargin;
@@ -37,7 +37,7 @@ public class FundamentalDataVO {
     private BigDecimal eps;
     private BigDecimal dps;
 
-    // === 增长指标 ===
+    // === 增长指标（百分数值） ===
     private Double revenueGrowth;
     private Double earningsGrowth;
     private Double netIncomeGrowth;
@@ -47,7 +47,8 @@ public class FundamentalDataVO {
     private BigDecimal freeCashFlow;
 
     // === 偿债能力 ===
-    private Double debtToEquity;
+    /** 资产负债率（百分数值），对应 Tushare debt_to_assets。 */
+    private Double debtToAssets;
     private Double currentRatio;
 
     // === 股东回报 ===

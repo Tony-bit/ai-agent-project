@@ -5,10 +5,16 @@ import denny.ai.agent.trading.api.vo.NewsReportVO;
 import denny.ai.agent.trading.api.vo.SentimentReportVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.api.vo.TechnicalReportVO;
+import denny.ai.agent.trading.api.vo.TargetContext;
+import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
+import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Builder.Default;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * 交易上下文值对象。
@@ -20,6 +26,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TradingContextVO {
+
+    /** Java/Tushare 创建的只读权威标的身份。 */
+    @Setter(AccessLevel.NONE)
+    private TargetContext targetContext;
 
     /**
      * 股票基本信息
@@ -67,10 +77,23 @@ public class TradingContextVO {
     private FinalTradeDecisionVO finalDecision;
 
     /**
+     * Data sanity warnings detected by DataSanityGuard.
+     * If non-empty, downstream nodes should treat analysis results with reduced confidence.
+     */
+    @Default
+    private java.util.List<String> dataWarnings = new java.util.ArrayList<>();
+
+    /**
      * 创建空的交易上下文
      */
     public static TradingContextVO empty() {
         return TradingContextVO.builder().build();
+    }
+
+    public static TradingContextVO forTarget(TargetContext targetContext) {
+        return TradingContextVO.builder()
+                .targetContext(java.util.Objects.requireNonNull(targetContext, "targetContext must not be null"))
+                .build();
     }
 
     /**
@@ -95,13 +118,13 @@ public class TradingContextVO {
          * 多头研究员论点历史
          */
         @Builder.Default
-        private java.util.List<String> bullHistory = new java.util.ArrayList<>();
+        private java.util.List<ResearchArgumentPayload> bullHistory = new java.util.ArrayList<>();
 
         /**
          * 空头研究员论点历史
          */
         @Builder.Default
-        private java.util.List<String> bearHistory = new java.util.ArrayList<>();
+        private java.util.List<ResearchArgumentPayload> bearHistory = new java.util.ArrayList<>();
 
         /**
          * 完整辩论历史
@@ -117,12 +140,12 @@ public class TradingContextVO {
         /**
          * 当前多头观点摘要
          */
-        private String bullOpinion;
+        private ResearchArgumentPayload bullOpinion;
 
         /**
          * 当前空头观点摘要
          */
-        private String bearOpinion;
+        private ResearchArgumentPayload bearOpinion;
 
         /**
          * 最新发言者（BULL/BEAR/RESEARCH_MANAGER）
@@ -147,7 +170,7 @@ public class TradingContextVO {
         /**
          * 添加多头论点
          */
-        public void addBullArgument(String argument) {
+        public void addBullArgument(ResearchArgumentPayload argument) {
             if (this.bullHistory == null) {
                 this.bullHistory = new java.util.ArrayList<>();
             }
@@ -158,7 +181,7 @@ public class TradingContextVO {
         /**
          * 添加空头论点
          */
-        public void addBearArgument(String argument) {
+        public void addBearArgument(ResearchArgumentPayload argument) {
             if (this.bearHistory == null) {
                 this.bearHistory = new java.util.ArrayList<>();
             }
@@ -270,6 +293,8 @@ public class TradingContextVO {
          * 风险收益比
          */
         private Double riskRewardRatio;
+
+        private denny.ai.agent.trading.api.vo.payload.TargetEchoPayload targetEcho;
     }
 
     /**
@@ -314,19 +339,19 @@ public class TradingContextVO {
          * 激进分析师历史意见
          */
         @Builder.Default
-        private java.util.List<String> aggressiveHistory = new java.util.ArrayList<>();
+        private java.util.List<RiskAssessmentPayload> aggressiveHistory = new java.util.ArrayList<>();
 
         /**
          * 保守分析师历史意见
          */
         @Builder.Default
-        private java.util.List<String> conservativeHistory = new java.util.ArrayList<>();
+        private java.util.List<RiskAssessmentPayload> conservativeHistory = new java.util.ArrayList<>();
 
         /**
          * 中性分析师历史意见
          */
         @Builder.Default
-        private java.util.List<String> neutralHistory = new java.util.ArrayList<>();
+        private java.util.List<RiskAssessmentPayload> neutralHistory = new java.util.ArrayList<>();
 
         /**
          * 组合经理最终决策
@@ -381,5 +406,7 @@ public class TradingContextVO {
          * 警告信息（如果有）
          */
         private java.util.List<String> warnings;
+
+        private denny.ai.agent.trading.api.vo.payload.TargetEchoPayload targetEcho;
     }
 }

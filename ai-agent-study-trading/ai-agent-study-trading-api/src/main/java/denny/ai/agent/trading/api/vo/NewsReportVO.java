@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import denny.ai.agent.trading.api.vo.payload.TargetEchoPayload;
 
 /**
  * 新闻面分析报告值对象。
@@ -65,6 +66,8 @@ public class NewsReportVO {
      * News item ids that were enhanced with full text or authoritative verification.
      */
     private List<Integer> enhancedSourceNewsIds;
+
+    private TargetEchoPayload targetEcho;
 
     @Data
     @Builder

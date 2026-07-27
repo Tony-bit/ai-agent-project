@@ -13,6 +13,9 @@ import denny.ai.agent.trading.api.vo.NewsReportVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.NewsAnalystPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +40,9 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource private AnalystPromptService analystPromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -88,26 +94,62 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         String structuredNewsInput = structuredProcessor.buildLlmInput(stockInfo.getTicker(), stockInfo.getName(), newsItems);
 
-        String prompt = AnalystPromptTemplate.NEWS_ANALYST_STRUCTURED_PROMPT
-                .replaceFirst("%s", stockInfo.getTicker())
-                .replaceFirst("%s", structuredNewsInput);
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        String prompt = analystPromptService.render("6005", context, dynamicContext,
+                structuredNewsInput, NewsAnalystPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6005", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("新闻分析师调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过新闻分析师LLM调用");
-            return structuredProcessor.parseReport("", newsItems);
+            throw new IllegalStateException("SSE已关闭，取消新闻分析师调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "NewsAnalystNode"),
                 "NewsAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("新闻分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return structuredProcessor.parseReport(response, newsItems);
+        NewsAnalystPayload payload = structuredPayloadCodec.parse(response, NewsAnalystPayload.class);
+        return toReport(payload, newsItems);
+    }
+
+    private NewsReportVO toReport(NewsAnalystPayload payload, List<NewsItemVO> newsItems) {
+        return NewsReportVO.builder()
+                .rating(payload.rating())
+                .newsItems(newsItems)
+                .overallSentiment(payload.overallSentiment())
+                .summary(payload.summary())
+                .confidence(payload.confidence())
+                .enhancedSourceNewsIds(payload.enhancedSourceNewsIds())
+                .targetEcho(payload.targetEcho())
+                .deduplicatedEvents(payload.deduplicatedEvents().stream().map(event ->
+                        NewsReportVO.NewsEventVO.builder()
+                                .eventType(event.eventType()).eventTitle(event.eventTitle())
+                                .sentiment(event.sentiment()).impactLevel(event.impactLevel())
+                                .sourceNewsIds(event.sourceNewsIds())
+                                .enhancedSourceNewsIds(event.enhancedSourceNewsIds())
+                                .evidenceLevel(event.evidenceLevel()).evidenceQuality(event.evidenceQuality())
+                                .summary(event.summary()).build()).toList())
+                .newsThemes(payload.newsThemes().stream().map(theme ->
+                        NewsReportVO.NewsThemeVO.builder()
+                                .theme(theme.theme()).sentiment(theme.sentiment())
+                                .impactLevel(theme.impactLevel()).evidenceIds(theme.evidenceIds())
+                                .enhancedSourceNewsIds(theme.enhancedSourceNewsIds())
+                                .evidenceLevel(theme.evidenceLevel()).evidenceQuality(theme.evidenceQuality())
+                                .reason(theme.reason()).build()).toList())
+                .riskWarnings(payload.riskWarnings().stream().map(risk ->
+                        NewsReportVO.NewsRiskWarningVO.builder()
+                                .risk(risk.risk()).impactLevel(risk.impactLevel())
+                                .evidenceIds(risk.evidenceIds())
+                                .enhancedSourceNewsIds(risk.enhancedSourceNewsIds())
+                                .evidenceLevel(risk.evidenceLevel()).evidenceQuality(risk.evidenceQuality())
+                                .reason(risk.reason()).build()).toList())
+                .dataQuality(payload.dataQuality())
+                .build();
     }
 
     private void sendAnalystEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

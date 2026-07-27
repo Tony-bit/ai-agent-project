@@ -340,7 +340,7 @@ public class TradingToolCallbacks {
         appendMoney(sb, "自由现金流", vo.getFreeCashFlow());
 
         sb.append("\n## 偿债能力\n");
-        appendLine(sb, "资产负债率", vo.getDebtToEquity());
+        appendLine(sb, "资产负债率(%)", vo.getDebtToAssets());
         appendLine(sb, "流动比率", vo.getCurrentRatio(), "%.2f");
 
         return sb.toString();

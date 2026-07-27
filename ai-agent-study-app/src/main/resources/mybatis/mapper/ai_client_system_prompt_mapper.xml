@@ -141,5 +141,49 @@
           AND status = 1
     </select>
 
-</mapper>
+    <select id="queryVersionSet" resultMap="AiClientSystemPromptMap">
+        SELECT id, prompt_id, prompt_name, prompt_content, description, status,
+               prompt_type, version, change_desc, create_time, update_time
+        FROM ai_client_system_prompt
+        WHERE prompt_type = #{promptType}
+          AND version = #{version}
+          AND prompt_id IN
+          <foreach collection="promptIds" item="promptId" open="(" separator="," close=")">
+              #{promptId}
+          </foreach>
+    </select>
 
+    <select id="queryActiveSet" resultMap="AiClientSystemPromptMap">
+        SELECT id, prompt_id, prompt_name, prompt_content, description, status,
+               prompt_type, version, change_desc, create_time, update_time
+        FROM ai_client_system_prompt
+        WHERE prompt_type = #{promptType}
+          AND status = 1
+          AND prompt_id IN
+          <foreach collection="promptIds" item="promptId" open="(" separator="," close=")">
+              #{promptId}
+          </foreach>
+    </select>
+
+    <update id="deactivatePromptSet">
+        UPDATE ai_client_system_prompt
+        SET status = 0, update_time = NOW()
+        WHERE prompt_type = #{promptType}
+          AND prompt_id IN
+          <foreach collection="promptIds" item="promptId" open="(" separator="," close=")">
+              #{promptId}
+          </foreach>
+    </update>
+
+    <update id="activatePromptSetVersion">
+        UPDATE ai_client_system_prompt
+        SET status = 1, update_time = NOW()
+        WHERE prompt_type = #{promptType}
+          AND version = #{version}
+          AND prompt_id IN
+          <foreach collection="promptIds" item="promptId" open="(" separator="," close=")">
+              #{promptId}
+          </foreach>
+    </update>
+
+</mapper>

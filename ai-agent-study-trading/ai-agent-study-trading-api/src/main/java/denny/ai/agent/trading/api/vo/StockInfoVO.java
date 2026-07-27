@@ -65,4 +65,9 @@ public class StockInfoVO {
      * 52周最低价
      */
     private BigDecimal week52Low;
+
+    /**
+     * Industry classification, e.g. Insurance, Bank, Semiconductor
+     */
+    private String industry;
 }

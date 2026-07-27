@@ -9,6 +9,7 @@ import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
+import denny.ai.agent.trading.domain.execution.NodeCommitResult;
 import com.alibaba.fastjson.JSON;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -58,10 +59,11 @@ public class RecommendationStage implements TradingStage {
                 nodeInvoker.invokeScoped("RecommendationNode", scope,
                         () -> recommendationNode.prepare(
                                 context.getTradingContext(), context.getDynamicContext()));
-        boolean committed = committer().commit(result, TradingPhase.RECOMMENDATION_DECISION,
-                context::getCurrentPhase, context.getTradingContext()::setInvestmentPlan);
-        if (!committed) {
-            context.sendError("推荐节点执行失败");
+        NodeCommitResult commit = committer().commitValidated(result,
+                TradingPhase.RECOMMENDATION_DECISION, context, "RecommendationNode",
+                context.getTradingContext()::setInvestmentPlan);
+        if (!commit.committed()) {
+            sendCommitError(context, commit, "RecommendationNode", "推荐节点执行失败");
             return;
         }
         context.sendSseResult("recommendation", "recommendation_plan",
@@ -76,5 +78,16 @@ public class RecommendationStage implements TradingStage {
 
     private NodeResultCommitter committer() {
         return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
+    }
+
+    private void sendCommitError(TradingStateContext context,
+                                 NodeCommitResult result,
+                                 String nodeName,
+                                 String executionMessage) {
+        if (result.validationFailed()) {
+            context.sendValidationError(nodeName, result.validationErrors());
+        } else {
+            context.sendError(executionMessage);
+        }
     }
 }

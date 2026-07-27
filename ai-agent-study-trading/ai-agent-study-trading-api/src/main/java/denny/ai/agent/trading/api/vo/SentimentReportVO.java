@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import denny.ai.agent.trading.api.vo.payload.TargetEchoPayload;
 
 /**
  * 情绪面分析报告值对象。
@@ -35,4 +36,6 @@ public class SentimentReportVO {
      * 分析总结
      */
     private String summary;
+
+    private TargetEchoPayload targetEcho;
 }

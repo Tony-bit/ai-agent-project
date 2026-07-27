@@ -8,6 +8,9 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.prompt.DebatePromptTemplate;
+import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import denny.ai.agent.trading.domain.vo.TradingContextVO.InvestmentDebateVO;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +31,9 @@ public class BearResearcherNode extends AbstractExecuteSupport {
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
 
+    @Resource private TradingRolePromptService rolePromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
+
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -43,16 +49,14 @@ public class BearResearcherNode extends AbstractExecuteSupport {
         return "bear_analysis_prepared";
     }
 
-    public String prepare(TradingContextVO context,
+    public ResearchArgumentPayload prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
         sendDebateEvent(dynamicContext, "bear_start", "空头研究员开始分析...");
 
-        String reportSummary = buildReportSummary(context);
-
-        String bearThesis = generateBearThesis(context.getStockInfo().getTicker(), reportSummary, dynamicContext);
+        ResearchArgumentPayload bearThesis = generateBearThesis(context, dynamicContext);
 
         log.info("空头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
         return bearThesis;
@@ -81,29 +85,52 @@ public class BearResearcherNode extends AbstractExecuteSupport {
             sb.append("【新闻面分析】\n").append(context.getNewsReport().getSummary()).append("\n\n");
         }
 
+        if (context.getDataWarnings() != null && !context.getDataWarnings().isEmpty()) {
+            sb.append("【数据质量警告】以下异常仅用于降低置信度，不代表标的身份不一致：\n");
+            for (String warning : context.getDataWarnings()) {
+                sb.append("  - ").append(warning).append("\n");
+            }
+            sb.append("\n");
+        }
+
         return sb.length() > 0 ? sb.toString() : "No analyst reports available.";
     }
 
-    private String generateBearThesis(String ticker, String reportSummary,
+    private ResearchArgumentPayload generateBearThesis(TradingContextVO context,
                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = DebatePromptTemplate.BEAR_RESEARCHER_PROMPT.formatted(ticker, reportSummary);
+        java.util.Map<String, Object> reports = new java.util.LinkedHashMap<>();
+        reports.put("fundamental", context.getFundamentalReport());
+        reports.put("technical", context.getTechnicalReport());
+        reports.put("sentiment", context.getSentimentReport());
+        reports.put("news", context.getNewsReport());
+        reports.put("dataWarnings", context.getDataWarnings());
+        String analystReports = structuredPayloadCodec.toJson(reports);
+        String debateHistory = structuredPayloadCodec.toJson(context.getInvestmentDebate());
+        String prompt = rolePromptService.render("6007", context, dynamicContext,
+                java.util.Map.of("analystReports", analystReports,
+                        "debateHistory", debateHistory), ResearchArgumentPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6007", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("空头研究员调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过空头研究员LLM调用");
-            return "";
+            throw new IllegalStateException("SSE已关闭，取消空头研究员调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "BearResearcherNode"),
                 "BearResearcherNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("空头研究员LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return response;
+        ResearchArgumentPayload payload = structuredPayloadCodec.parse(response, ResearchArgumentPayload.class);
+        if (!"BEAR".equals(payload.stance())) {
+            throw new denny.ai.agent.trading.domain.execution.StructuredPayloadException(
+                    "bear researcher returned a non-BEAR stance");
+        }
+        return payload;
     }
 
     private void sendDebateEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

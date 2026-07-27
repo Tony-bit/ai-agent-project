@@ -7,6 +7,7 @@ import denny.ai.agent.trading.domain.node.PortfolioManagerNode;
 import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
+import denny.ai.agent.trading.domain.execution.NodeCommitResult;
 import denny.ai.agent.trading.domain.model.valobj.TradingResultVO;
 import denny.ai.agent.trading.domain.service.TradingResultExportService;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
@@ -54,10 +55,14 @@ public class FinalReportStage implements TradingStage {
                 nodeInvoker.invokeScoped("PortfolioManagerNode", scope,
                         () -> portfolioManagerNode.prepare(
                                 context.getTradingContext(), context.getDynamicContext()));
-        boolean committed = committer().commit(result, TradingPhase.FINAL_REPORT,
-                context::getCurrentPhase, context.getTradingContext()::setFinalDecision);
-        if (!committed) {
-            context.sendError("组合经理执行失败");
+        NodeCommitResult commit = committer().commitValidated(result, TradingPhase.FINAL_REPORT,
+                context, "PortfolioManagerNode", context.getTradingContext()::setFinalDecision);
+        if (!commit.committed()) {
+            if (commit.validationFailed()) {
+                context.sendValidationError("PortfolioManagerNode", commit.validationErrors());
+            } else {
+                context.sendError("组合经理执行失败");
+            }
             return;
         }
         context.sendSseResult("final", "final_decision", JSON.toJSONString(result.value()), false);

@@ -75,7 +75,7 @@ class TradingPipelineTest {
     private TradingStateContext createContext() {
         StockAnalysisRequestVO request = new StockAnalysisRequestVO();
         request.setTicker("000001");
-        return new TradingStateContext(
+        return denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 request,
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 (type, event) -> {

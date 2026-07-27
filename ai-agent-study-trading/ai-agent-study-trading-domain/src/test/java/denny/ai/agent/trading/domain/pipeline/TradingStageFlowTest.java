@@ -4,10 +4,12 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
+import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.config.TradingPhase;
 import denny.ai.agent.trading.domain.config.TradingStateContext;
 import denny.ai.agent.trading.domain.node.*;
+import denny.ai.agent.trading.domain.guard.DataSanityGuard;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +48,8 @@ class TradingStageFlowTest {
                         new TechnicalStub(calls),
                         new SentimentStub(calls),
                         new NewsStub(calls),
-                        executor),
+                        executor,
+                        new RecordingDataSanityGuard(calls)),
                 new InvestmentDebateStage(
                         new BullStub(calls),
                         new BearStub(calls),
@@ -67,6 +70,7 @@ class TradingStageFlowTest {
                 "sse:trading",
                 "fundamental",
                 "sse:analyst",
+                "data_sanity_guard",
                 "sse:debate",
                 "bull",
                 "sse:debate",
@@ -92,6 +96,33 @@ class TradingStageFlowTest {
         assertNull(TradingDriver.getCurrent());
     }
 
+    @Test
+    void identityPollutionStopsBeforeDebateRecommendationRiskAndPortfolio() {
+        executor = Executors.newFixedThreadPool(4);
+        TradingNodeInvoker invoker = new TradingNodeInvoker(executor);
+        List<String> calls = new ArrayList<>();
+        TradingStateContext context = createContext(calls);
+        TradingPipeline pipeline = new TradingPipeline(List.of(
+                new AnalystCollectionStage(
+                        new PollutedFundamentalStub(calls),
+                        new TechnicalStub(calls),
+                        new SentimentStub(calls),
+                        new NewsStub(calls), executor, new RecordingDataSanityGuard(calls)),
+                new InvestmentDebateStage(
+                        new BullStub(calls), new BearStub(calls), new ResearchManagerStub(calls), invoker),
+                new RecommendationStage(new RecommendationStub(calls), invoker),
+                new RiskManagementStage(
+                        new AggressiveStub(calls), new ConservativeStub(calls), new NeutralStub(calls), invoker),
+                new FinalReportStage(new PortfolioStub(calls), invoker)
+        ));
+
+        pipeline.execute(context);
+
+        assertEquals(TradingPhase.ERROR, context.getCurrentPhase());
+        assertNull(context.getTradingContext().getFundamentalReport());
+        assertEquals(List.of("sse:trading", "fundamental", "sse:trading"), calls);
+    }
+
     private TradingStateContext createContext(List<String> calls) {
         StockAnalysisRequestVO request = new StockAnalysisRequestVO();
         request.setTicker("000001");
@@ -101,7 +132,7 @@ class TradingStageFlowTest {
 
         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext =
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
-        TradingStateContext context = new TradingStateContext(
+        TradingStateContext context = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 request,
                 dynamicContext,
                 (type, event) -> calls.add("sse:" + type)
@@ -113,6 +144,20 @@ class TradingStageFlowTest {
     private abstract static class DriverFreeNode {
         void assertNoDriver() {
             assertNull(TradingDriver.getCurrent(), "pipeline nodes should not see a legacy TradingDriver");
+        }
+    }
+
+    private static class RecordingDataSanityGuard extends DataSanityGuard {
+        private final List<String> calls;
+
+        private RecordingDataSanityGuard(List<String> calls) {
+            this.calls = calls;
+        }
+
+        @Override
+        public List<String> check(TradingContextVO context) {
+            calls.add("data_sanity_guard");
+            return List.of();
         }
     }
 
@@ -130,6 +175,21 @@ class TradingStageFlowTest {
             assertNull(TradingDriver.getCurrent());
             calls.add("fundamental");
             return denny.ai.agent.trading.api.vo.FundamentalReportVO.builder().rating(3).build();
+        }
+    }
+
+    private static class PollutedFundamentalStub extends FundamentalStub {
+        private PollutedFundamentalStub(List<String> calls) {
+            super(calls);
+        }
+
+        @Override
+        public denny.ai.agent.trading.api.vo.FundamentalReportVO prepare(
+                TradingContextVO context,
+                DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+            denny.ai.agent.trading.api.vo.FundamentalReportVO report = super.prepare(context, dynamicContext);
+            report.setSummary("错误引入 001309 德明利");
+            return report;
         }
     }
 
@@ -189,11 +249,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String prepare(TradingContextVO context,
+        public denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("bull");
-            return "bull opinion";
+            return argument("BULL", "bull opinion");
         }
     }
 
@@ -205,11 +265,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String prepare(TradingContextVO context,
+        public denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload prepare(TradingContextVO context,
                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("bear");
-            return "bear opinion";
+            return argument("BEAR", "bear opinion");
         }
     }
 
@@ -221,12 +281,23 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public DebateEvaluation prepare(TradingContextVO context,
+        public denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload prepare(TradingContextVO context,
                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("research_manager");
-            return new DebateEvaluation(3.0, "debate conclusion", false);
+            return new denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload(
+                    "DECIDED", 3.0, false, List.of("factor"), List.of(),
+                    "debate conclusion", null);
         }
+    }
+
+    private static denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload argument(
+            String stance, String summary) {
+        return new denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload(
+                stance,
+                List.of(new denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload.EvidenceArgument(
+                        "FACT", "HIGH", summary)),
+                List.of(), summary, null);
     }
 
     private static class RecommendationStub extends RecommendationNode {
@@ -254,11 +325,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String prepare(TradingContextVO context,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public RiskAssessmentPayload prepare(TradingContextVO context,
+                                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("aggressive");
-            return "aggressive opinion";
+            return risk("AGGRESSIVE", "aggressive opinion");
         }
     }
 
@@ -270,11 +341,11 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String prepare(TradingContextVO context,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public RiskAssessmentPayload prepare(TradingContextVO context,
+                                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("conservative");
-            return "conservative opinion";
+            return risk("CONSERVATIVE", "conservative opinion");
         }
     }
 
@@ -286,12 +357,17 @@ class TradingStageFlowTest {
         }
 
         @Override
-        public String prepare(TradingContextVO context,
-                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        public RiskAssessmentPayload prepare(TradingContextVO context,
+                                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
             assertNull(TradingDriver.getCurrent());
             calls.add("neutral");
-            return "neutral opinion";
+            return risk("NEUTRAL", "neutral opinion");
         }
+    }
+
+    private static RiskAssessmentPayload risk(String perspective, String summary) {
+        return new RiskAssessmentPayload(
+                perspective, 3, List.of("risk"), List.of("mitigation"), summary, null);
     }
 
     private static class PortfolioStub extends PortfolioManagerNode {

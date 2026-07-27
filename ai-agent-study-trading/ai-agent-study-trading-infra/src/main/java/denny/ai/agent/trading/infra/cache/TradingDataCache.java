@@ -42,12 +42,15 @@ public class TradingDataCache {
 
     // ==================== 股票基本信息 ====================
 
-    @Cacheable(value = CACHE_STOCK_INFO, key = "#ticker", unless = "#result == null")
+    @Cacheable(value = CACHE_STOCK_INFO,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','stock_info',#ticker,'latest',T(java.util.Map).of(),'v1')",
+            unless = "#result == null")
     public Object getStockInfo(String ticker) {
         return null;
     }
 
-    @CacheEvict(value = CACHE_STOCK_INFO, key = "#ticker")
+    @CacheEvict(value = CACHE_STOCK_INFO,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','stock_info',#ticker,'latest',T(java.util.Map).of(),'v1')")
     public void evictStockInfo(String ticker) {
         log.debug("Evicted stock info cache for: {}", ticker);
     }
@@ -55,7 +58,7 @@ public class TradingDataCache {
     // ==================== 历史K线数据 ====================
 
     @Cacheable(value = CACHE_HISTORICAL_BARS,
-            key = "#ticker + '_' + (#startDate ?: 'default') + '_' + (#endDate ?: 'default')",
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','daily',#ticker,(#startDate ?: 'default') + '-' + (#endDate ?: 'default'),T(java.util.Map).of(),'v1')",
             unless = "#result == null")
     public Object getHistoricalBars(String ticker, String startDate, String endDate) {
         return null;
@@ -68,36 +71,45 @@ public class TradingDataCache {
 
     // ==================== 财务数据 ====================
 
-    @Cacheable(value = CACHE_FUNDAMENTAL_DATA, key = "#ticker", unless = "#result == null")
+    @Cacheable(value = CACHE_FUNDAMENTAL_DATA,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','fina_indicator',#ticker,'latest',T(java.util.Map).of(),'v1')",
+            unless = "#result == null")
     public Object getFundamentalData(String ticker) {
         return null;
     }
 
-    @CacheEvict(value = CACHE_FUNDAMENTAL_DATA, key = "#ticker")
+    @CacheEvict(value = CACHE_FUNDAMENTAL_DATA,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','fina_indicator',#ticker,'latest',T(java.util.Map).of(),'v1')")
     public void evictFundamentalData(String ticker) {
         log.debug("Evicted fundamental data cache for: {}", ticker);
     }
 
     // ==================== 新闻数据 ====================
 
-    @Cacheable(value = CACHE_NEWS, key = "#ticker + '_' + #limit", unless = "#result == null")
+    @Cacheable(value = CACHE_NEWS,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','news',#ticker,'latest',T(java.util.Map).of('limit',#limit),'v1')",
+            unless = "#result == null")
     public Object getNews(String ticker, int limit) {
         return null;
     }
 
-    @CacheEvict(value = CACHE_NEWS, key = "#ticker + '_' + #limit")
+    @CacheEvict(value = CACHE_NEWS,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','news',#ticker,'latest',T(java.util.Map).of('limit',#limit),'v1')")
     public void evictNews(String ticker, int limit) {
         log.debug("Evicted news cache for: {} limit: {}", ticker, limit);
     }
 
     // ==================== 情绪数据 ====================
 
-    @Cacheable(value = CACHE_SENTIMENT, key = "#ticker", unless = "#result == null")
+    @Cacheable(value = CACHE_SENTIMENT,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','sentiment',#ticker,'latest',T(java.util.Map).of(),'v1')",
+            unless = "#result == null")
     public Object getSentiment(String ticker) {
         return null;
     }
 
-    @CacheEvict(value = CACHE_SENTIMENT, key = "#ticker")
+    @CacheEvict(value = CACHE_SENTIMENT,
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','sentiment',#ticker,'latest',T(java.util.Map).of(),'v1')")
     public void evictSentiment(String ticker) {
         log.debug("Evicted sentiment cache for: {}", ticker);
     }
@@ -105,7 +117,7 @@ public class TradingDataCache {
     // ==================== 技术指标 ====================
 
     @Cacheable(value = CACHE_TECHNICAL_INDICATORS,
-            key = "#ticker + '_' + (#startDate ?: 'default') + '_' + (#endDate ?: 'default')",
+            key = "T(denny.ai.agent.trading.api.cache.TradingNamespaceKeyFactory).rawData('stock-data','technical_indicators',#ticker,(#startDate ?: 'default') + '-' + (#endDate ?: 'default'),T(java.util.Map).of(),'v1')",
             unless = "#result == null")
     public Object getTechnicalIndicators(String ticker, String startDate, String endDate) {
         return null;

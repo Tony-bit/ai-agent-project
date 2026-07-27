@@ -1,6 +1,10 @@
 package denny.ai.agent.trading.domain.execution;
 
 import denny.ai.agent.trading.domain.config.TradingPhase;
+import denny.ai.agent.trading.domain.config.TradingStateContext;
+import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
+import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import denny.ai.agent.trading.domain.validation.ValidationErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -90,6 +94,30 @@ class NodeResultCommitterTest {
         releaseWriter.countDown();
         thread.join(1000L);
         assertEquals(NodeExecutionState.COMMITTED, scope.state());
+    }
+
+    @Test
+    void should_reject_validation_failure_before_context_write() {
+        NodeExecutionScope scope = scope(NOW.plusSeconds(10), false);
+        AtomicReference<String> contextValue = new AtomicReference<>();
+        StockAnalysisRequestVO request = new StockAnalysisRequestVO();
+        request.setTicker("601318");
+        TradingStateContext stateContext = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
+                request, new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
+                (type, event) -> true);
+
+        NodeCommitResult result = committer.commitValidated(
+                NodeExecutionResult.success("模型错误引入 001309", scope),
+                TradingPhase.INIT, stateContext, "TechnicalAnalystNode", contextValue::set);
+
+        assertFalse(result.committed());
+        assertTrue(result.validationFailed());
+        assertTrue(result.validationErrors().stream()
+                .anyMatch(error -> error.code() == ValidationErrorCode.FOREIGN_ENTITY));
+        assertEquals(null, contextValue.get());
+        assertEquals(NodeExecutionState.FAILED, scope.state());
+        assertEquals(denny.ai.agent.trading.domain.validation.NodeValidationAudit.Status.INVALID,
+                stateContext.getValidationRegistry().statusOrMissing("TechnicalAnalystNode").status());
     }
 
     private NodeExecutionScope scope(Instant deadline, boolean cancelled) {

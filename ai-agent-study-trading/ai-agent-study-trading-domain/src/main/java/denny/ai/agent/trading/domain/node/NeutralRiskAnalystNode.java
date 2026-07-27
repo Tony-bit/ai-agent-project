@@ -8,6 +8,9 @@ import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteSt
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.RiskAnalystPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,6 +30,8 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+    @Resource private TradingRolePromptService rolePromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -43,13 +48,13 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
         return "neutral_risk_prepared";
     }
 
-    public String prepare(TradingContextVO context,
+    public RiskAssessmentPayload prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null) {
             throw new IllegalArgumentException("trading context is missing");
         }
         sendRiskEvent(dynamicContext, "neutral_start", "中性风控分析师开始分析...");
-        String opinion = generateRiskOpinion(context, dynamicContext);
+        RiskAssessmentPayload opinion = generateRiskOpinion(context, dynamicContext);
         log.info("中性风控分析师分析完成");
         return opinion;
     }
@@ -61,30 +66,34 @@ public class NeutralRiskAnalystNode extends AbstractExecuteSupport {
         return null;
     }
 
-    private String generateRiskOpinion(TradingContextVO context,
+    private RiskAssessmentPayload generateRiskOpinion(TradingContextVO context,
                                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = RiskAnalystPromptTemplate.NEUTRAL_ANALYST_PROMPT.formatted(
-                context.getStockInfo().getTicker(),
-                context.getStockInfo().getCurrentPrice(),
-                context.getInvestmentPlan() != null ? com.alibaba.fastjson.JSON.toJSONString(context.getInvestmentPlan()) : "{}"
-        );
+        String prompt = rolePromptService.render("6010", context, dynamicContext,
+                java.util.Map.of(
+                        "investmentPlan", structuredPayloadCodec.toJson(context.getInvestmentPlan()),
+                        "riskReports", structuredPayloadCodec.toJson(context.getRiskDebate())),
+                RiskAssessmentPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6010", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("中性风控分析师调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过中性风控分析师LLM调用");
-            return "";
+            throw new IllegalStateException("SSE已关闭，取消中性风控分析师调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "NeutralRiskAnalystNode"),
                 "NeutralRiskAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("中性风控分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return response;
+        RiskAssessmentPayload payload = structuredPayloadCodec.parse(response, RiskAssessmentPayload.class);
+        if (!"NEUTRAL".equals(payload.perspective())) {
+            throw new denny.ai.agent.trading.domain.execution.StructuredPayloadException("invalid risk perspective");
+        }
+        return payload;
     }
 
     private void sendRiskEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

@@ -11,6 +11,9 @@ import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.FundamentalAnalystPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,12 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource
+    private AnalystPromptService analystPromptService;
+
+    @Resource
+    private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -87,30 +96,22 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
     private FundamentalReportVO generateReport(StockInfoVO stockInfo,
                                              FundamentalDataVO data,
                                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = AnalystPromptTemplate.FUNDAMENTAL_ANALYST_PROMPT.formatted(
-                stockInfo.getTicker(),
-                stockInfo.getName(),
-                stockInfo.getCurrentPrice(),
-                nullToDefault(stockInfo.getPeRatio()),
-                nullToDefault(data.getRevenueGrowth()),
-                nullToDefault(data.getNetIncomeGrowth()),
-                data.getRoe(),
-                data.getGrossMargin(),
-                data.getNetMargin(),
-                data.getDebtToEquity(),
-                data.getCurrentRatio(),
-                nullToDefault(data.getFreeCashFlow())
-        );
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        String stockData = structuredPayloadCodec.toJson(java.util.Map.of(
+                "stockInfo", stockInfo,
+                "fundamentalData", data));
+        String prompt = analystPromptService.render("6002", context, dynamicContext,
+                stockData, FundamentalAnalystPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6002", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("基本面分析师调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过基本面分析师LLM调用");
-            return parseReport("", data);
+            throw new IllegalStateException("SSE已关闭，取消基本面分析师调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "FundamentalAnalystNode"),
                 "FundamentalAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
@@ -121,15 +122,15 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
     }
 
     private FundamentalReportVO parseReport(String llmResponse, FundamentalDataVO rawData) {
-        Integer jsonRating = parseJsonRating(llmResponse);
-        int rating = (jsonRating != null) ? jsonRating : calculateRating(rawData);
-
+        FundamentalAnalystPayload payload = structuredPayloadCodec.parse(
+                llmResponse, FundamentalAnalystPayload.class);
         return FundamentalReportVO.builder()
-                .rating(rating)
-                .keyFindings(extractKeyFindings(llmResponse, rawData))
-                .riskWarnings(extractRiskWarnings(llmResponse, rawData))
-                .summary(extractSummary(llmResponse))
+                .rating(payload.rating())
+                .keyFindings(payload.keyFindings())
+                .riskWarnings(payload.riskWarnings())
+                .summary(payload.summary())
                 .rawData(rawData)
+                .targetEcho(payload.targetEcho())
                 .build();
     }
 
@@ -202,23 +203,23 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         int score = 0;
 
         if (data.getRoe() != null) {
-            if (data.getRoe() > 0.20) score += 2;
-            else if (data.getRoe() > 0.10) score += 1;
+            if (data.getRoe() > 20.0) score += 2;
+            else if (data.getRoe() > 10.0) score += 1;
         }
 
         if (data.getGrossMargin() != null) {
-            if (data.getGrossMargin() > 0.40) score += 2;
-            else if (data.getGrossMargin() > 0.20) score += 1;
+            if (data.getGrossMargin() > 40.0) score += 2;
+            else if (data.getGrossMargin() > 20.0) score += 1;
         }
 
         if (data.getNetMargin() != null) {
-            if (data.getNetMargin() > 0.20) score += 2;
-            else if (data.getNetMargin() > 0.10) score += 1;
+            if (data.getNetMargin() > 20.0) score += 2;
+            else if (data.getNetMargin() > 10.0) score += 1;
         }
 
         if (data.getRevenueGrowth() != null) {
-            if (data.getRevenueGrowth() > 0.15) score += 2;
-            else if (data.getRevenueGrowth() > 0.05) score += 1;
+            if (data.getRevenueGrowth() > 15.0) score += 2;
+            else if (data.getRevenueGrowth() > 5.0) score += 1;
         }
 
         return Math.max(1, Math.min(5, (score / 2) + 2));
@@ -241,11 +242,11 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
     private java.util.List<String> extractRiskWarnings(String llmResponse, FundamentalDataVO data) {
         java.util.List<String> warnings = new java.util.ArrayList<>();
-        if (data.getDebtToEquity() != null && data.getDebtToEquity() > 1.0) {
-            warnings.add("资产负债率偏高，债务权益比=" + String.format("%.2f", data.getDebtToEquity()));
+        if (data.getDebtToAssets() != null && data.getDebtToAssets() > 70.0) {
+            warnings.add("资产负债率偏高：" + String.format("%.2f%%", data.getDebtToAssets()));
         }
         if (data.getNetIncomeGrowth() != null && data.getNetIncomeGrowth() < 0) {
-            warnings.add("净利润同比下降" + String.format("%.1f%%", Math.abs(data.getNetIncomeGrowth()) * 100));
+            warnings.add("净利润同比下降" + String.format("%.1f%%", Math.abs(data.getNetIncomeGrowth())));
         }
         if (warnings.isEmpty()) {
             warnings.add("未发现明显财务风险");

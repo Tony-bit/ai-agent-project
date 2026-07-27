@@ -9,6 +9,11 @@ import denny.ai.agent.domain.service.auto.step.AbstractExecuteSupport;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.armory.factory.ArmoryObjectRegistry;
 import denny.ai.agent.trading.domain.prompt.DebatePromptTemplate;
+import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.domain.config.TradingStateContext;
+import denny.ai.agent.trading.domain.validation.NodeValidationRegistry;
+import denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -28,6 +33,10 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
 
+    @Resource private TradingRolePromptService rolePromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
+    @Resource private ResearchManagerInputFactory researchManagerInputFactory;
+
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -43,7 +52,7 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         return "research_judgment_prepared";
     }
 
-    public DebateEvaluation prepare(TradingContextVO context,
+    public ResearchManagerPayload prepare(TradingContextVO context,
                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getInvestmentDebate() == null) {
             throw new IllegalArgumentException("trading or debate context is missing");
@@ -69,32 +78,38 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
     private String evaluateDebate(String ticker,
                                 TradingContextVO.InvestmentDebateVO debate,
                                 DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        StringBuilder bullHistory = new StringBuilder();
-        for (int i = 0; i < debate.getBullHistory().size(); i++) {
-            bullHistory.append("Round ").append(i + 1).append(": ").append(debate.getBullHistory().get(i)).append("\n\n");
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        NodeValidationRegistry registry = dynamicContext.getValue(
+                TradingStateContext.VALIDATION_REGISTRY_KEY);
+        if (registry == null) {
+            registry = new NodeValidationRegistry();
         }
-
-        StringBuilder bearHistory = new StringBuilder();
-        for (int i = 0; i < debate.getBearHistory().size(); i++) {
-            bearHistory.append("Round ").append(i + 1).append(": ").append(debate.getBearHistory().get(i)).append("\n\n");
-        }
-
-        String prompt = DebatePromptTemplate.RESEARCH_MANAGER_PROMPT.formatted(
-                ticker,
-                debate.getCurrentRound() + 1,
-                bullHistory.toString(),
-                bearHistory.toString()
-        );
+        ResearchManagerInput managerInput = inputFactory().create(
+                context, registry, debate.getCurrentRound() + 1);
+        java.util.Map<String, Object> debateHistory = java.util.Map.of(
+                "bull", managerInput.validatedBullHistory(),
+                "bear", managerInput.validatedBearHistory());
+        java.util.Map<String, Object> validationStatus = java.util.Map.of(
+                "nodes", managerInput.validationStatuses(),
+                "dataQualityWarnings", managerInput.dataQualityWarnings());
+        String prompt = rolePromptService.render("6008", context, dynamicContext,
+                java.util.Map.of(
+                        "analystReports", structuredPayloadCodec.toJson(
+                                managerInput.validatedAnalystReports()),
+                        "debateHistory", structuredPayloadCodec.toJson(debateHistory),
+                        "validationStatus", structuredPayloadCodec.toJson(validationStatus),
+                        "currentRound", managerInput.currentRound()),
+                ResearchManagerPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6008", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("研究主管调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过研究主管LLM调用");
-            return "";
+            throw new IllegalStateException("SSE已关闭，取消研究主管调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "ResearchManagerNode"),
                 "ResearchManagerNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
@@ -104,41 +119,13 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         return response;
     }
 
-    private DebateEvaluation parseEvaluation(String llmResponse) {
-        try {
-            String jsonStr = extractJson(llmResponse);
-            JSONObject json = JSON.parseObject(jsonStr);
-            Double overallScore = json.containsKey("overallScore")
-                    ? json.getDouble("overallScore") : null;
-            String conclusion = json.containsKey("conclusion")
-                    ? json.getString("conclusion") : null;
-            boolean needMoreDebate = json.containsKey("needMoreDebate")
-                    && json.getBooleanValue("needMoreDebate");
-            log.info("辩论评估结果: overallScore={}, conclusion={}, needMoreDebate={}",
-                    overallScore, conclusion, needMoreDebate);
-            return new DebateEvaluation(overallScore, conclusion, needMoreDebate);
-        } catch (Exception e) {
-            log.error("解析研究主管评估响应失败: {}", llmResponse, e);
-            return new DebateEvaluation(null,
-                    "综合评估：多空双方各有论据，建议进入下一阶段分析。", false);
-        }
+    private ResearchManagerInputFactory inputFactory() {
+        return researchManagerInputFactory == null
+                ? new ResearchManagerInputFactory() : researchManagerInputFactory;
     }
 
-    public record DebateEvaluation(Double overallScore,
-                                   String conclusion,
-                                   boolean needMoreDebate) {
-    }
-
-    private String extractJson(String response) {
-        String trimmed = response.trim();
-        int jsonStart = trimmed.indexOf("{");
-        int jsonEnd = trimmed.lastIndexOf("}");
-        if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            String json = trimmed.substring(jsonStart, jsonEnd + 1);
-            json = json.replace('\u201C', '\u201D');
-            return json;
-        }
-        return "{}";
+    private ResearchManagerPayload parseEvaluation(String llmResponse) {
+        return structuredPayloadCodec.parse(llmResponse, ResearchManagerPayload.class);
     }
 
     private void sendDebateEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

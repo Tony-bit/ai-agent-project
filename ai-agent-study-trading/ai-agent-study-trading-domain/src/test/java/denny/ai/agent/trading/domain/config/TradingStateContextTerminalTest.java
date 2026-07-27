@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import denny.ai.agent.trading.domain.validation.TradingValidationError;
+import denny.ai.agent.trading.domain.validation.ValidationErrorCode;
 
 class TradingStateContextTerminalTest {
 
@@ -53,7 +55,7 @@ class TradingStateContextTerminalTest {
         StockAnalysisRequestVO request = new StockAnalysisRequestVO();
         request.setTicker("000001");
         SseEventSender sender = (type, event) -> attempts.incrementAndGet() > 1;
-        TradingStateContext context = new TradingStateContext(
+        TradingStateContext context = denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 request,
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 sender
@@ -64,10 +66,32 @@ class TradingStateContextTerminalTest {
         assertEquals(2, attempts.get());
     }
 
+    @Test
+    void validationFailureSseContainsSafeStructuredContext() {
+        List<AutoAgentExecuteResultEntity> events = new ArrayList<>();
+        TradingStateContext context = createContext(events);
+
+        context.sendValidationError("TechnicalAnalystNode", List.of(
+                new TradingValidationError(
+                        ValidationErrorCode.FOREIGN_ENTITY, "internal detail", "payload")));
+
+        assertEquals(1, events.size());
+        com.alibaba.fastjson.JSONObject content =
+                com.alibaba.fastjson.JSON.parseObject(events.get(0).getContent());
+        assertEquals("节点数据校验失败，本次分析已停止", content.getString("message"));
+        assertEquals(context.getTargetContext().runId(), content.getString("runId"));
+        assertEquals(context.getTargetContext().targetId(), content.getString("targetId"));
+        assertEquals("TechnicalAnalystNode", content.getString("nodeName"));
+        assertEquals("INVALID", content.getString("validationStatus"));
+        assertEquals(List.of("FOREIGN_ENTITY"),
+                content.getJSONArray("validationErrors").toJavaList(String.class));
+        assertFalse(events.get(0).getContent().contains("internal detail"));
+    }
+
     private TradingStateContext createContext(List<AutoAgentExecuteResultEntity> events) {
         StockAnalysisRequestVO request = new StockAnalysisRequestVO();
         request.setTicker("000001");
-        return new TradingStateContext(
+        return denny.ai.agent.trading.domain.support.TestTargets.stateContext(
                 request,
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(),
                 (type, event) -> events.add((AutoAgentExecuteResultEntity) event)

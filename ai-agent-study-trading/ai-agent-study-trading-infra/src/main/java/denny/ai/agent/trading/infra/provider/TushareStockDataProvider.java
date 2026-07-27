@@ -52,7 +52,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
             List<TushareStockBasicDTO> basicData = apiClient.callGeneric(
                     TushareStockBasicDTO.class, "stock_basic",
                     Map.of("ts_code", tsCode),
-                    "ts_code,name,exchange,market");
+                    "ts_code,name,exchange,market,industry");
 
             if (basicData.isEmpty()) {
                 throw new RuntimeException("股票基本信息查询失败，可能是股票代码不存在或 Token 无权限: " + tsCode);
@@ -121,11 +121,26 @@ public class TushareStockDataProvider implements IStockDataProvider {
                     .volume(volume)
                     .week52High(week52High)
                     .week52Low(week52Low)
+                    .industry(basic.getIndustry())
                     .build();
         } catch (Exception e) {
             log.error("获取股票信息失败: ticker={}, error={}", ticker, e.getMessage());
             throw new RuntimeException("获取股票信息失败: " + ticker, e);
         }
+    }
+
+    @Override
+    public List<StockIdentityVO> findStockIdentities(String ticker) {
+        String tsCode = toTsCode(ticker);
+        List<TushareStockBasicDTO> records = apiClient.callGeneric(
+                TushareStockBasicDTO.class,
+                "stock_basic",
+                Map.of("ts_code", tsCode, "list_status", "L"),
+                "ts_code,name,industry");
+        return records.stream()
+                .map(record -> new StockIdentityVO(
+                        record.getTsCode(), record.getName(), record.getIndustry()))
+                .toList();
     }
 
     @Override
@@ -222,7 +237,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 builder.roe(fina.getRoe())
                        .grossMargin(fina.getGrossprofitMargin())
                        .netMargin(fina.getNetprofitMargin())
-                       .debtToEquity(fina.getDebtToAssets())
+                       .debtToAssets(fina.getDebtToAssets())
                        .currentRatio(fina.getCurrentRatio())
                        .peRatio(fina.getPe())
                        .pbRatio(fina.getPbRatio())

@@ -11,6 +11,9 @@ import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.SentimentAnalystPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +37,9 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource private AnalystPromptService analystPromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -84,29 +90,22 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
     private SentimentReportVO generateReport(StockInfoVO stockInfo,
                                           SentimentDataVO sentimentData,
                                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String prompt = AnalystPromptTemplate.SENTIMENT_ANALYST_PROMPT.formatted(
-                stockInfo.getTicker(),
-                sentimentData.getOverallScore(),
-                sentimentData.getSocialMediaScore(),
-                sentimentData.getNewsScore(),
-                sentimentData.getAnalystScore(),
-                sentimentData.getBullRatio(),
-                sentimentData.getBearRatio(),
-                sentimentData.getFearGreedIndex(),
-                sentimentData.getShortTermScore(),
-                sentimentData.getMediumTermScore(),
-                sentimentData.getLongTermScore()
-        );
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        String stockData = structuredPayloadCodec.toJson(java.util.Map.of(
+                "stockInfo", stockInfo,
+                "sentimentData", sentimentData));
+        String prompt = analystPromptService.render("6004", context, dynamicContext,
+                stockData, SentimentAnalystPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6004", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("情绪分析师调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过情绪分析师LLM调用");
-            return parseReport("", sentimentData);
+            throw new IllegalStateException("SSE已关闭，取消情绪分析师调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "SentimentAnalystNode"),
                 "SentimentAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
@@ -117,13 +116,14 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
     }
 
     private SentimentReportVO parseReport(String llmResponse, SentimentDataVO sentimentData) {
-        int rating = calculateRating(sentimentData);
-
+        SentimentAnalystPayload payload = structuredPayloadCodec.parse(
+                llmResponse, SentimentAnalystPayload.class);
         return SentimentReportVO.builder()
-                .rating(rating)
-                .sentimentScore(sentimentData.getOverallScore())
-                .keySentiments(extractKeySentiments(sentimentData))
-                .summary(llmResponse)
+                .rating(payload.rating())
+                .sentimentScore(payload.sentimentScore())
+                .keySentiments(payload.keySentiments())
+                .summary(payload.summary())
+                .targetEcho(payload.targetEcho())
                 .build();
     }
 

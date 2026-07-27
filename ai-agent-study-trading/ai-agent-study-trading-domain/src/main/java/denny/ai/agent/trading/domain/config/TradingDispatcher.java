@@ -4,6 +4,7 @@ import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.trading.api.vo.AnalystTypeEnum;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.node.*;
+import denny.ai.agent.trading.domain.guard.DataSanityGuard;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -69,6 +70,9 @@ public class TradingDispatcher {
 
     @Resource(name = "tradingTaskExecutor")
     private ThreadPoolExecutor tradingTaskExecutor;
+
+    @Resource
+    private DataSanityGuard dataSanityGuard;
 
     @Resource
     private TradingAgentProperties tradingAgentProperties;
@@ -274,6 +278,10 @@ public class TradingDispatcher {
 
     private void handleAllAnalystsComplete(TradingStateContext stateContext) {
         log.info("所有分析师执行完毕，进入辩论阶段");
+        if (dataSanityGuard != null) {
+            stateContext.getTradingContext().setDataWarnings(
+                    dataSanityGuard.check(stateContext.getTradingContext()));
+        }
         stateContext.transitionTo(TradingPhase.INVESTMENT_DEBATE);
         stateContext.sendSseResult("debate", "debate_start", "辩论阶段开始", false);
         StockAnalysisRequestVO request = stateContext.getRequest();

@@ -47,7 +47,7 @@ public class TradingDispatcherThreadLocalTest {
         denny.ai.agent.domain.service.sse.SseEventSender sseSender = (type, data) ->
                 sseEvents.add(type + ":" + data);
 
-        stateContext = new TradingStateContext(createRequest(),
+        stateContext = denny.ai.agent.trading.domain.support.TestTargets.stateContext(createRequest(),
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(), sseSender);
         driver = new TradingDriver(stateContext, new TradingDispatcherStub());
 

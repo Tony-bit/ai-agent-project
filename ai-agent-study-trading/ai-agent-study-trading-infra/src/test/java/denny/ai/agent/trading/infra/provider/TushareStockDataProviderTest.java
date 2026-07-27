@@ -245,6 +245,27 @@ class TushareStockDataProviderTest {
     // ==================== getFundamentalData 测试 ====================
 
     @Test
+    void findStockIdentities_preservesAuthoritativeRecordsForDomainValidation() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if (!"stock_basic".equals(apiName)) {
+                return Collections.emptyList();
+            }
+            return List.of(
+                    Map.of("ts_code", "601318.SH", "name", "中国平安", "industry", "保险"),
+                    Map.of("ts_code", "601318.SH", "name", "中国平安", "industry", "保险"));
+        });
+        TushareStockDataProvider provider = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider);
+
+        List<StockIdentityVO> identities = provider.findStockIdentities("601318");
+
+        assertEquals(2, identities.size());
+        assertEquals("601318.SH", identities.get(0).targetId());
+        assertEquals("中国平安", identities.get(0).stockName());
+        assertEquals("保险", identities.get(0).industry());
+    }
+
+    @Test
     void getFundamentalData_success() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {
@@ -254,7 +275,7 @@ class TushareStockDataProviderTest {
                     row.put("roe", "12.5");
                     row.put("grossprofit_margin", "30.0");
                     row.put("netprofit_margin", "15.0");
-                    row.put("debt_to_assets", "0.65");
+                    row.put("debt_to_assets", "65.0");
                     row.put("current_ratio", "1.5");
                     row.put("pe", "8.5");
                     row.put("pb_ratio", "0.9");
@@ -287,6 +308,7 @@ class TushareStockDataProviderTest {
         assertNotNull(result);
         assertEquals(12.5, result.getRoe());
         assertEquals(30.0, result.getGrossMargin());
+        assertEquals(65.0, result.getDebtToAssets());
         assertEquals(8.5, result.getPeRatio());
         assertEquals(0.9, result.getPbRatio());
 

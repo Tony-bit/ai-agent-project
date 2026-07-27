@@ -11,6 +11,9 @@ import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.config.TradingDriver;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
+import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
+import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
+import denny.ai.agent.trading.api.vo.payload.TechnicalAnalystPayload;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +42,9 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
     @Resource
     private ArmoryObjectRegistry armoryObjectRegistry;
+
+    @Resource private AnalystPromptService analystPromptService;
+    @Resource private StructuredPayloadCodec structuredPayloadCodec;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -96,42 +102,23 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
                                            List<OHLCVBarVO> bars,
                                            TechnicalIndicatorsVO indicators,
                                            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        String bollPosition = calculateBollingerPosition(indicators);
-
-        String prompt = AnalystPromptTemplate.TECHNICAL_ANALYST_PROMPT.formatted(
-                stockInfo.getTicker(),
-                stockInfo.getCurrentPrice(),
-                indicators.getMa5(),
-                indicators.getMa10(),
-                indicators.getMa20(),
-                indicators.getMa60(),
-                indicators.getMa120(),
-                indicators.getRsi6(),
-                indicators.getRsi12(),
-                indicators.getRsi24(),
-                indicators.getMacd(),
-                indicators.getMacdSignal(),
-                indicators.getMacdHistogram(),
-                indicators.getK(),
-                indicators.getD(),
-                indicators.getJ(),
-                indicators.getBollUpper(),
-                indicators.getBollMiddle(),
-                indicators.getBollLower(),
-                indicators.getAtr(),
-                indicators.getVolumeRatio(),
-                indicators.getVolumeMa5()
-        );
+        TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
+        String stockData = structuredPayloadCodec.toJson(java.util.Map.of(
+                "stockInfo", stockInfo,
+                "bars", bars,
+                "indicators", indicators));
+        String prompt = analystPromptService.render("6003", context, dynamicContext,
+                stockData, TechnicalAnalystPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6003", 0);
 
         long startAt = System.currentTimeMillis();
         log.info("技术分析师调用LLM | prompt长度={}", prompt.length());
         if (!shouldContinueSse(dynamicContext)) {
-            log.info("SSE已关闭，跳过技术分析师LLM调用");
-            return parseReport("", indicators);
+            throw new IllegalStateException("SSE已关闭，取消技术分析师调用");
         }
-        String response = collectStreamingResponse(chatClient.prompt().user(prompt),
+        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                chatClient.prompt().user(prompt), context, dynamicContext, "TechnicalAnalystNode"),
                 "TechnicalAnalystNode", getSseEventSink(dynamicContext));
         long latencyMs = System.currentTimeMillis() - startAt;
 
@@ -142,15 +129,15 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
     }
 
     private TechnicalReportVO parseReport(String llmResponse, TechnicalIndicatorsVO indicators) {
-        String trendSignal = determineTrendSignal(indicators);
-        int rating = calculateRating(indicators, trendSignal);
-
+        TechnicalAnalystPayload payload = structuredPayloadCodec.parse(
+                llmResponse, TechnicalAnalystPayload.class);
         return TechnicalReportVO.builder()
-                .rating(rating)
-                .trendSignal(trendSignal)
-                .keyPatterns(extractKeyPatterns(indicators))
-                .summary(llmResponse)
+                .rating(payload.rating())
+                .trendSignal(payload.trendSignal())
+                .keyPatterns(payload.keyPatterns())
+                .summary(payload.summary())
                 .indicators(indicators)
+                .targetEcho(payload.targetEcho())
                 .build();
     }
 
