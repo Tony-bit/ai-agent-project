@@ -7,6 +7,7 @@ import denny.ai.agent.trading.domain.prompt.PromptVersion;
 import denny.ai.agent.trading.domain.validation.TradingValidationError;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -27,16 +28,24 @@ public class TradingNodeObservability {
             Map.entry("BullResearcherNode", "6006"),
             Map.entry("BearResearcherNode", "6007"),
             Map.entry("ResearchManagerNode", "6008"),
-            Map.entry("AggressiveRiskAnalystNode", "6009"),
-            Map.entry("ConservativeRiskAnalystNode", "6010"),
-            Map.entry("NeutralRiskAnalystNode", "6011"),
-            Map.entry("PortfolioManagerNode", "6012"),
+            Map.entry("PortfolioManagerNode", "6009"),
+            Map.entry("NeutralRiskAnalystNode", "6010"),
+            Map.entry("ConservativeRiskAnalystNode", "6011"),
+            Map.entry("AggressiveRiskAnalystNode", "6012"),
             Map.entry("RecommendationNode", "6013"));
 
     private final ObjectMapper objectMapper;
+    private final TradingRolloutMonitor rolloutMonitor;
 
     public TradingNodeObservability(ObjectMapper objectMapper) {
+        this(objectMapper, new TradingRolloutMonitor());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public TradingNodeObservability(ObjectMapper objectMapper,
+                                    TradingRolloutMonitor rolloutMonitor) {
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.rolloutMonitor = Objects.requireNonNull(rolloutMonitor, "rolloutMonitor");
     }
 
     public NodeObservation observe(TradingStateContext context,
@@ -47,13 +56,14 @@ public class TradingNodeObservability {
         String promptId = PROMPT_IDS.get(nodeName);
         PromptVersion prompt = promptId == null ? null : context.getPromptSnapshot().require(promptId);
         NodeObservation observation = new NodeObservation(
-                context.getTargetContext().runId(), context.getTargetContext().targetId(), nodeName,
+                context.getTargetContext().runId(), context.getTargetContext().targetId(), promptId, nodeName,
                 prompt == null ? null : prompt.version(),
                 prompt == null ? null : prompt.contentHash(),
-                inputHash(context), "v2", validationStatus,
+                inputHash(context), context.getPromptSnapshot().mode().name(), validationStatus,
                 errors == null ? List.of() : errors.stream().map(error -> error.code().name()).distinct().toList(),
                 latencyMs);
         log.info("trading_node_observation={}", toJson(observation));
+        rolloutMonitor.recordNode(validationStatus);
         return observation;
     }
 
@@ -82,6 +92,7 @@ public class TradingNodeObservability {
     public record NodeObservation(
             String runId,
             String targetId,
+            String clientId,
             String nodeName,
             Integer promptVersion,
             String promptHash,

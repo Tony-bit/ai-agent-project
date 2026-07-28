@@ -11,8 +11,11 @@ import denny.ai.agent.trading.domain.execution.NodeExecutionResult;
 import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
 import denny.ai.agent.trading.domain.execution.NodeCommitResult;
-import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
-import denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload;
+import denny.ai.agent.trading.api.vo.ResearchManagerResult;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignal;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignalSource;
+import denny.ai.agent.trading.domain.signal.V2DecisionSignalFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -67,20 +70,25 @@ public class InvestmentDebateStage implements TradingStage {
             }
             debate.setLatestSpeaker("BULL");
             context.setLatestDebateSpeaker("BULL");
-            if (!executeBull(context, debate)) {
-                return;
-            }
+            boolean bullAvailable = executeBull(context, debate);
 
             debate.setLatestSpeaker("BEAR");
             context.setLatestDebateSpeaker("BEAR");
-            if (!executeBear(context, debate)) {
-                return;
+            boolean bearAvailable = executeBear(context, debate);
+
+            if (!bullAvailable && !bearAvailable) {
+                addWarning(context, "Bull/Bear 本轮均不可用，跳过投资辩论");
+                debate.setNeedMoreDebate(false);
+                break;
             }
 
             debate.setLatestSpeaker("RESEARCH_MANAGER");
             context.setLatestDebateSpeaker("RESEARCH_MANAGER");
             if (!executeResearchManager(context, debate)) {
-                return;
+                addWarning(context, "Research Manager 不可用，使用 INSUFFICIENT_DATA");
+                debate.setJudgeDecision("INSUFFICIENT_DATA");
+                debate.setNeedMoreDebate(false);
+                break;
             }
 
             debate.setCurrentRound(completedRounds + 1);
@@ -99,55 +107,76 @@ public class InvestmentDebateStage implements TradingStage {
     private boolean executeBull(TradingStateContext context,
                                 TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<ResearchArgumentPayload> result = nodeInvoker.invokeScoped("BullResearcherNode", scope,
+        NodeExecutionResult<NarrativeNodeResult> result = nodeInvoker.invokeScoped("BullResearcherNode", scope,
                 () -> bullResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
         NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
                 context, "BullResearcherNode", thesis -> {
                     debate.addBullArgument(thesis);
-                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] " + thesis.summary());
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BULL] "
+                            + thesis.rawText());
                 });
         if (!commit.committed()) {
-            sendCommitError(context, commit, "BullResearcherNode", "多头研究员执行失败");
+            addWarning(context, "BullResearcherNode 执行失败或结果不可用");
             return false;
         }
-        context.sendSseResult("debate", "bull_thesis", com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
+        context.sendSseResult("debate", "bull_thesis",
+                com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
         return TradingPipelineSseGuard.shouldContinue(context);
     }
 
     private boolean executeBear(TradingStateContext context,
                                 TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<ResearchArgumentPayload> result = nodeInvoker.invokeScoped("BearResearcherNode", scope,
+        NodeExecutionResult<NarrativeNodeResult> result = nodeInvoker.invokeScoped("BearResearcherNode", scope,
                 () -> bearResearcherNode.prepare(context.getTradingContext(), context.getDynamicContext()));
         NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
                 context, "BearResearcherNode", thesis -> {
                     debate.addBearArgument(thesis);
-                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] " + thesis.summary());
+                    debate.addToHistory("[Round " + debate.getCurrentRound() + " - BEAR] "
+                            + thesis.rawText());
                 });
         if (!commit.committed()) {
-            sendCommitError(context, commit, "BearResearcherNode", "空头研究员执行失败");
+            addWarning(context, "BearResearcherNode 执行失败或结果不可用");
             return false;
         }
-        context.sendSseResult("debate", "bear_thesis", com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
+        context.sendSseResult("debate", "bear_thesis",
+                com.alibaba.fastjson.JSON.toJSONString(result.value()), false);
         return TradingPipelineSseGuard.shouldContinue(context);
     }
 
     private boolean executeResearchManager(TradingStateContext context,
                                            TradingContextVO.InvestmentDebateVO debate) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<ResearchManagerPayload> result =
+        NodeExecutionResult<ResearchManagerResult> result =
                 nodeInvoker.invokeScoped("ResearchManagerNode", scope,
                         () -> researchManagerNode.prepare(
                                 context.getTradingContext(), context.getDynamicContext()));
         NodeCommitResult commit = committer().commitValidated(result, TradingPhase.INVESTMENT_DEBATE,
                 context, "ResearchManagerNode", evaluation -> {
                     debate.setOverallScore(evaluation.overallScore());
-                    debate.setConclusion(evaluation.conclusion());
-                    debate.setJudgeDecision(evaluation.conclusion());
+                    debate.setConclusion(evaluation.reasoning());
+                    debate.setJudgeDecision(evaluation.recommendation());
                     debate.setNeedMoreDebate(evaluation.needMoreDebate());
+                    var signals = context.getTradingContext().getDecisionSignals();
+                    if (signals == null) {
+                        signals = new V2DecisionSignalFactory().fromReports(context.getTradingContext());
+                    }
+                    boolean relaxed = context.getPromptSnapshot().mode()
+                            == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3;
+                    context.getTradingContext().setDecisionSignals(signals.withDebateOverallScore(
+                                    evaluation.overallScore() == null
+                                            ? DecisionSignal.unavailable(relaxed
+                                                    ? DecisionSignalSource.DERIVED_V3
+                                                    : DecisionSignalSource.LLM_V2,
+                                                    relaxed ? "research-manager-score-v1" : null,
+                                                    "research manager score is unavailable")
+                                            : DecisionSignal.available(evaluation.overallScore(),
+                                                    relaxed ? DecisionSignalSource.DERIVED_V3
+                                                            : DecisionSignalSource.LLM_V2,
+                                                    relaxed ? "research-manager-score-v1" : null)));
                 });
         if (!commit.committed()) {
-            sendCommitError(context, commit, "ResearchManagerNode", "研究主管执行失败");
+            addWarning(context, "ResearchManagerNode 执行失败或结果不可用");
             return false;
         }
         return TradingPipelineSseGuard.shouldContinue(context);
@@ -166,5 +195,13 @@ public class InvestmentDebateStage implements TradingStage {
         } else {
             context.sendError(executionMessage);
         }
+    }
+
+    private void addWarning(TradingStateContext context, String warning) {
+        java.util.List<String> warnings = context.getTradingContext().getDataWarnings() == null
+                ? new java.util.ArrayList<>()
+                : new java.util.ArrayList<>(context.getTradingContext().getDataWarnings());
+        warnings.add(warning);
+        context.getTradingContext().setDataWarnings(warnings);
     }
 }

@@ -32,6 +32,7 @@ public class TradingPromptSnapshotFactory {
         }
 
         Map<String, PromptVersion> prompts = new LinkedHashMap<>();
+        Integer version = null;
         for (TradingPromptRecord record : records) {
             if (record == null || !record.active()
                     || record.promptType() != TradingPromptSet.STEP_PROMPT_TYPE
@@ -39,17 +40,27 @@ public class TradingPromptSnapshotFactory {
                     || prompts.containsKey(record.promptId())) {
                 throw new IllegalStateException("active trading prompt set contains invalid records");
             }
+            if (version == null) {
+                version = record.version();
+            } else if (version != record.version()) {
+                throw new IllegalStateException("active trading prompt set mixes versions");
+            }
+            PromptContractMode mode = PromptContractMode.fromVersion(record.version());
             try {
-                renderer.validateTemplate(record.promptId(), record.content());
+                renderer.validateTemplate(mode, record.promptId(), record.content());
             } catch (IllegalArgumentException error) {
                 throw new IllegalStateException("active trading prompt template is invalid: "
                         + record.promptId(), error);
             }
-            PromptVersion prompt = new PromptVersion(record.promptId(), record.version(),
+            PromptVersion prompt = new PromptVersion(record.promptId(), record.version(), mode,
                     record.content(), sha256(record.content()));
             prompts.put(record.promptId(), prompt);
         }
-        return new TradingPromptSnapshot(targetContext.runId(), prompts);
+        if (version == null) {
+            throw new IllegalStateException("active trading prompt set is empty");
+        }
+        return new TradingPromptSnapshot(targetContext.runId(),
+                PromptContractMode.fromVersion(version), version, prompts);
     }
 
     private String sha256(String content) {

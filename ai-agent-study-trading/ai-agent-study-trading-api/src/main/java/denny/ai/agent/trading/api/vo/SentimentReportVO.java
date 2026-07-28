@@ -37,5 +37,8 @@ public class SentimentReportVO {
      */
     private String summary;
 
+    /** Authoritative input snapshot used by deterministic signal calculation. */
+    private SentimentDataVO rawData;
+
     private TargetEchoPayload targetEcho;
 }

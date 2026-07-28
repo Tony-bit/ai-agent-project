@@ -84,12 +84,14 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusDays(90);
-        List<OHLCVBarVO> bars = dataProvider.getHistoricalBars(ticker,
+        var boundProvider = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+                .bind(dataProvider, context.getTargetContext());
+        List<OHLCVBarVO> bars = boundProvider.getHistoricalBars(
                 startDate.format(DATE_FMT), endDate.format(DATE_FMT));
 
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取 K 线数据 " + bars.size() + " 条");
 
-        TechnicalIndicatorsVO indicators = dataProvider.getTechnicalIndicators(ticker,
+        TechnicalIndicatorsVO indicators = boundProvider.getTechnicalIndicators(
                 startDate.format(DATE_FMT), endDate.format(DATE_FMT));
 
         log.info("获取技术指标: ticker={}, RSI6={}, MACD={}",
@@ -133,14 +135,20 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消技术分析师调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "TechnicalAnalystNode"),
-                "TechnicalAnalystNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6003", "TechnicalAnalystNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "TechnicalAnalystNode"),
+                        "TechnicalAnalystNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("技术分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return TechnicalReportVO.builder().summary(response.trim()).indicators(indicators).build();
+        }
         return parseReport(response, indicators);
     }
 

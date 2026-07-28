@@ -2,6 +2,7 @@ package denny.ai.agent.trading.domain.service;
 
 import denny.ai.agent.trading.domain.model.valobj.TradingResultVO;
 import denny.ai.agent.trading.api.vo.NewsReportVO;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -42,19 +43,21 @@ public class TradingResultExportService {
         }
     }
 
-    private String renderMarkdown(TradingResultVO r) {
+    String renderMarkdown(TradingResultVO r) {
         StringBuilder sb = new StringBuilder();
 
         sb.append("# ").append(r.getName()).append(" (").append(r.getTicker()).append(") 投资分析报告\n\n");
         sb.append("- **交易所**: ").append(nullSafe(r.getExchange())).append("\n");
         sb.append("- **当前价格**: ").append(r.getCurrentPrice() != null ? r.getCurrentPrice() : "N/A").append("\n");
         sb.append("- **生成时间**: ").append(r.getGeneratedAt()).append("\n\n");
+        sb.append("- **输出模式**: ").append(r.getOutputMode()).append("\n");
+        sb.append("- **可用分析师信号数**: ").append(r.getAvailableAnalystCount()).append("\n\n");
 
         if (r.getFundamentalReport() != null) {
             TradingResultVO.FundamentalSummary f = r.getFundamentalReport();
             sb.append("## 基本面分析\n\n");
             sb.append("| 指标 | 值 |\n|--------|------|\n");
-            sb.append("| 评分 | ").append(f.getRating()).append("/5 |\n");
+            sb.append("| 评分 | ").append(formatRating(r.getDecisionSignals().fundamentalRating())).append(" |\n");
             if (f.getKeyFindings() != null && !f.getKeyFindings().isEmpty()) {
                 sb.append("| 主要发现 | ").append(join(f.getKeyFindings(), "；")).append(" |\n");
             }
@@ -68,8 +71,8 @@ public class TradingResultExportService {
             TradingResultVO.TechnicalSummary t = r.getTechnicalReport();
             sb.append("## 技术面分析\n\n");
             sb.append("| 指标 | 值 |\n|--------|------|\n");
-            sb.append("| 评分 | ").append(t.getRating()).append("/5 |\n");
-            sb.append("| 趋势信号 | ").append(nullSafe(t.getTrendSignal())).append(" |\n");
+            sb.append("| 评分 | ").append(formatRating(r.getDecisionSignals().technicalRating())).append(" |\n");
+            sb.append("| 趋势信号 | ").append(formatSignal(r.getDecisionSignals().technicalTrendSignal())).append(" |\n");
             if (t.getKeyPatterns() != null && !t.getKeyPatterns().isEmpty()) {
                 sb.append("| 关键形态 | ").append(join(t.getKeyPatterns(), "；")).append(" |\n");
             }
@@ -80,8 +83,8 @@ public class TradingResultExportService {
             TradingResultVO.SentimentSummary s = r.getSentimentReport();
             sb.append("## 情绪面分析\n\n");
             sb.append("| 指标 | 值 |\n|--------|------|\n");
-            sb.append("| 评分 | ").append(s.getRating()).append("/5 |\n");
-            sb.append("| 情绪得分 | ").append(s.getSentimentScore()).append(" |\n");
+            sb.append("| 评分 | ").append(formatRating(r.getDecisionSignals().sentimentRating())).append(" |\n");
+            sb.append("| 情绪得分 | ").append(formatSignal(r.getDecisionSignals().sentimentScore())).append(" |\n");
             if (s.getKeySentiments() != null && !s.getKeySentiments().isEmpty()) {
                 sb.append("| 关键情绪 | ").append(join(s.getKeySentiments(), "；")).append(" |\n");
             }
@@ -92,8 +95,8 @@ public class TradingResultExportService {
             TradingResultVO.NewsSummary n = r.getNewsReport();
             sb.append("## 新闻面分析\n\n");
             sb.append("| 指标 | 值 |\n|--------|------|\n");
-            sb.append("| 评分 | ").append(n.getRating()).append("/5 |\n");
-            sb.append("| 整体情绪 | ").append(nullSafe(n.getOverallSentiment())).append(" |\n");
+            sb.append("| 评分 | ").append(formatRating(r.getDecisionSignals().newsRating())).append(" |\n");
+            sb.append("| 整体情绪 | ").append(formatSignal(r.getDecisionSignals().newsOverallSentiment())).append(" |\n");
             if (n.getNewsThemes() != null && !n.getNewsThemes().isEmpty()) {
                 List<String> themeStrings = new ArrayList<>();
                 for (NewsReportVO.NewsThemeVO theme : n.getNewsThemes()) {
@@ -108,7 +111,8 @@ public class TradingResultExportService {
             TradingResultVO.InvestmentDebateSummary d = r.getInvestmentDebate();
             sb.append("## 投资辩论结论\n\n");
             sb.append("| 指标 | 值 |\n|--------|------|\n");
-            sb.append("| 综合评分 | ").append(d.getOverallScore()).append(" |\n\n");
+            sb.append("| 综合评分 | ").append(formatSignal(r.getDecisionSignals().debateOverallScore()))
+                    .append(" |\n\n");
             if (d.getBullArguments() != null && !d.getBullArguments().isEmpty()) {
                 sb.append("### 多头观点\n\n");
                 for (int i = 0; i < d.getBullArguments().size(); i++) {
@@ -145,7 +149,7 @@ public class TradingResultExportService {
             sb.append("## 风控辩论\n\n");
             sb.append("| 项目 | 值 |\n|--------|------|\n");
             sb.append("| 风险等级 | ").append(nullSafe(risk.getRiskLevel())).append(" |\n");
-            sb.append("| 风险评分 | ").append(risk.getRiskScore() != null ? risk.getRiskScore() : "N/A").append(" |\n");
+            sb.append("| 风险评分 | ").append(formatSignal(r.getDecisionSignals().riskScore())).append(" |\n");
             if (risk.getRiskItems() != null && !risk.getRiskItems().isEmpty()) {
                 sb.append("| 风险项 | ").append(join(risk.getRiskItems(), "；")).append(" |\n");
             }
@@ -176,6 +180,18 @@ public class TradingResultExportService {
 
     private String nullSafe(String s) {
         return s != null ? s : "";
+    }
+
+    private String formatRating(DecisionSignal<Integer> signal) {
+        return signal.isAvailable() ? signal.value() + "/5" : unavailable(signal);
+    }
+
+    private String formatSignal(DecisionSignal<?> signal) {
+        return signal.isAvailable() ? String.valueOf(signal.value()) : unavailable(signal);
+    }
+
+    private String unavailable(DecisionSignal<?> signal) {
+        return "N/A（" + signal.reason() + "）";
     }
 
     private String join(Collection<?> items, String delimiter) {

@@ -18,7 +18,9 @@ class TradingPromptV2MigrationTest {
         String sql;
         try (var stream = Thread.currentThread().getContextClassLoader().getResourceAsStream(resource)) {
             assertNotNull(stream);
-            sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n")
+                    .replace('\r', '\n');
         }
 
         int records = 0;

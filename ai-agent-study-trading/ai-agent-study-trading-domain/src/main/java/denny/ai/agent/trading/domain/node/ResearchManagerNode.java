@@ -14,12 +14,16 @@ import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
 import denny.ai.agent.trading.domain.config.TradingStateContext;
 import denny.ai.agent.trading.domain.validation.NodeValidationRegistry;
 import denny.ai.agent.trading.api.vo.payload.ResearchManagerPayload;
+import denny.ai.agent.trading.api.vo.payload.ResearchManagerDecisionV3;
+import denny.ai.agent.trading.api.vo.ResearchManagerResult;
+import denny.ai.agent.trading.domain.execution.TradingOutputParser;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import java.util.List;
 
 /**
  * 研究主管节点。
@@ -36,6 +40,8 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
     @Resource private TradingRolePromptService rolePromptService;
     @Resource private StructuredPayloadCodec structuredPayloadCodec;
     @Resource private ResearchManagerInputFactory researchManagerInputFactory;
+    @Resource private TradingOutputParser outputParser;
+    @Resource private denny.ai.agent.trading.api.metrics.TradingRolloutMonitor rolloutMonitor;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -52,7 +58,7 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         return "research_judgment_prepared";
     }
 
-    public ResearchManagerPayload prepare(TradingContextVO context,
+    public ResearchManagerResult prepare(TradingContextVO context,
                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         try {
             return prepareInternal(context, dynamicContext);
@@ -62,7 +68,7 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         }
     }
 
-    private ResearchManagerPayload prepareInternal(TradingContextVO context,
+    private ResearchManagerResult prepareInternal(TradingContextVO context,
                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getInvestmentDebate() == null) {
             throw new IllegalArgumentException("trading or debate context is missing");
@@ -75,7 +81,43 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
 
         String llmResponse = evaluateDebate(ticker, debate, dynamicContext);
 
-        return parseEvaluation(llmResponse);
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.STRICT_V2) {
+            ResearchManagerPayload payload = parseEvaluation(llmResponse);
+            denny.ai.agent.trading.domain.validation.StrictTargetEchoGuard.requireMatch(
+                    context.getTargetContext(), payload.targetEcho());
+            String recommendation = "INSUFFICIENT_DATA".equals(payload.status())
+                    ? "INSUFFICIENT_DATA"
+                    : payload.overallScore() > 0 ? "BUY" : payload.overallScore() < 0 ? "SELL" : "HOLD";
+            return new ResearchManagerResult(recommendation, payload.conclusion(), payload.status(),
+                    payload.overallScore(), payload.needMoreDebate(), payload.dataQualityWarnings());
+        }
+        try {
+            ResearchManagerDecisionV3 payload = outputParser.parseStructured(
+                    denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3,
+                    llmResponse, ResearchManagerDecisionV3.class);
+            Double score = switch (payload.recommendation()) {
+                case "BUY" -> 2.0;
+                case "HOLD" -> 0.0;
+                case "SELL" -> -2.0;
+                case "INSUFFICIENT_DATA" -> null;
+                default -> throw new IllegalStateException("unexpected recommendation");
+            };
+            boolean bothSidesAvailable = !debate.getBullHistory().isEmpty()
+                    && !debate.getBearHistory().isEmpty();
+            boolean needMore = debate.getCurrentRound() + 1 < debate.getMaxRounds()
+                    && bothSidesAvailable;
+            String status = score == null ? "INSUFFICIENT_DATA" : "DECIDED";
+            return new ResearchManagerResult(payload.recommendation(), payload.reasoning(), status,
+                    score, needMore, List.of());
+        } catch (RuntimeException error) {
+            if (rolloutMonitor != null) {
+                rolloutMonitor.recordSafeFallback();
+            }
+            return new ResearchManagerResult("INSUFFICIENT_DATA",
+                    "研究主管输出无法解析", "INSUFFICIENT_DATA", null, false,
+                    List.of("SAFE_FALLBACK"));
+        }
     }
 
     private String tickerOf(TradingContextVO context) {
@@ -107,10 +149,13 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         java.util.Map<String, Object> validationStatus = java.util.Map.of(
                 "nodes", managerInput.validationStatuses(),
                 "dataQualityWarnings", managerInput.dataQualityWarnings());
+        java.util.Map<String, Object> analystInputs = new java.util.LinkedHashMap<>(
+                managerInput.validatedAnalystReports());
+        analystInputs.put("decisionSignals", managerInput.decisionSignals());
         String prompt = rolePromptService.render("6008", context, dynamicContext,
                 java.util.Map.of(
                         "analystReports", structuredPayloadCodec.toJson(
-                                managerInput.validatedAnalystReports()),
+                                analystInputs),
                         "debateHistory", structuredPayloadCodec.toJson(debateHistory),
                         "validationStatus", structuredPayloadCodec.toJson(validationStatus),
                         "currentRound", managerInput.currentRound()),
@@ -123,9 +168,11 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消研究主管调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "ResearchManagerNode"),
-                "ResearchManagerNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6008", "ResearchManagerNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "ResearchManagerNode"),
+                        "ResearchManagerNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("研究主管LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",

@@ -72,6 +72,25 @@ class TradingPromptRendererTest {
                                 "outputContract", "schema")));
     }
 
+    @Test
+    void relaxedContractsRemoveNarrativeSchemasAndUseMinimalDecisionSchemas() {
+        renderer.validateTemplate(PromptContractMode.RELAXED_V3, "6002",
+                "{{targetContext}} {{stockData}}");
+        renderer.validateTemplate(PromptContractMode.RELAXED_V3, "6006",
+                "{{targetContext}} {{analystReports}} {{debateHistory}}");
+        renderer.validateTemplate(PromptContractMode.RELAXED_V3, "6008",
+                "{{targetContext}} {{analystReports}} {{debateHistory}} {{validationStatus}} "
+                        + "{{currentRound}} {{minimalOutputContract}}");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> renderer.validateTemplate(PromptContractMode.RELAXED_V3, "6002",
+                        "{{targetContext}} {{stockData}} {{outputContract}}"));
+        assertThrows(IllegalArgumentException.class,
+                () -> renderer.validateTemplate(PromptContractMode.RELAXED_V3, "6008",
+                        "{{targetContext}} {{analystReports}} {{debateHistory}} {{validationStatus}} "
+                                + "{{currentRound}} {{outputContract}}"));
+    }
+
     private TradingPromptSnapshot snapshot(TargetContext target, String selectedId, String selectedTemplate) {
         Map<String, PromptVersion> prompts = TradingPromptSet.REQUIRED_PROMPT_IDS.stream()
                 .collect(java.util.stream.Collectors.toMap(id -> id, id -> {
@@ -79,9 +98,10 @@ class TradingPromptRendererTest {
                             : renderer.requiredPlaceholders(id).stream()
                             .map(name -> "{{" + name + "}}")
                             .collect(java.util.stream.Collectors.joining("\n"));
-                    return new PromptVersion(id, 2, content, "0".repeat(64));
+                    return new PromptVersion(id, 2, PromptContractMode.STRICT_V2,
+                            content, "0".repeat(64));
                 }));
-        return new TradingPromptSnapshot(target.runId(), prompts);
+        return new TradingPromptSnapshot(target.runId(), PromptContractMode.STRICT_V2, 2, prompts);
     }
 
     private TargetContext target() {

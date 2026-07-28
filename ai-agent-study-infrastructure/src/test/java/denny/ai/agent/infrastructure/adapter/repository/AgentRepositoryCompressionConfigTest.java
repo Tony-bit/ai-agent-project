@@ -88,9 +88,6 @@ public class AgentRepositoryCompressionConfigTest {
         relation.setStatus(1);
         when(clientConfigDao.queryBySourceTypeAndId("client", "client-1"))
                 .thenReturn(List.of(relation));
-        when(clientConfigDao.queryBySourceTypeAndId("model", "model-1"))
-                .thenReturn(List.of());
-
         AiClientModelPO model = new AiClientModelPO();
         model.setModelId("model-1");
         model.setApiId("api-1");

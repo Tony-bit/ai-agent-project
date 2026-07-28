@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
+import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 
 /**
  * Trading 领域 ToolCallback 配置提供者。
@@ -19,8 +20,9 @@ import java.util.List;
 public class TradingToolCallbackProvider {
 
     @Bean
-    public TradingToolCallbacks tradingToolCallbacks(IStockDataProvider stockDataProvider) {
-        return new TradingToolCallbacks(stockDataProvider);
+    public TradingToolCallbacks tradingToolCallbacks(IStockDataProvider stockDataProvider,
+                                                      TradingRolloutMonitor rolloutMonitor) {
+        return new TradingToolCallbacks(stockDataProvider, rolloutMonitor);
     }
 
     @Bean

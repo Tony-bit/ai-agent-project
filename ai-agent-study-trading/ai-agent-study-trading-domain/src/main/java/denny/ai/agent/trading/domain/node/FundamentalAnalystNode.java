@@ -84,7 +84,8 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "基本面分析开始: " + ticker);
 
-        FundamentalDataVO fundamentalData = dataProvider.getFundamentalData(ticker);
+        FundamentalDataVO fundamentalData = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+                .bind(dataProvider, context.getTargetContext()).getFundamentalData();
 
         log.info("获取基本面数据: ticker={}, pe={}, roe={}, grossMargin={}",
                 ticker, fundamentalData.getPeRatio(), fundamentalData.getRoe(), fundamentalData.getGrossMargin());
@@ -126,14 +127,20 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消基本面分析师调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "FundamentalAnalystNode"),
-                "FundamentalAnalystNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6002", "FundamentalAnalystNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "FundamentalAnalystNode"),
+                        "FundamentalAnalystNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("基本面分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return FundamentalReportVO.builder().summary(response.trim()).rawData(data).build();
+        }
         return parseReport(response, data);
     }
 

@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
-import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
 
 @Component
 @Order(40)
@@ -71,7 +71,8 @@ public class RiskManagementStage implements TradingStage {
                 return;
             }
             context.setLatestRiskSpeaker("AGGRESSIVE");
-            if (!executeRisk(context, "AggressiveRiskAnalystNode",
+            int available = 0;
+            if (executeRisk(context, "AggressiveRiskAnalystNode",
                     () -> aggressiveRiskAnalystNode.prepare(
                             context.getTradingContext(), context.getDynamicContext()),
                     opinion -> {
@@ -80,11 +81,11 @@ public class RiskManagementStage implements TradingStage {
                         }
                         committedRiskDebate.getAggressiveHistory().add(opinion);
                     }, "aggressive_opinion")) {
-                return;
+                available++;
             }
 
             context.setLatestRiskSpeaker("CONSERVATIVE");
-            if (!executeRisk(context, "ConservativeRiskAnalystNode",
+            if (executeRisk(context, "ConservativeRiskAnalystNode",
                     () -> conservativeRiskAnalystNode.prepare(
                             context.getTradingContext(), context.getDynamicContext()),
                     opinion -> {
@@ -93,11 +94,11 @@ public class RiskManagementStage implements TradingStage {
                         }
                         committedRiskDebate.getConservativeHistory().add(opinion);
                     }, "conservative_opinion")) {
-                return;
+                available++;
             }
 
             context.setLatestRiskSpeaker("NEUTRAL");
-            if (!executeRisk(context, "NeutralRiskAnalystNode",
+            if (executeRisk(context, "NeutralRiskAnalystNode",
                     () -> neutralRiskAnalystNode.prepare(
                             context.getTradingContext(), context.getDynamicContext()),
                     opinion -> {
@@ -106,7 +107,11 @@ public class RiskManagementStage implements TradingStage {
                         }
                         committedRiskDebate.getNeutralHistory().add(opinion);
                     }, "neutral_opinion")) {
-                return;
+                available++;
+            }
+            if (available == 0) {
+                addWarning(context, "所有风险节点均不可用，最终动作限制为 HOLD/SKIP");
+                break;
             }
         }
         if (!TradingPipelineSseGuard.shouldContinue(context)) {
@@ -119,19 +124,15 @@ public class RiskManagementStage implements TradingStage {
 
     private boolean executeRisk(TradingStateContext context,
                                 String nodeName,
-                                Callable<RiskAssessmentPayload> prepare,
-                                Consumer<RiskAssessmentPayload> contextWriter,
+                                Callable<NarrativeNodeResult> prepare,
+                                Consumer<NarrativeNodeResult> contextWriter,
                                 String eventSubtype) {
         NodeExecutionScope scope = nodeInvoker.newScope(context);
-        NodeExecutionResult<RiskAssessmentPayload> result = nodeInvoker.invokeScoped(nodeName, scope, prepare);
+        NodeExecutionResult<NarrativeNodeResult> result = nodeInvoker.invokeScoped(nodeName, scope, prepare);
         NodeCommitResult commit = committer().commitValidated(result,
                 TradingPhase.RISK_MANAGEMENT, context, nodeName, contextWriter);
         if (!commit.committed()) {
-            if (commit.validationFailed()) {
-                context.sendValidationError(nodeName, commit.validationErrors());
-            } else {
-                context.sendError(nodeName + " 执行失败");
-            }
+            addWarning(context, nodeName + " 执行失败或结果不可用");
             return false;
         }
         context.sendSseResult("risk_debate", eventSubtype,
@@ -142,4 +143,12 @@ public class RiskManagementStage implements TradingStage {
     private NodeResultCommitter committer() {
         return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
     }
+
+    private void addWarning(TradingStateContext context, String warning) {
+        java.util.List<String> warnings = context.getTradingContext().getDataWarnings() == null
+                ? new ArrayList<>() : new ArrayList<>(context.getTradingContext().getDataWarnings());
+        warnings.add(warning);
+        context.getTradingContext().setDataWarnings(warnings);
+    }
+
 }

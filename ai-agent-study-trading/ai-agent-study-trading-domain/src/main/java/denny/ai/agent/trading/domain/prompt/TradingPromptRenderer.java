@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 public class TradingPromptRenderer {
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z][a-zA-Z0-9]*)}}" );
-    private static final Map<String, Set<String>> REQUIRED = Map.ofEntries(
+    private static final Map<String, Set<String>> STRICT_REQUIRED = Map.ofEntries(
             Map.entry("6002", Set.of("targetContext", "stockData", "outputContract")),
             Map.entry("6003", Set.of("targetContext", "stockData", "outputContract")),
             Map.entry("6004", Set.of("targetContext", "stockData", "outputContract")),
@@ -30,9 +30,30 @@ public class TradingPromptRenderer {
             Map.entry("6013", Set.of("targetContext", "analystReports", "debateHistory",
                     "validationStatus", "outputContract"))
     );
+    private static final Map<String, Set<String>> RELAXED_REQUIRED = Map.ofEntries(
+            Map.entry("6002", Set.of("targetContext", "stockData")),
+            Map.entry("6003", Set.of("targetContext", "stockData")),
+            Map.entry("6004", Set.of("targetContext", "stockData")),
+            Map.entry("6005", Set.of("targetContext", "stockData")),
+            Map.entry("6006", Set.of("targetContext", "analystReports", "debateHistory")),
+            Map.entry("6007", Set.of("targetContext", "analystReports", "debateHistory")),
+            Map.entry("6008", Set.of("targetContext", "analystReports", "debateHistory",
+                    "validationStatus", "currentRound", "minimalOutputContract")),
+            Map.entry("6009", Set.of("targetContext", "analystReports", "debateHistory",
+                    "riskReports", "validationStatus", "minimalOutputContract")),
+            Map.entry("6010", Set.of("targetContext", "investmentPlan", "riskReports")),
+            Map.entry("6011", Set.of("targetContext", "investmentPlan", "riskReports")),
+            Map.entry("6012", Set.of("targetContext", "investmentPlan", "riskReports")),
+            Map.entry("6013", Set.of("targetContext", "analystReports", "debateHistory",
+                    "validationStatus", "minimalOutputContract"))
+    );
 
     public void validateTemplate(String promptId, String template) {
-        Set<String> required = requiredPlaceholders(promptId);
+        validateTemplate(PromptContractMode.STRICT_V2, promptId, template);
+    }
+
+    public void validateTemplate(PromptContractMode mode, String promptId, String template) {
+        Set<String> required = requiredPlaceholders(mode, promptId);
         if (template == null || template.isBlank()) {
             throw new IllegalArgumentException("prompt template must not be blank: " + promptId);
         }
@@ -55,7 +76,7 @@ public class TradingPromptRenderer {
         if (!snapshot.runId().equals(targetContext.runId())) {
             throw new IllegalArgumentException("prompt snapshot and targetContext runId must match");
         }
-        validateTemplate(promptId, prompt.content());
+        validateTemplate(snapshot.mode(), promptId, prompt.content());
 
         Map<String, Object> values = new HashMap<>();
         if (variables != null) {
@@ -65,7 +86,7 @@ public class TradingPromptRenderer {
             throw new IllegalArgumentException("targetContext is injected by Java and cannot be overridden");
         }
         values.put("targetContext", renderTargetContext(targetContext));
-        Set<String> required = requiredPlaceholders(promptId);
+        Set<String> required = requiredPlaceholders(snapshot.mode(), promptId);
         if (!values.keySet().equals(required)) {
             throw new IllegalArgumentException("render variables do not match role contract: " + promptId);
         }
@@ -84,7 +105,13 @@ public class TradingPromptRenderer {
     }
 
     public Set<String> requiredPlaceholders(String promptId) {
-        Set<String> required = REQUIRED.get(promptId);
+        return requiredPlaceholders(PromptContractMode.STRICT_V2, promptId);
+    }
+
+    public Set<String> requiredPlaceholders(PromptContractMode mode, String promptId) {
+        Map<String, Set<String>> contracts = mode == PromptContractMode.STRICT_V2
+                ? STRICT_REQUIRED : RELAXED_REQUIRED;
+        Set<String> required = contracts.get(promptId);
         if (required == null) {
             throw new IllegalArgumentException("unknown trading promptId: " + promptId);
         }

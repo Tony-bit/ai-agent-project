@@ -18,6 +18,8 @@ import denny.ai.agent.trading.domain.execution.NodeExecutionScope;
 import denny.ai.agent.trading.domain.execution.NodeResultCommitter;
 import denny.ai.agent.trading.domain.execution.NodeCommitResult;
 import denny.ai.agent.trading.domain.guard.DataSanityGuard;
+import denny.ai.agent.trading.domain.signal.DecisionSignalShadowService;
+import denny.ai.agent.trading.domain.signal.V2DecisionSignalFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -44,6 +46,9 @@ public class AnalystCollectionStage implements TradingStage {
 
     @jakarta.annotation.Resource
     private NodeResultCommitter nodeResultCommitter;
+
+    @jakarta.annotation.Resource
+    private DecisionSignalShadowService decisionSignalShadowService;
 
     public AnalystCollectionStage(FundamentalAnalystNode fundamentalAnalystNode,
                                   TechnicalAnalystNode technicalAnalystNode,
@@ -115,6 +120,17 @@ public class AnalystCollectionStage implements TradingStage {
 
         context.getTradingContext().setDataWarnings(
                 dataSanityGuard.check(context.getTradingContext()));
+        var mode = context.getPromptSnapshot().mode();
+        var deterministicSignals = shadowService().calculate(context.getTradingContext());
+        context.getTradingContext().setOutputMode(mode.name());
+        if (mode == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            context.getTradingContext().setDecisionSignals(deterministicSignals);
+            context.getTradingContext().setShadowDecisionSignals(null);
+        } else {
+            context.getTradingContext().setDecisionSignals(
+                    new V2DecisionSignalFactory().fromReports(context.getTradingContext()));
+            context.getTradingContext().setShadowDecisionSignals(deterministicSignals);
+        }
 
         StockAnalysisRequestVO request = context.getRequest();
         int maxRounds = request != null && request.getMaxDebateRounds() > 0
@@ -219,6 +235,11 @@ public class AnalystCollectionStage implements TradingStage {
 
     private NodeResultCommitter committer() {
         return nodeResultCommitter == null ? new NodeResultCommitter() : nodeResultCommitter;
+    }
+
+    private DecisionSignalShadowService shadowService() {
+        return decisionSignalShadowService == null
+                ? new DecisionSignalShadowService() : decisionSignalShadowService;
     }
 
     private record AnalystTask(AnalystTypeEnum analyst,

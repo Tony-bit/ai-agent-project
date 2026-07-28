@@ -52,7 +52,8 @@ public class TradingPromptActivationService {
                 throw new IllegalStateException("trading prompt version set contains invalid records");
             }
             try {
-                renderer.validateTemplate(record.promptId(), record.content());
+                renderer.validateTemplate(PromptContractMode.fromVersion(version),
+                        record.promptId(), record.content());
             } catch (IllegalArgumentException error) {
                 throw new IllegalStateException("invalid trading prompt template: " + record.promptId(), error);
             }

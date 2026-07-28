@@ -189,7 +189,8 @@ public class TradingStarter {
             throw new IllegalStateException("股票分析请求为空");
         }
         TargetContext targetContext = stateContext.getTargetContext();
-        StockInfoVO stockInfo = dataProvider.getStockInfo(targetContext.stockCode());
+        StockInfoVO stockInfo = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+                .bind(dataProvider, targetContext).getStockInfo();
         if (stockInfo == null) {
             throw new IllegalStateException("无法获取股票信息 targetId=" + targetContext.targetId());
         }

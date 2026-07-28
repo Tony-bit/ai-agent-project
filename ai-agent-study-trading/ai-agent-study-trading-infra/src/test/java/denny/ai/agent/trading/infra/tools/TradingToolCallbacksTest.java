@@ -1,14 +1,18 @@
 package denny.ai.agent.trading.infra.tools;
 
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
+import denny.ai.agent.trading.api.provider.TradingTargetScope;
 import denny.ai.agent.trading.api.vo.OHLCVBarVO;
 import denny.ai.agent.trading.api.vo.StockSearchResultVO;
+import denny.ai.agent.trading.api.vo.TargetContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.time.LocalDate;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -36,6 +40,7 @@ class TradingToolCallbacksTest {
         assertEquals("get_stock_info", callback.getToolDefinition().name());
         assertNotNull(callback.getToolDefinition().description());
         assertNotNull(callback.getToolDefinition().inputSchema());
+        assertFalse(callback.getToolDefinition().inputSchema().contains("ticker"));
 
         System.out.println("=== get_stock_info ===");
         System.out.println("Name: " + callback.getToolDefinition().name());
@@ -158,11 +163,11 @@ class TradingToolCallbacksTest {
                         .adjustedClose(new BigDecimal("10.5"))
                         .build()
         );
-        when(mockProvider.getHistoricalBars("600000", "2024-01-01", "2024-01-05")).thenReturn(bars);
+        when(mockProvider.getHistoricalBars("600000.SH", "2024-01-01", "2024-01-05")).thenReturn(bars);
 
         ToolCallback callback = tradingToolCallbacks.getHistoricalBarsCallback();
-        String input = "{\"ticker\":\"600000\",\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}";
-        String result = callback.call(input);
+        String input = "{\"ticker\":\"001309\",\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}";
+        String result = TradingTargetScope.call(target(), () -> callback.call(input));
 
         assertNotNull(result);
         assertFalse(result.contains("工具执行失败"));
@@ -172,7 +177,23 @@ class TradingToolCallbacksTest {
         assertTrue(result.contains("10500000.50"));
         assertTrue(result.contains("5.00%"));
 
-        verify(mockProvider).getHistoricalBars("600000", "2024-01-01", "2024-01-05");
+        verify(mockProvider).getHistoricalBars("600000.SH", "2024-01-01", "2024-01-05");
+    }
+
+    @Test
+    void targetBoundToolRejectsCallsWithoutJavaTargetScope() {
+        ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> callback.call("{}"));
+
+        assertTrue(error.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
+        verifyNoInteractions(mockProvider);
+    }
+
+    private TargetContext target() {
+        return new TargetContext(UUID.randomUUID().toString(), "600000.SH",
+                "浦发银行", "银行", LocalDate.of(2026, 7, 28));
     }
 
     /**
