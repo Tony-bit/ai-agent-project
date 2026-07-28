@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import denny.ai.agent.trading.domain.prompt.PromptContractMode;
 
 @Component
 public class NodeResultCommitter {
@@ -57,17 +58,19 @@ public class NodeResultCommitter {
             return NodeCommitResult.notCommitted();
         }
 
-        NodeValidationContext validationContext = validationContextFactory.create(
-                stateContext, nodeName, result.value());
-        NodeResultEnvelope<T> envelope = NodeResultEnvelope.wrap(
-                stateContext.getTargetContext(), nodeName, result.value());
-        NodeValidationResult validation = nodeResultValidator.validate(envelope, validationContext);
-        if (!validation.isValid()) {
-            result.scope().markFailed();
-            stateContext.getValidationRegistry().markInvalid(nodeName, validation.errors());
-            observability.observe(stateContext, nodeName, "INVALID",
-                    validation.errors(), result.latencyMs());
-            return NodeCommitResult.rejected(validation.errors());
+        if (stateContext.getPromptSnapshot().mode() == PromptContractMode.STRICT_V2) {
+            NodeValidationContext validationContext = validationContextFactory.create(
+                    stateContext, nodeName, result.value());
+            NodeResultEnvelope<T> envelope = NodeResultEnvelope.wrap(
+                    stateContext.getTargetContext(), nodeName, result.value());
+            NodeValidationResult validation = nodeResultValidator.validate(envelope, validationContext);
+            if (!validation.isValid()) {
+                result.scope().markFailed();
+                stateContext.getValidationRegistry().markInvalid(nodeName, validation.errors());
+                observability.observe(stateContext, nodeName, "INVALID",
+                        validation.errors(), result.latencyMs());
+                return NodeCommitResult.rejected(validation.errors());
+            }
         }
 
         observability.observe(stateContext, nodeName, "VALID", List.of(), result.latencyMs());

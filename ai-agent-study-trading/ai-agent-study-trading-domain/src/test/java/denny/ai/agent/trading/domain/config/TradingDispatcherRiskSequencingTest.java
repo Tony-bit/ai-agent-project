@@ -3,7 +3,7 @@ package denny.ai.agent.trading.domain.config;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
-import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
 import denny.ai.agent.trading.domain.node.AggressiveRiskAnalystNode;
 import denny.ai.agent.trading.domain.node.ConservativeRiskAnalystNode;
 import denny.ai.agent.trading.domain.node.NeutralRiskAnalystNode;
@@ -227,8 +227,7 @@ class TradingDispatcherRiskSequencingTest {
         }
     }
 
-    private static RiskAssessmentPayload risk(String perspective, String summary) {
-        return new RiskAssessmentPayload(
-                perspective, 3, List.of("risk"), List.of("mitigation"), summary, null);
+    private static NarrativeNodeResult risk(String perspective, String summary) {
+        return new NarrativeNodeResult(perspective, summary);
     }
 }

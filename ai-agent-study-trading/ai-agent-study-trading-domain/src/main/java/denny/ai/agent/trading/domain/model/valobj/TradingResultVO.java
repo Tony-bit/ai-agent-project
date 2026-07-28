@@ -2,6 +2,9 @@ package denny.ai.agent.trading.domain.model.valobj;
 
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignal;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignalSet;
+import denny.ai.agent.trading.domain.signal.V2DecisionSignalFactory;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,6 +30,11 @@ public class TradingResultVO {
     private String exchange;
     private BigDecimal currentPrice;
     private String generatedAt;
+    private String outputMode;
+    private DecisionSignalSet decisionSignals;
+    private DecisionSignalSet shadowDecisionSignals;
+    private int availableAnalystCount;
+    private List<String> unavailableReasons;
 
     private FundamentalSummary fundamentalReport;
     private TechnicalSummary technicalReport;
@@ -134,21 +142,30 @@ public class TradingResultVO {
 
     public static TradingResultVO from(TradingContextVO context) {
         TradingResultVOBuilder builder = TradingResultVO.builder();
+        DecisionSignalSet signals = context.getDecisionSignals() == null
+                ? new V2DecisionSignalFactory().fromReports(context) : context.getDecisionSignals();
 
+        if (context.getTargetContext() != null) {
+            builder.ticker(context.getTargetContext().targetId())
+                    .name(context.getTargetContext().stockName());
+        }
         if (context.getStockInfo() != null) {
             StockInfoVO stock = context.getStockInfo();
-            builder.ticker(stock.getTicker())
-                    .name(stock.getName())
-                    .exchange(stock.getExchange())
+            builder.exchange(stock.getExchange())
                     .currentPrice(stock.getCurrentPrice());
         }
 
-        builder.generatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        builder.generatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .outputMode(context.getOutputMode() == null ? "STRICT_V2" : context.getOutputMode())
+                .decisionSignals(signals)
+                .shadowDecisionSignals(context.getShadowDecisionSignals())
+                .availableAnalystCount(signals.availableAnalystCount())
+                .unavailableReasons(unavailableReasons(signals));
 
         if (context.getFundamentalReport() != null) {
             FundamentalReportVO r = context.getFundamentalReport();
             builder.fundamentalReport(FundamentalSummary.builder()
-                    .rating(r.getRating())
+                    .rating(signals.fundamentalRating().value())
                     .keyFindings(r.getKeyFindings())
                     .riskWarnings(r.getRiskWarnings())
                     .summary(r.getSummary())
@@ -158,8 +175,8 @@ public class TradingResultVO {
         if (context.getTechnicalReport() != null) {
             TechnicalReportVO r = context.getTechnicalReport();
             builder.technicalReport(TechnicalSummary.builder()
-                    .rating(r.getRating())
-                    .trendSignal(r.getTrendSignal())
+                    .rating(signals.technicalRating().value())
+                    .trendSignal(signals.technicalTrendSignal().value())
                     .keyPatterns(r.getKeyPatterns())
                     .summary(r.getSummary())
                     .build());
@@ -168,8 +185,8 @@ public class TradingResultVO {
         if (context.getSentimentReport() != null) {
             SentimentReportVO r = context.getSentimentReport();
             builder.sentimentReport(SentimentSummary.builder()
-                    .rating(r.getRating())
-                    .sentimentScore(r.getSentimentScore())
+                    .rating(signals.sentimentRating().value())
+                    .sentimentScore(signals.sentimentScore().value())
                     .keySentiments(r.getKeySentiments())
                     .summary(r.getSummary())
                     .build());
@@ -178,8 +195,8 @@ public class TradingResultVO {
         if (context.getNewsReport() != null) {
             NewsReportVO r = context.getNewsReport();
             builder.newsReport(NewsSummary.builder()
-                    .rating(r.getRating())
-                    .overallSentiment(r.getOverallSentiment())
+                    .rating(signals.newsRating().value())
+                    .overallSentiment(signals.newsOverallSentiment().value())
                     .newsThemes(r.getNewsThemes())
                     .summary(r.getSummary())
                     .build());
@@ -188,13 +205,13 @@ public class TradingResultVO {
         if (context.getInvestmentDebate() != null) {
             TradingContextVO.InvestmentDebateVO d = context.getInvestmentDebate();
             builder.investmentDebate(InvestmentDebateSummary.builder()
-                    .overallScore(d.getOverallScore())
+                    .overallScore(signals.debateOverallScore().value())
                     .conclusion(d.getConclusion())
                     .bullArguments(d.getBullHistory().stream()
-                            .map(denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload::summary)
+                            .map(denny.ai.agent.trading.api.vo.NarrativeNodeResult::rawText)
                             .toList())
                     .bearArguments(d.getBearHistory().stream()
-                            .map(denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload::summary)
+                            .map(denny.ai.agent.trading.api.vo.NarrativeNodeResult::rawText)
                             .toList())
                     .build());
         }
@@ -215,16 +232,16 @@ public class TradingResultVO {
         if (context.getRiskDebate() != null) {
             TradingContextVO.RiskDebateVO r = context.getRiskDebate();
             builder.riskDebate(RiskDebateSummary.builder()
-                    .riskScore(r.getRiskScore())
+                    .riskScore(signals.riskScore().value())
                     .riskLevel(r.getRiskLevel())
                     .riskItems(r.getRiskItems())
                     .mitigations(r.getMitigations())
                     .aggressiveHistory(r.getAggressiveHistory().stream()
-                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
+                            .map(denny.ai.agent.trading.api.vo.NarrativeNodeResult::rawText).toList())
                     .conservativeHistory(r.getConservativeHistory().stream()
-                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
+                            .map(denny.ai.agent.trading.api.vo.NarrativeNodeResult::rawText).toList())
                     .neutralHistory(r.getNeutralHistory().stream()
-                            .map(denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload::summary).toList())
+                            .map(denny.ai.agent.trading.api.vo.NarrativeNodeResult::rawText).toList())
                     .build());
         }
 
@@ -240,5 +257,25 @@ public class TradingResultVO {
         }
 
         return builder.build();
+    }
+
+    private static List<String> unavailableReasons(DecisionSignalSet signals) {
+        List<String> reasons = new ArrayList<>();
+        addReason(reasons, "fundamentalRating", signals.fundamentalRating());
+        addReason(reasons, "technicalRating", signals.technicalRating());
+        addReason(reasons, "technicalTrendSignal", signals.technicalTrendSignal());
+        addReason(reasons, "sentimentRating", signals.sentimentRating());
+        addReason(reasons, "sentimentScore", signals.sentimentScore());
+        addReason(reasons, "newsRating", signals.newsRating());
+        addReason(reasons, "newsOverallSentiment", signals.newsOverallSentiment());
+        addReason(reasons, "debateOverallScore", signals.debateOverallScore());
+        addReason(reasons, "riskScore", signals.riskScore());
+        return List.copyOf(reasons);
+    }
+
+    private static void addReason(List<String> reasons, String name, DecisionSignal<?> signal) {
+        if (!signal.isAvailable()) {
+            reasons.add(name + ": " + signal.reason());
+        }
     }
 }

@@ -27,10 +27,18 @@ public final class TestTargets {
     }
 
     public static TradingPromptSnapshot snapshotFor(TargetContext target) {
+        return snapshotFor(target,
+                denny.ai.agent.trading.domain.prompt.PromptContractMode.STRICT_V2);
+    }
+
+    public static TradingPromptSnapshot snapshotFor(TargetContext target,
+            denny.ai.agent.trading.domain.prompt.PromptContractMode mode) {
+        int version = mode == denny.ai.agent.trading.domain.prompt.PromptContractMode.STRICT_V2 ? 2 : 3;
         var prompts = TradingPromptSet.REQUIRED_PROMPT_IDS.stream()
                 .collect(Collectors.toMap(id -> id,
-                        id -> new PromptVersion(id, 1, "test-" + id, "0".repeat(64))));
-        return new TradingPromptSnapshot(target.runId(), prompts);
+                        id -> new PromptVersion(id, version, mode,
+                                "test-" + id, "0".repeat(64))));
+        return new TradingPromptSnapshot(target.runId(), mode, version, prompts);
     }
 
     public static TradingStateContext stateContext(StockAnalysisRequestVO request,

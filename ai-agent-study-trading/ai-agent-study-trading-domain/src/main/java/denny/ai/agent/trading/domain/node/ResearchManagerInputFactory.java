@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import denny.ai.agent.trading.domain.signal.V2DecisionSignalFactory;
 
 @Component
 public class ResearchManagerInputFactory {
@@ -31,10 +32,10 @@ public class ResearchManagerInputFactory {
         addIfValid(reports, "news", context.getNewsReport(), registry);
 
         TradingContextVO.InvestmentDebateVO debate = context.getInvestmentDebate();
-        List<denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload> bulls =
+        List<denny.ai.agent.trading.api.vo.NarrativeNodeResult> bulls =
                 debate != null && registry.isValid("BullResearcherNode")
                         ? List.copyOf(debate.getBullHistory()) : List.of();
-        List<denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload> bears =
+        List<denny.ai.agent.trading.api.vo.NarrativeNodeResult> bears =
                 debate != null && registry.isValid("BearResearcherNode")
                         ? List.copyOf(debate.getBearHistory()) : List.of();
 
@@ -42,7 +43,9 @@ public class ResearchManagerInputFactory {
         ANALYST_NODES.values().forEach(node -> statuses.put(node, registry.statusOrMissing(node)));
         statuses.put("BullResearcherNode", registry.statusOrMissing("BullResearcherNode"));
         statuses.put("BearResearcherNode", registry.statusOrMissing("BearResearcherNode"));
-        return new ResearchManagerInput(context.getTargetContext(), Map.copyOf(reports), bulls, bears,
+        var signals = context.getDecisionSignals() == null
+                ? new V2DecisionSignalFactory().fromReports(context) : context.getDecisionSignals();
+        return new ResearchManagerInput(context.getTargetContext(), Map.copyOf(reports), signals, bulls, bears,
                 Map.copyOf(statuses), context.getDataWarnings() == null
                 ? List.of() : List.copyOf(context.getDataWarnings()), currentRound);
     }

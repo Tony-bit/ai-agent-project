@@ -11,6 +11,7 @@ import denny.ai.agent.trading.domain.prompt.RiskAnalystPromptTemplate;
 import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
 import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
 import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -48,7 +49,7 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         return "aggressive_risk_prepared";
     }
 
-    public RiskAssessmentPayload prepare(TradingContextVO context,
+    public NarrativeNodeResult prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         try {
             return prepareInternal(context, dynamicContext);
@@ -58,13 +59,13 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         }
     }
 
-    private RiskAssessmentPayload prepareInternal(TradingContextVO context,
+    private NarrativeNodeResult prepareInternal(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null) {
             throw new IllegalArgumentException("trading context is missing");
         }
         sendRiskEvent(dynamicContext, "aggressive_start", "激进风控分析师开始分析...");
-        RiskAssessmentPayload opinion = generateRiskOpinion(context, dynamicContext);
+        NarrativeNodeResult opinion = generateRiskOpinion(context, dynamicContext);
         log.info("激进风控分析师分析完成");
         return opinion;
     }
@@ -81,12 +82,14 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         return null;
     }
 
-    private RiskAssessmentPayload generateRiskOpinion(TradingContextVO context,
+    private NarrativeNodeResult generateRiskOpinion(TradingContextVO context,
                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         String prompt = rolePromptService.render("6012", context, dynamicContext,
                 java.util.Map.of(
                         "investmentPlan", structuredPayloadCodec.toJson(context.getInvestmentPlan()),
-                        "riskReports", structuredPayloadCodec.toJson(context.getRiskDebate())),
+                        "riskReports", structuredPayloadCodec.toJson(java.util.Map.of(
+                                "narratives", context.getRiskDebate(),
+                                "decisionSignals", context.getDecisionSignals()))),
                 RiskAssessmentPayload.class);
 
         ChatClient chatClient = getChatClientByClientId("6012", 0);
@@ -96,19 +99,28 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消激进风控分析师调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "AggressiveRiskAnalystNode"),
-                "AggressiveRiskAnalystNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6012", "AggressiveRiskAnalystNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "AggressiveRiskAnalystNode"),
+                        "AggressiveRiskAnalystNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("激进风控分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return new NarrativeNodeResult("AGGRESSIVE", response);
+        }
         RiskAssessmentPayload payload = structuredPayloadCodec.parse(response, RiskAssessmentPayload.class);
         if (!"AGGRESSIVE".equals(payload.perspective())) {
             throw new denny.ai.agent.trading.domain.execution.StructuredPayloadException("invalid risk perspective");
         }
-        return payload;
+        denny.ai.agent.trading.domain.validation.StrictTargetEchoGuard.requireMatch(
+                context.getTargetContext(), payload.targetEcho());
+        return new denny.ai.agent.trading.domain.narrative.RiskAssessmentNarrativeAdapter()
+                .adapt("AGGRESSIVE", payload);
     }
 
     private void sendRiskEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

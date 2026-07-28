@@ -26,8 +26,11 @@ public class AnalystPromptService {
         if (snapshot == null) {
             throw new IllegalStateException("trading prompt snapshot is missing");
         }
-        return renderer.render(snapshot, context.getTargetContext(), promptId,
-                Map.of("stockData", stockData,
-                        "outputContract", codec.outputContract(payloadType)));
+        Map<String, Object> values = new java.util.HashMap<>();
+        values.put("stockData", stockData);
+        if (snapshot.mode() == PromptContractMode.STRICT_V2) {
+            values.put("outputContract", codec.outputContract(payloadType));
+        }
+        return renderer.render(snapshot, context.getTargetContext(), promptId, values);
     }
 }

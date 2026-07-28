@@ -31,7 +31,11 @@ public class TradingRolePromptService {
         if (variables != null) {
             values.putAll(variables);
         }
-        values.put("outputContract", codec.outputContract(payloadType));
+        if (snapshot.mode() == PromptContractMode.STRICT_V2) {
+            values.put("outputContract", codec.outputContract(payloadType));
+        } else if (java.util.Set.of("6008", "6009", "6013").contains(promptId)) {
+            values.put("minimalOutputContract", codec.outputContract(payloadType));
+        }
         return renderer.render(snapshot, context.getTargetContext(), promptId, values);
     }
 }

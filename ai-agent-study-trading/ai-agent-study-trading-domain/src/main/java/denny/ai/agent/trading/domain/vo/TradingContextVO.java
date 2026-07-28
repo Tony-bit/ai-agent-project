@@ -6,8 +6,7 @@ import denny.ai.agent.trading.api.vo.SentimentReportVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.api.vo.TechnicalReportVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
-import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
-import denny.ai.agent.trading.api.vo.payload.RiskAssessmentPayload;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder.Default;
@@ -76,6 +75,15 @@ public class TradingContextVO {
      */
     private FinalTradeDecisionVO finalDecision;
 
+    /** Versioned signals authoritative for the run's frozen output mode. */
+    private denny.ai.agent.trading.api.vo.signal.DecisionSignalSet decisionSignals;
+
+    /** Deterministic V3 comparison signals; never consumed by V2 decisions. */
+    private denny.ai.agent.trading.api.vo.signal.DecisionSignalSet shadowDecisionSignals;
+
+    /** Frozen mode copied from the run prompt snapshot. */
+    private String outputMode;
+
     /**
      * Data sanity warnings detected by DataSanityGuard.
      * If non-empty, downstream nodes should treat analysis results with reduced confidence.
@@ -118,13 +126,13 @@ public class TradingContextVO {
          * 多头研究员论点历史
          */
         @Builder.Default
-        private java.util.List<ResearchArgumentPayload> bullHistory = new java.util.ArrayList<>();
+        private java.util.List<NarrativeNodeResult> bullHistory = new java.util.ArrayList<>();
 
         /**
          * 空头研究员论点历史
          */
         @Builder.Default
-        private java.util.List<ResearchArgumentPayload> bearHistory = new java.util.ArrayList<>();
+        private java.util.List<NarrativeNodeResult> bearHistory = new java.util.ArrayList<>();
 
         /**
          * 完整辩论历史
@@ -140,12 +148,12 @@ public class TradingContextVO {
         /**
          * 当前多头观点摘要
          */
-        private ResearchArgumentPayload bullOpinion;
+        private NarrativeNodeResult bullOpinion;
 
         /**
          * 当前空头观点摘要
          */
-        private ResearchArgumentPayload bearOpinion;
+        private NarrativeNodeResult bearOpinion;
 
         /**
          * 最新发言者（BULL/BEAR/RESEARCH_MANAGER）
@@ -170,7 +178,7 @@ public class TradingContextVO {
         /**
          * 添加多头论点
          */
-        public void addBullArgument(ResearchArgumentPayload argument) {
+        public void addBullArgument(NarrativeNodeResult argument) {
             if (this.bullHistory == null) {
                 this.bullHistory = new java.util.ArrayList<>();
             }
@@ -181,7 +189,7 @@ public class TradingContextVO {
         /**
          * 添加空头论点
          */
-        public void addBearArgument(ResearchArgumentPayload argument) {
+        public void addBearArgument(NarrativeNodeResult argument) {
             if (this.bearHistory == null) {
                 this.bearHistory = new java.util.ArrayList<>();
             }
@@ -264,6 +272,9 @@ public class TradingContextVO {
          */
         private String action;
 
+        /** Display-only rationale; never parsed into execution parameters. */
+        private String rationale;
+
         /**
          * 建议仓位比例
          */
@@ -339,19 +350,19 @@ public class TradingContextVO {
          * 激进分析师历史意见
          */
         @Builder.Default
-        private java.util.List<RiskAssessmentPayload> aggressiveHistory = new java.util.ArrayList<>();
+        private java.util.List<NarrativeNodeResult> aggressiveHistory = new java.util.ArrayList<>();
 
         /**
          * 保守分析师历史意见
          */
         @Builder.Default
-        private java.util.List<RiskAssessmentPayload> conservativeHistory = new java.util.ArrayList<>();
+        private java.util.List<NarrativeNodeResult> conservativeHistory = new java.util.ArrayList<>();
 
         /**
          * 中性分析师历史意见
          */
         @Builder.Default
-        private java.util.List<RiskAssessmentPayload> neutralHistory = new java.util.ArrayList<>();
+        private java.util.List<NarrativeNodeResult> neutralHistory = new java.util.ArrayList<>();
 
         /**
          * 组合经理最终决策
@@ -382,6 +393,12 @@ public class TradingContextVO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FinalTradeDecisionVO {
+        /** Java-bound identity; never sourced from LLM output. */
+        private String targetId;
+
+        /** Java-bound display name; never sourced from LLM output. */
+        private String stockName;
+
         /**
          * 决策（BUY/SELL/HOLD/SKIP）
          */

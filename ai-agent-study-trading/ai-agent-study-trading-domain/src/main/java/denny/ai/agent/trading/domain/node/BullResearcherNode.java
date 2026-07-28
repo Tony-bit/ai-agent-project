@@ -49,7 +49,7 @@ public class BullResearcherNode extends AbstractExecuteSupport {
         return "bull_analysis_prepared";
     }
 
-    public ResearchArgumentPayload prepare(TradingContextVO context,
+    public NarrativeNodeResult prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         try {
             return prepareInternal(context, dynamicContext);
@@ -59,14 +59,14 @@ public class BullResearcherNode extends AbstractExecuteSupport {
         }
     }
 
-    private ResearchArgumentPayload prepareInternal(TradingContextVO context,
+    private NarrativeNodeResult prepareInternal(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
         sendDebateEvent(dynamicContext, "bull_start", "多头研究员开始分析...");
 
-        ResearchArgumentPayload bullThesis = generateBullThesis(context, dynamicContext);
+        NarrativeNodeResult bullThesis = generateBullThesis(context, dynamicContext);
 
         log.info("多头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
         return bullThesis;
@@ -111,7 +111,7 @@ public class BullResearcherNode extends AbstractExecuteSupport {
         return sb.length() > 0 ? sb.toString() : "No analyst reports available.";
     }
 
-    private ResearchArgumentPayload generateBullThesis(TradingContextVO context,
+    private NarrativeNodeResult generateBullThesis(TradingContextVO context,
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         java.util.Map<String, Object> reports = new java.util.LinkedHashMap<>();
         reports.put("fundamental", context.getFundamentalReport());
@@ -132,20 +132,29 @@ public class BullResearcherNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消多头研究员调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "BullResearcherNode"),
-                "BullResearcherNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6006", "BullResearcherNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "BullResearcherNode"),
+                        "BullResearcherNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("多头研究员LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return new NarrativeNodeResult("BULL", response);
+        }
         ResearchArgumentPayload payload = structuredPayloadCodec.parse(response, ResearchArgumentPayload.class);
         if (!"BULL".equals(payload.stance())) {
             throw new denny.ai.agent.trading.domain.execution.StructuredPayloadException(
                     "bull researcher returned a non-BULL stance");
         }
-        return payload;
+        denny.ai.agent.trading.domain.validation.StrictTargetEchoGuard.requireMatch(
+                context.getTargetContext(), payload.targetEcho());
+        return new denny.ai.agent.trading.domain.narrative.ResearchArgumentNarrativeAdapter()
+                .adapt("BULL", payload);
     }
 
     private void sendDebateEvent(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,

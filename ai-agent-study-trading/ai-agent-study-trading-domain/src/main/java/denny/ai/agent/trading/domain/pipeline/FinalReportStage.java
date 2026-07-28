@@ -56,7 +56,11 @@ public class FinalReportStage implements TradingStage {
                         () -> portfolioManagerNode.prepare(
                                 context.getTradingContext(), context.getDynamicContext()));
         NodeCommitResult commit = committer().commitValidated(result, TradingPhase.FINAL_REPORT,
-                context, "PortfolioManagerNode", context.getTradingContext()::setFinalDecision);
+                context, "PortfolioManagerNode", decision -> {
+                    denny.ai.agent.trading.domain.execution.FinalDecisionIdentityGuard.requireBound(
+                            context.getTargetContext(), decision);
+                    context.getTradingContext().setFinalDecision(decision);
+                });
         if (!commit.committed()) {
             if (commit.validationFailed()) {
                 context.sendValidationError("PortfolioManagerNode", commit.validationErrors());

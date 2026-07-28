@@ -3,7 +3,7 @@ package denny.ai.agent.trading.domain.node;
 import denny.ai.agent.trading.api.vo.FundamentalReportVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
 import denny.ai.agent.trading.api.vo.TechnicalReportVO;
-import denny.ai.agent.trading.api.vo.payload.ResearchArgumentPayload;
+import denny.ai.agent.trading.api.vo.NarrativeNodeResult;
 import denny.ai.agent.trading.domain.validation.NodeValidationAudit;
 import denny.ai.agent.trading.domain.validation.NodeValidationRegistry;
 import denny.ai.agent.trading.domain.validation.TradingValidationError;
@@ -36,8 +36,8 @@ class ResearchManagerInputFactoryTest {
         context.setDataWarnings(List.of("news source incomplete"));
 
         TradingContextVO.InvestmentDebateVO debate = TradingContextVO.InvestmentDebateVO.createNew(1);
-        ResearchArgumentPayload bull = argument("BULL", "validated bull");
-        ResearchArgumentPayload invalidBear = argument("BEAR", "invalid bear must not leak");
+        NarrativeNodeResult bull = argument("BULL", "validated bull");
+        NarrativeNodeResult invalidBear = argument("BEAR", "invalid bear must not leak");
         debate.addBullArgument(bull);
         debate.addBearArgument(invalidBear);
         context.setInvestmentDebate(debate);
@@ -63,9 +63,7 @@ class ResearchManagerInputFactoryTest {
         assertEquals(1, input.currentRound());
     }
 
-    private ResearchArgumentPayload argument(String stance, String summary) {
-        return new ResearchArgumentPayload(stance,
-                List.of(new ResearchArgumentPayload.EvidenceArgument("FACT", "HIGH", summary)),
-                List.of(), summary, null);
+    private NarrativeNodeResult argument(String stance, String summary) {
+        return new NarrativeNodeResult(stance, summary);
     }
 }

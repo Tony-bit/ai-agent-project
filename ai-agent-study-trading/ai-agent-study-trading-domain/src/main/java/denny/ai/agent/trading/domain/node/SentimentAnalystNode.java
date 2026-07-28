@@ -77,7 +77,8 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "情绪分析开始: " + ticker);
 
-        SentimentDataVO sentimentData = dataProvider.getSentiment(ticker);
+        SentimentDataVO sentimentData = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+                .bind(dataProvider, context.getTargetContext()).getSentiment();
 
         log.info("获取情绪数据: ticker={}, overallScore={}, fearGreedIndex={}",
                 ticker, sentimentData.getOverallScore(), sentimentData.getFearGreedIndex());
@@ -120,14 +121,21 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消情绪分析师调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "SentimentAnalystNode"),
-                "SentimentAnalystNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6004", "SentimentAnalystNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "SentimentAnalystNode"),
+                        "SentimentAnalystNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("情绪分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return SentimentReportVO.builder().summary(response.trim())
+                    .sentimentScore(sentimentData.getOverallScore()).rawData(sentimentData).build();
+        }
         return parseReport(response, sentimentData);
     }
 
@@ -139,6 +147,7 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
                 .sentimentScore(payload.sentimentScore())
                 .keySentiments(payload.keySentiments())
                 .summary(payload.summary())
+                .rawData(sentimentData)
                 .targetEcho(payload.targetEcho())
                 .build();
     }

@@ -53,6 +53,21 @@ class TradingPromptSnapshotFactoryTest {
                         new MutableRepository(duplicate), new TradingPromptRenderer()).create(target()));
     }
 
+    @Test
+    void freezesRelaxedModeAndRejectsMixedVersions() {
+        TradingPromptSnapshot relaxed = new TradingPromptSnapshotFactory(
+                new MutableRepository(activeRecords(3, "v3")), new TradingPromptRenderer()).create(target());
+        assertEquals(PromptContractMode.RELAXED_V3, relaxed.mode());
+        assertEquals(3, relaxed.version());
+
+        List<TradingPromptRecord> mixed = new ArrayList<>(activeRecords(3, "v3"));
+        TradingPromptRecord first = mixed.get(0);
+        mixed.set(0, new TradingPromptRecord(first.id(), first.promptId(), first.promptType(),
+                2, validTemplate(first.promptId(), PromptContractMode.STRICT_V2), true));
+        assertThrows(IllegalStateException.class, () -> new TradingPromptSnapshotFactory(
+                new MutableRepository(mixed), new TradingPromptRenderer()).create(target()));
+    }
+
     private TargetContext target() {
         return new TargetContext(UUID.randomUUID().toString(), "601318.SH",
                 "中国平安", "保险", LocalDate.of(2026, 7, 22));
@@ -61,12 +76,13 @@ class TradingPromptSnapshotFactoryTest {
     private List<TradingPromptRecord> activeRecords(int version, String prefix) {
         return TradingPromptSet.REQUIRED_PROMPT_IDS.stream()
                 .map(id -> new TradingPromptRecord(Long.valueOf(id), id, 2, version,
-                        prefix + "-" + id + "\n" + validTemplate(id), true))
+                        prefix + "-" + id + "\n" + validTemplate(id,
+                                PromptContractMode.fromVersion(version)), true))
                 .toList();
     }
 
-    private String validTemplate(String promptId) {
-        return new TradingPromptRenderer().requiredPlaceholders(promptId).stream()
+    private String validTemplate(String promptId, PromptContractMode mode) {
+        return new TradingPromptRenderer().requiredPlaceholders(mode, promptId).stream()
                 .map(name -> "{{" + name + "}}")
                 .collect(java.util.stream.Collectors.joining("\n"));
     }

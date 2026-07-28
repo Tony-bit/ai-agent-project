@@ -12,6 +12,8 @@ import denny.ai.agent.trading.domain.prompt.RecommendationPromptTemplate;
 import denny.ai.agent.trading.domain.prompt.TradingRolePromptService;
 import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
 import denny.ai.agent.trading.api.vo.payload.RecommendationPayload;
+import denny.ai.agent.trading.api.vo.payload.RecommendationDecisionV3;
+import denny.ai.agent.trading.domain.execution.TradingOutputParser;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -32,6 +34,8 @@ public class RecommendationNode extends AbstractExecuteSupport {
     private ArmoryObjectRegistry armoryObjectRegistry;
     @Resource private TradingRolePromptService rolePromptService;
     @Resource private StructuredPayloadCodec structuredPayloadCodec;
+    @Resource private TradingOutputParser outputParser;
+    @Resource private denny.ai.agent.trading.api.metrics.TradingRolloutMonitor rolloutMonitor;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -69,8 +73,29 @@ public class RecommendationNode extends AbstractExecuteSupport {
 
         sendRecommendationEvent(dynamicContext, "recommendation_start", "推荐节点开始生成投资建议...");
 
-        RecommendationPayload payload = generateInvestmentPlan(context, dynamicContext);
-        TradingContextVO.InvestmentPlanVO plan = toPlan(payload);
+        String response = generateInvestmentPlan(context, dynamicContext);
+        TradingContextVO.InvestmentPlanVO plan;
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.STRICT_V2) {
+            RecommendationPayload payload = structuredPayloadCodec.parse(response, RecommendationPayload.class);
+            denny.ai.agent.trading.domain.validation.StrictTargetEchoGuard.requireMatch(
+                    context.getTargetContext(), payload.targetEcho());
+            plan = toPlan(payload);
+        } else {
+            try {
+                RecommendationDecisionV3 payload = outputParser.parseStructured(
+                        denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3,
+                        response, RecommendationDecisionV3.class);
+                plan = TradingContextVO.InvestmentPlanVO.builder()
+                        .action(payload.action()).rationale(payload.rationale()).build();
+            } catch (RuntimeException error) {
+                if (rolloutMonitor != null) {
+                    rolloutMonitor.recordSafeFallback();
+                }
+                plan = TradingContextVO.InvestmentPlanVO.builder().action("HOLD")
+                        .rationale("推荐节点输出无法解析").build();
+            }
+        }
         log.info("推荐节点执行完成: ticker={}, action={}", ticker, plan.getAction());
         return plan;
     }
@@ -131,19 +156,23 @@ public class RecommendationNode extends AbstractExecuteSupport {
         return sb.toString();
     }
 
-    private RecommendationPayload generateInvestmentPlan(TradingContextVO context,
+    private String generateInvestmentPlan(TradingContextVO context,
                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         java.util.Map<String, Object> reports = new java.util.LinkedHashMap<>();
         reports.put("fundamental", context.getFundamentalReport());
         reports.put("technical", context.getTechnicalReport());
         reports.put("sentiment", context.getSentimentReport());
         reports.put("news", context.getNewsReport());
+        reports.put("decisionSignals", context.getDecisionSignals());
+        Class<?> outputType = denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver
+                .requireMode(dynamicContext) == denny.ai.agent.trading.domain.prompt.PromptContractMode.STRICT_V2
+                ? RecommendationPayload.class : RecommendationDecisionV3.class;
         String prompt = rolePromptService.render("6013", context, dynamicContext,
                 java.util.Map.of(
                         "analystReports", structuredPayloadCodec.toJson(reports),
                         "debateHistory", structuredPayloadCodec.toJson(context.getInvestmentDebate()),
                         "validationStatus", structuredPayloadCodec.toJson(context.getDataWarnings())),
-                RecommendationPayload.class);
+                outputType);
 
         ChatClient chatClient = getChatClientByClientId("6013", 0);
 
@@ -152,15 +181,17 @@ public class RecommendationNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消推荐节点调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "RecommendationNode"),
-                "RecommendationNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6013", "RecommendationNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "RecommendationNode"),
+                        "RecommendationNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("推荐节点LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
-        return structuredPayloadCodec.parse(response, RecommendationPayload.class);
+        return response;
     }
 
     private TradingContextVO.InvestmentPlanVO toPlan(RecommendationPayload payload) {

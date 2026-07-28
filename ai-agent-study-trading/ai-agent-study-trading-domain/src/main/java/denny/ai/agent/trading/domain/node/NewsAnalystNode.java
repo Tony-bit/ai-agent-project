@@ -80,7 +80,8 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "新闻分析开始: " + ticker);
 
-        List<NewsItemVO> newsItems = dataProvider.getNews(ticker, 10);
+        List<NewsItemVO> newsItems = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+                .bind(dataProvider, context.getTargetContext()).getNews(10);
 
         log.info("获取新闻数据: ticker={}, count={}", ticker, newsItems.size());
 
@@ -121,14 +122,20 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消新闻分析师调用");
         }
-        String response = collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
-                chatClient.prompt().user(prompt), context, dynamicContext, "NewsAnalystNode"),
-                "NewsAnalystNode", getSseEventSink(dynamicContext));
+        String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
+                context, "6005", "NewsAnalystNode",
+                () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
+                        chatClient.prompt().user(prompt), context, dynamicContext, "NewsAnalystNode"),
+                        "NewsAnalystNode", getSseEventSink(dynamicContext)));
         long latencyMs = System.currentTimeMillis() - startAt;
 
         log.info("新闻分析师LLM响应 | prompt长度={} | 响应长度={} | 耗时={}ms",
                 prompt.length(), response.length(), latencyMs);
 
+        if (denny.ai.agent.trading.domain.prompt.TradingPromptModeResolver.requireMode(dynamicContext)
+                == denny.ai.agent.trading.domain.prompt.PromptContractMode.RELAXED_V3) {
+            return NewsReportVO.builder().summary(response.trim()).newsItems(newsItems).build();
+        }
         NewsAnalystPayload payload = structuredPayloadCodec.parse(response, NewsAnalystPayload.class);
         return toReport(payload, newsItems);
     }

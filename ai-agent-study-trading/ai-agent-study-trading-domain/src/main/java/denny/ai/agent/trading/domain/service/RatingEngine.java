@@ -3,12 +3,15 @@ package denny.ai.agent.trading.domain.service;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.config.TradingAgentProperties;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignal;
+import denny.ai.agent.trading.api.vo.signal.DecisionSignalSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 评分量化引擎。
@@ -34,29 +37,23 @@ public class RatingEngine {
      * @return 评分结果
      */
     public RatingResult calculate(TradingContextVO context) {
-        // 1. 收集各维度评分
+        DecisionSignalSet signals = Objects.requireNonNull(context.getDecisionSignals(),
+                "decisionSignals must be populated before rating calculation");
         List<AnalystRating> analystRatings = new ArrayList<>();
-
-        if (context.getFundamentalReport() != null && context.getFundamentalReport().getRating() > 0) {
-            analystRatings.add(new AnalystRating("FUNDAMENTAL", context.getFundamentalReport().getRating()));
-        }
-        if (context.getTechnicalReport() != null && context.getTechnicalReport().getRating() > 0) {
-            analystRatings.add(new AnalystRating("TECHNICAL", context.getTechnicalReport().getRating()));
-        }
-        if (context.getSentimentReport() != null && context.getSentimentReport().getRating() > 0) {
-            analystRatings.add(new AnalystRating("SENTIMENT", context.getSentimentReport().getRating()));
-        }
-        if (context.getNewsReport() != null && context.getNewsReport().getRating() > 0) {
-            analystRatings.add(new AnalystRating("NEWS", context.getNewsReport().getRating()));
-        }
+        addRating(analystRatings, "FUNDAMENTAL", signals.fundamentalRating());
+        addRating(analystRatings, "TECHNICAL", signals.technicalRating());
+        addRating(analystRatings, "SENTIMENT", signals.sentimentRating());
+        addRating(analystRatings, "NEWS", signals.newsRating());
 
         if (analystRatings.isEmpty()) {
             log.warn("No analyst ratings available for rating calculation");
             return RatingResult.builder()
-                    .overallRating(0.0)
+                    .overallRating(null)
+                    .adjustedRating(null)
                     .decision("HOLD")
                     .confidence("LOW")
                     .analystRatings(List.of())
+                    .unavailableReasons(unavailableReasons(signals))
                     .build();
         }
 
@@ -68,8 +65,8 @@ public class RatingEngine {
 
         // 3. 辩论调整（辩论综合评分映射到 -2~+2 范围，叠加到综合评分）
         double debateAdjustment = 0.0;
-        if (context.getInvestmentDebate() != null && context.getInvestmentDebate().getOverallScore() != null) {
-            double debateScore = context.getInvestmentDebate().getOverallScore();
+        if (signals.debateOverallScore().isAvailable()) {
+            double debateScore = signals.debateOverallScore().value();
             // 将 -2~+2 映射到 -0.5~+0.5，加到综合评分
             debateAdjustment = debateScore * 0.25;
         }
@@ -78,8 +75,8 @@ public class RatingEngine {
         adjustedRating = Math.max(1.0, Math.min(5.0, adjustedRating));
 
         // 4. 风险评分调整
-        if (context.getRiskDebate() != null && context.getRiskDebate().getRiskScore() != null) {
-            double riskScore = context.getRiskDebate().getRiskScore();
+        if (signals.riskScore().isAvailable()) {
+            double riskScore = signals.riskScore().value();
             // 风险评分 1（高风险）~5（低风险），映射到 -0.5~+0.2
             double riskAdjustment = (riskScore - 3.0) * 0.1;
             adjustedRating = Math.max(1.0, Math.min(5.0, adjustedRating + riskAdjustment));
@@ -104,7 +101,33 @@ public class RatingEngine {
                 .decision(decision)
                 .confidence(confidence)
                 .analystRatings(analystRatings)
+                .unavailableReasons(unavailableReasons(signals))
                 .build();
+    }
+
+    private void addRating(List<AnalystRating> ratings,
+                           String type,
+                           DecisionSignal<Integer> signal) {
+        if (signal.isAvailable()) {
+            ratings.add(new AnalystRating(type, signal.value()));
+        }
+    }
+
+    private List<String> unavailableReasons(DecisionSignalSet signals) {
+        List<String> reasons = new ArrayList<>();
+        addReason(reasons, "FUNDAMENTAL", signals.fundamentalRating());
+        addReason(reasons, "TECHNICAL", signals.technicalRating());
+        addReason(reasons, "SENTIMENT", signals.sentimentRating());
+        addReason(reasons, "NEWS", signals.newsRating());
+        addReason(reasons, "DEBATE", signals.debateOverallScore());
+        addReason(reasons, "RISK", signals.riskScore());
+        return List.copyOf(reasons);
+    }
+
+    private void addReason(List<String> reasons, String name, DecisionSignal<?> signal) {
+        if (!signal.isAvailable()) {
+            reasons.add(name + ": " + signal.reason());
+        }
     }
 
     /**
@@ -153,12 +176,12 @@ public class RatingEngine {
         /**
          * 原始综合评分（1-5）
          */
-        private double overallRating;
+        private Double overallRating;
 
         /**
          * 调整后评分（含辩论和风险调整）
          */
-        private double adjustedRating;
+        private Double adjustedRating;
 
         /**
          * 决策：BUY / SELL / HOLD
@@ -174,6 +197,8 @@ public class RatingEngine {
          * 各分析师评分详情
          */
         private List<AnalystRating> analystRatings;
+
+        private List<String> unavailableReasons;
     }
 
     @lombok.Data

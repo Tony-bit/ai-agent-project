@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
+import denny.ai.agent.trading.api.provider.TradingTargetScope;
 import denny.ai.agent.trading.api.vo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -28,9 +30,15 @@ public class TradingToolCallbacks {
 
     private final IStockDataProvider provider;
     private final ObjectMapper objectMapper;
+    private final TradingRolloutMonitor rolloutMonitor;
 
     public TradingToolCallbacks(IStockDataProvider provider) {
+        this(provider, new TradingRolloutMonitor());
+    }
+
+    public TradingToolCallbacks(IStockDataProvider provider, TradingRolloutMonitor rolloutMonitor) {
         this.provider = provider;
+        this.rolloutMonitor = rolloutMonitor;
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
@@ -40,10 +48,10 @@ public class TradingToolCallbacks {
     public ToolCallback getStockInfoCallback() {
         return new AbstractToolCallback("get_stock_info",
                 "获取A股股票的实时行情信息，包括当前价格、52周高低、日成交量、市盈率、市净率等。适用场景：需要查询股票当前价格、涨跌幅、市值等基本信息时调用。注意：仅支持A股股票代码（6位数字，如000001、600000）。",
-                buildInputSchema("ticker", "股票代码，6位数字，如 000001（平安银行）、600000（浦发银行）。深交所以0/1/2/3开头，上交所以6开头，北交所以4/8/9开头。")) {
+                buildInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input) {
-                StockInfoVO vo = provider.getStockInfo((String) input.get("ticker"));
+                StockInfoVO vo = provider.getStockInfo(effectiveTicker(input));
                 return formatStockInfo(vo);
             }
         };
@@ -53,13 +61,12 @@ public class TradingToolCallbacks {
         return new AbstractToolCallback("get_historical_bars",
                 "获取A股股票的历史K线数据（OHLCV），包含每日开盘价、最高价、最低价、收盘价、成交量、成交额、涨跌额、涨跌幅。适用场景：需要分析股票历史走势、价格波动、成交活跃度、技术分析时调用。",
                 buildInputSchema(
-                        "ticker", "股票代码，6位数字，如 000001、600000",
                         "startDate", "开始日期，格式 yyyy-MM-dd，如 2024-01-01",
                         "endDate", "结束日期，格式 yyyy-MM-dd，如 2024-12-31")) {
             @Override
             protected String doExecute(Map<String, Object> input) {
                 List<OHLCVBarVO> bars = provider.getHistoricalBars(
-                        (String) input.get("ticker"),
+                        effectiveTicker(input),
                         (String) input.get("startDate"),
                         (String) input.get("endDate"));
                 return formatOHLCVBars(bars);
@@ -71,13 +78,12 @@ public class TradingToolCallbacks {
         return new AbstractToolCallback("get_technical_indicators",
                 "获取A股股票的技术指标数据，包括均线（MA5/10/20/60/120）、MACD、RSI、KDJ、布林带、ATR、ADX等。适用场景：需要进行技术分析、判断趋势方向、寻找买卖点时调用。RSI>70超买、RSI<30超卖；ADX>25表示趋势较强。",
                 buildInputSchema(
-                        "ticker", "股票代码，6位数字，如 000001、600000",
                         "startDate", "开始日期，格式 yyyy-MM-dd",
                         "endDate", "结束日期，格式 yyyy-MM-dd")) {
             @Override
             protected String doExecute(Map<String, Object> input) {
                 TechnicalIndicatorsVO vo = provider.getTechnicalIndicators(
-                        (String) input.get("ticker"),
+                        effectiveTicker(input),
                         (String) input.get("startDate"),
                         (String) input.get("endDate"));
                 return formatTechnicalIndicators(vo);
@@ -88,10 +94,10 @@ public class TradingToolCallbacks {
     public ToolCallback getFundamentalDataCallback() {
         return new AbstractToolCallback("get_fundamental_data",
                 "获取A股股票的基本面数据，包括估值指标（PE、PB、PS、PEG）、盈利能力（ROE、毛利率、净利率）、财务数据（营收、净利润、EPS）、增长指标、现金流、偿债能力等。适用场景：需要进行价值投资分析、选股、基本面对比时调用。",
-                buildInputSchema("ticker", "股票代码，6位数字，如 000001、600000")) {
+                buildInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input) {
-                FundamentalDataVO vo = provider.getFundamentalData((String) input.get("ticker"));
+                FundamentalDataVO vo = provider.getFundamentalData(effectiveTicker(input));
                 return formatFundamentalData(vo);
             }
         };
@@ -100,10 +106,10 @@ public class TradingToolCallbacks {
     public ToolCallback getSentimentCallback() {
         return new AbstractToolCallback("get_sentiment",
                 "获取A股股票的市场情绪数据，包括综合情绪评分、分析师评级、短期/中期/长期情绪趋势、看涨/看跌比例、恐惧贪婪指数等。适用场景：需要判断市场情绪、辅助择时决策时调用。",
-                buildInputSchema("ticker", "股票代码，6位数字，如 000001、600000")) {
+                buildInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input) {
-                SentimentDataVO vo = provider.getSentiment((String) input.get("ticker"));
+                SentimentDataVO vo = provider.getSentiment(effectiveTicker(input));
                 return formatSentiment(vo);
             }
         };
@@ -113,13 +119,11 @@ public class TradingToolCallbacks {
         return new AbstractToolCallback("get_stock_news",
                 "获取指定A股股票的近期新闻列表，包括新闻标题、来源、发布时间、摘要和情感得分。",
                 buildInputSchemaWithTypes(
-                        Map.of("ticker", new ParamDef("string", "股票代码，6位数字，如 000001、600000"),
-                               "limit", new ParamDef("integer", "返回条数上限，默认5条")))) {
+                        Map.of("limit", new ParamDef("integer", "返回条数上限，默认5条")))) {
             @Override
             protected String doExecute(Map<String, Object> input) {
-                String ticker = (String) input.get("ticker");
                 int limit = parseInteger(input.get("limit"), 5);
-                List<NewsItemVO> news = provider.getNews(ticker, limit);
+                List<NewsItemVO> news = provider.getNews(effectiveTicker(input), limit);
                 return formatNews(news);
             }
         };
@@ -131,6 +135,10 @@ public class TradingToolCallbacks {
                 buildInputSchema("name", "股票中文名称，支持模糊匹配，如 药明康德、贵州茅台、宁德时代、比亚迪")) {
             @Override
             protected String doExecute(Map<String, Object> input) {
+                if (TradingTargetScope.currentTarget() != null) {
+                    throw new IllegalStateException(
+                            "IDENTITY_BOUNDARY_VIOLATION: stock search is disabled inside a trading run");
+                }
                 String name = (String) input.get("name");
                 List<StockSearchResultVO> results = provider.searchByName(name);
                 return formatSearchResults(results);
@@ -168,6 +176,12 @@ public class TradingToolCallbacks {
                 return doExecute(input);
             } catch (Exception e) {
                 log.error("Tool[{}] 执行失败: input={}, error={}", name, functionInput, e.getMessage(), e);
+                if (e instanceof IllegalStateException
+                        && e.getMessage() != null
+                        && e.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION")) {
+                    rolloutMonitor.recordIdentityBoundaryViolation();
+                    throw (IllegalStateException) e;
+                }
                 return "工具执行失败: " + e.getMessage();
             }
         }
@@ -228,6 +242,17 @@ public class TradingToolCallbacks {
             log.warn("无法将值 '{}' 解析为整数，使用默认值 {}", value, defaultValue);
             return defaultValue;
         }
+    }
+
+    private String effectiveTicker(Map<String, Object> input) {
+        TargetContext target = TradingTargetScope.requireTarget();
+        Object original = input.get("ticker");
+        if (original != null && !target.targetId().equalsIgnoreCase(original.toString().trim())) {
+            log.warn("TOOL_TARGET_OVERRIDDEN runId={} originalTicker={} effectiveTicker={}",
+                    target.runId(), original, target.targetId());
+            rolloutMonitor.recordToolTargetOverride();
+        }
+        return target.targetId();
     }
 
     // ==================== 格式化方法 ====================
