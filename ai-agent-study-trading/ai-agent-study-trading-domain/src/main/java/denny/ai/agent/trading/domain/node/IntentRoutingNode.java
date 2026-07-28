@@ -56,6 +56,17 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter,
                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        try {
+            return doApplyInternal(requestParameter, dynamicContext);
+        } catch (Exception error) {
+            log.error("节点执行异常: nodeName=IntentRoutingNode, sessionId={}",
+                    requestParameter != null ? requestParameter.getSessionId() : "unknown", error);
+            throw error;
+        }
+    }
+
+    private String doApplyInternal(ExecuteCommandEntity requestParameter,
+                                   DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 意图路由节点执行开始 ===");
         log.info("用户消息: {}", requestParameter.getMessage());
 

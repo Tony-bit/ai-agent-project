@@ -58,6 +58,17 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
 
     public SentimentReportVO prepare(TradingContextVO context,
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=SentimentAnalystNode, ticker={}",
+                    tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private SentimentReportVO prepareInternal(TradingContextVO context,
+                                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -78,6 +89,11 @@ public class SentimentAnalystNode extends AbstractExecuteSupport {
         log.info("情绪分析完成: ticker={}, rating={}, sentimentScore={}",
                 ticker, report.getRating(), report.getSentimentScore());
         return report;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

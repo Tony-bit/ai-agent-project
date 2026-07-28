@@ -50,6 +50,16 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
 
     public RiskAssessmentPayload prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=AggressiveRiskAnalystNode, ticker={}", tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private RiskAssessmentPayload prepareInternal(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null) {
             throw new IllegalArgumentException("trading context is missing");
         }
@@ -57,6 +67,11 @@ public class AggressiveRiskAnalystNode extends AbstractExecuteSupport {
         RiskAssessmentPayload opinion = generateRiskOpinion(context, dynamicContext);
         log.info("激进风控分析师分析完成");
         return opinion;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

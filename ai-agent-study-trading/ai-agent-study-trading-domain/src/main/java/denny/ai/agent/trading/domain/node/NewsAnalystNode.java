@@ -61,6 +61,17 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
     public NewsReportVO prepare(TradingContextVO context,
                                 DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=NewsAnalystNode, ticker={}",
+                    tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private NewsReportVO prepareInternal(TradingContextVO context,
+                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -80,6 +91,11 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
         log.info("新闻分析完成: ticker={}, rating={}, sentiment={}, confidence={}",
                 ticker, report.getRating(), report.getOverallSentiment(), report.getConfidence());
         return report;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

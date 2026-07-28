@@ -54,6 +54,16 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
 
     public ResearchManagerPayload prepare(TradingContextVO context,
                                     DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=ResearchManagerNode, ticker={}", tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private ResearchManagerPayload prepareInternal(TradingContextVO context,
+                                    DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getInvestmentDebate() == null) {
             throw new IllegalArgumentException("trading or debate context is missing");
         }
@@ -66,6 +76,11 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         String llmResponse = evaluateDebate(ticker, debate, dynamicContext);
 
         return parseEvaluation(llmResponse);
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

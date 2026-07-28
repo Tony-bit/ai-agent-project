@@ -51,6 +51,16 @@ public class BullResearcherNode extends AbstractExecuteSupport {
 
     public ResearchArgumentPayload prepare(TradingContextVO context,
                           DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=BullResearcherNode, ticker={}", tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private ResearchArgumentPayload prepareInternal(TradingContextVO context,
+                          DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -60,6 +70,11 @@ public class BullResearcherNode extends AbstractExecuteSupport {
 
         log.info("多头研究员分析完成: ticker={}", context.getStockInfo().getTicker());
         return bullThesis;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

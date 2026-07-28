@@ -65,6 +65,17 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
     public FundamentalReportVO prepare(TradingContextVO context,
                                        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=FundamentalAnalystNode, ticker={}",
+                    tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private FundamentalReportVO prepareInternal(TradingContextVO context,
+                                                 DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -84,6 +95,11 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
 
         log.info("基本面分析完成: ticker={}, rating={}", ticker, report.getRating());
         return report;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

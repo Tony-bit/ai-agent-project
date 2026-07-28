@@ -80,9 +80,6 @@ public class TradingPromptRenderer {
             matcher.appendReplacement(rendered, Matcher.quoteReplacement(value.toString()));
         }
         matcher.appendTail(rendered);
-        if (rendered.indexOf("{{") >= 0 || rendered.indexOf("}}") >= 0) {
-            throw new IllegalStateException("rendered prompt contains unresolved placeholders: " + promptId);
-        }
         return rendered.toString();
     }
 

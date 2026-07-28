@@ -31,6 +31,28 @@ class TradingPromptRendererTest {
     }
 
     @Test
+    void rendersNestedJsonInputsWithoutTreatingClosingBracesAsPlaceholders() {
+        TargetContext target = target();
+        String stockData = """
+                {"stockInfo":{"ticker":"601318"},"analysisData":{"roe":2.479}}
+                """.trim();
+        String outputContract = """
+                {"type":"object","properties":{"targetEcho":{"type":"object"}}}
+                """.trim();
+
+        for (String promptId : java.util.List.of("6002", "6003", "6004")) {
+            String template = "{{targetContext}}\nDATA={{stockData}}\nSCHEMA={{outputContract}}";
+            TradingPromptSnapshot snapshot = snapshot(target, promptId, template);
+
+            String rendered = renderer.render(snapshot, target, promptId,
+                    Map.of("stockData", stockData, "outputContract", outputContract));
+
+            assertTrue(rendered.contains(stockData));
+            assertTrue(rendered.contains(outputContract));
+        }
+    }
+
+    @Test
     void rejectsMissingUnknownMalformedAndTargetOverride() {
         assertThrows(IllegalArgumentException.class,
                 () -> renderer.validateTemplate("6002", "{{targetContext}} {{stockData}}"));

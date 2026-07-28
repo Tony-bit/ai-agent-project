@@ -51,6 +51,17 @@ public class RecommendationNode extends AbstractExecuteSupport {
     public TradingContextVO.InvestmentPlanVO prepare(
             TradingContextVO context,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=RecommendationNode, ticker={}", tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private TradingContextVO.InvestmentPlanVO prepareInternal(
+            TradingContextVO context,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -62,6 +73,11 @@ public class RecommendationNode extends AbstractExecuteSupport {
         TradingContextVO.InvestmentPlanVO plan = toPlan(payload);
         log.info("推荐节点执行完成: ticker={}, action={}", ticker, plan.getAction());
         return plan;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

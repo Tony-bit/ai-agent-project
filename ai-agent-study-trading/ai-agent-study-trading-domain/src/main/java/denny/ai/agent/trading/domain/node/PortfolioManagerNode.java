@@ -59,6 +59,17 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
     public TradingContextVO.FinalTradeDecisionVO prepare(
             TradingContextVO context,
             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=PortfolioManagerNode, ticker={}", tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private TradingContextVO.FinalTradeDecisionVO prepareInternal(
+            TradingContextVO context,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -70,6 +81,11 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         TradingContextVO.FinalTradeDecisionVO decision = toDecision(payload);
         log.info("组合经理决策完成: ticker={}, decision={}", ticker, decision.getDecision());
         return decision;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override

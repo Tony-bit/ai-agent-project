@@ -63,6 +63,17 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
 
     public TechnicalReportVO prepare(TradingContextVO context,
                                      DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        try {
+            return prepareInternal(context, dynamicContext);
+        } catch (RuntimeException error) {
+            log.error("节点执行异常: nodeName=TechnicalAnalystNode, ticker={}",
+                    tickerOf(context), error);
+            throw error;
+        }
+    }
+
+    private TechnicalReportVO prepareInternal(TradingContextVO context,
+                                               DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         if (context == null || context.getStockInfo() == null) {
             throw new IllegalArgumentException("trading context or stock info is missing");
         }
@@ -89,6 +100,11 @@ public class TechnicalAnalystNode extends AbstractExecuteSupport {
         log.info("技术分析完成: ticker={}, rating={}, trend={}",
                 ticker, report.getRating(), report.getTrendSignal());
         return report;
+    }
+
+    private String tickerOf(TradingContextVO context) {
+        return context != null && context.getStockInfo() != null
+                ? context.getStockInfo().getTicker() : "unknown";
     }
 
     @Override
