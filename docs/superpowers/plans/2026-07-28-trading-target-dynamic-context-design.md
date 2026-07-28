@@ -71,15 +71,29 @@ dynamicContext["target_context"]
         -> 回调使用 toolContext 中的 targetId 查询 Provider
 ```
 
-`TradingToolCallbacks.AbstractToolCallback` 覆盖双参数方法 `call(String, ToolContext)`，统一完成 JSON 解析、目标读取、错误转换和指标记录。原有单参数 `call(String)` 只用于不需要 Trading 目标的调用，或者委托到内部执行逻辑。
+`TradingToolCallbacks.AbstractToolCallback` 将单参数和双参数入口统一收口，避免直接调用单参数方法时绕过身份边界。Spring AI 对所有工具统一调用双参数方法，即使请求没有业务上下文，也会传入一个空 `ToolContext`；因此基类不能无条件要求目标存在，而应只负责规范化上下文、JSON 解析、错误转换和指标记录。
 
 ```java
 @Override
-public String call(String functionInput, ToolContext toolContext) {
-    TargetContext target = requireTarget(toolContext);
-    return execute(functionInput, target);
+public final String call(String functionInput) {
+    return call(functionInput, new ToolContext(Map.of()));
+}
+
+@Override
+public final String call(String functionInput, ToolContext toolContext) {
+    ToolContext normalized = toolContext == null
+            ? new ToolContext(Map.of()) : toolContext;
+    Map<String, Object> input = parse(functionInput);
+    return doExecute(input, normalized);
 }
 ```
+
+具体工具在 `doExecute(Map<String, Object>, ToolContext)` 中决定目标策略：
+
+- `get_stock_info`、`get_historical_bars`、`get_technical_indicators`、`get_fundamental_data`、`get_sentiment`、`get_stock_news` 必须调用 `requireTarget(toolContext)`；空上下文和类型错误都以 `IDENTITY_BOUNDARY_VIOLATION` 拒绝。
+- `search_stock_by_name` 调用 `currentTarget(toolContext)`；存在目标时拒绝搜索，不存在目标时按原逻辑执行。
+
+这样无论生产代码通过双参数入口调用，还是测试或其他代码直接调用单参数入口，都执行同一套身份边界。
 
 所有调用 `effectiveTicker()` 的工具必须统一改造，包括：
 
@@ -96,13 +110,35 @@ public String call(String functionInput, ToolContext toolContext) {
 
 当前 `AiClientNode` 会收集 Spring 容器内全部 `ToolCallback` Bean 并注册为 ChatClient 的默认工具。本设计不改变该注册链；目标相关 ToolCallback 继续作为全局无状态单例存在，运行目标只从 Spring AI 为本次调用提供的 `ToolContext` 获取。
 
-Trading LLM 请求通过 `trading-domain` 内的集中请求配置入口注入 Tool Context，避免在每个节点复制目标校验和 Map 构造逻辑。该入口不依赖 `trading-infra`，只使用 `ChatClient`、`TradingContextVO` 和 `DynamicContext`，负责：
+Trading LLM 请求通过现有 `trading-domain` 类 `TradingChatMemory.apply()` 集中挂载 Tool Context，避免在 12 个节点中复制目标校验和 Map 构造逻辑。该方法已经是所有 Trading LLM 请求配置 Chat Memory 的统一入口，不依赖 `trading-infra`，只使用 `ChatClient.ChatClientRequestSpec`、`TradingContextVO` 和 `DynamicContext`。
+
+`TradingChatMemory.apply()` 负责：
 
 1. 从 `dynamicContext` 读取并验证 `TargetContext`。
 2. 将该目标与 `TradingContextVO.getTargetContext()` 的 `runId`、`targetId` 进行一致性校验；不一致时以 `IDENTITY_BOUNDARY_VIOLATION` 立即失败。
 3. 创建只包含 `target_context` 的不可变 Map，不把整个 `DynamicContext` 传给工具层。
-4. 通过 `chatClient.prompt().toolContext(Map.of("target_context", target))` 写入本次请求。
-5. 返回可继续配置 memory、user prompt 和 stream 的请求规格。
+4. 通过 `request.toolContext(Map.of("target_context", target))` 写入本次请求。
+5. 按现有逻辑配置 `ChatMemory.CONVERSATION_ID`。
+6. 返回可继续执行 stream 的请求规格。
+
+现有节点调用形式保持不变：
+
+```java
+TradingChatMemory.apply(
+        chatClient.prompt().user(prompt),
+        context,
+        dynamicContext,
+        nodeName);
+```
+
+`TradingChatMemory.apply()` 内部调整为：
+
+```java
+return request
+        .toolContext(Map.of("target_context", target))
+        .advisors(advisor -> advisor.param(
+                ChatMemory.CONVERSATION_ID, memoryKey));
+```
 
 非 Trading 请求不注入 `target_context`：六个依赖权威目标的 Trading Tools 保持身份边界并拒绝执行，`search_stock_by_name` 保持原搜索行为。Trading ChatClient 原有的 MCP 工具和其他默认工具不受影响。项目使用 Spring AI `1.1.2`；`DefaultToolCallingManager` 会将请求中的 Tool Context 传给 `ToolCallback.call(String, ToolContext)`。
 
@@ -177,6 +213,8 @@ TradingStarter 创建 TargetContext
 - 风控节点调用 `get_stock_info` 能正常完成，不再出现 `trading target scope is missing`。
 - Trading Pipeline 的严格和宽松 Prompt 模式均正常完成。
 - 非 Trading 请求不注入目标时，目标相关工具拒绝缺少权威目标的调用，`search_stock_by_name` 保持可用。
+
+本次不增加针对 Spring AI 内部实现类 `DefaultToolCallingManager` 的字节码级或内部契约测试。项目依赖的 Spring AI `1.1.2` 已提供公开的 `toolContext(...)` 和 `ToolCallback.call(String, ToolContext)` API；验证范围保持在项目自身边界：ToolCallback 策略单元测试、`TradingChatMemory` 请求配置测试以及真实 Trading 流程回归。
 
 ## 迁移与兼容
 
