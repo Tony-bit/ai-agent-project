@@ -86,7 +86,7 @@ Trading LLM 请求通过一个集中入口挂载目标相关工具，避免在�
 
 1. 从 `dynamicContext` 读取并验证 `TargetContext`。
 2. 通过 Trading Tool 工厂创建请求级工具集合。
-3. 将工具集合传给 `chatClient.prompt().tools(...)`。
+3. 将工具集合传给 `chatClient.prompt().toolCallbacks(...)`。项目使用 Spring AI `1.1.2`；`tools(Object...)` 面向包含 `@Tool` 方法的对象，已有 `ToolCallback` 必须通过 `toolCallbacks(ToolCallback...)` 或 `toolCallbacks(ToolCallbackProvider...)` 挂载。
 4. 返回可继续配置 memory、user prompt 和 stream 的请求规格。
 
 非 Trading ChatClient 不获得这些目标相关工具。Trading ChatClient 原有的 MCP 工具和非目标相关工具不受影响。
