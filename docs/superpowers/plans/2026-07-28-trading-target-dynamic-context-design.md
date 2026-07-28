@@ -76,20 +76,23 @@ dynamicContext["target_context"]
 - `get_sentiment`
 - `get_stock_news`
 
-`search_stock_by_name` 不依赖既定目标，继续作为独立工具处理，不通过 `TargetContext` 绑定。
+`search_stock_by_name` 只用于 Trading Run 建立前的股票身份解析，不向已经绑定 `TargetContext` 的 Trading LLM 暴露。Trading Run 内的请求级工具集合不包含该工具，防止模型在目标确定后搜索其他股票并将结果混入当前分析。
 
 ### 工具注册边界
 
 当前 `AiClientNode` 会收集 Spring 容器内全部 `ToolCallback` Bean 并注册为每个 ChatClient 的默认工具。目标相关 Trading ToolCallback Bean 必须从这条全局注册链移除，否则请求级工具与全局工具会重复，且全局工具没有可信目标。
 
-Trading LLM 请求通过一个集中入口挂载目标相关工具，避免在每个节点复制绑定逻辑。该入口负责：
+Trading LLM 请求通过一个集中入口挂载目标相关工具，避免在每个节点复制绑定逻辑。模块依赖采用依赖倒置：`trading-domain` 定义请求级 Trading Tool 工厂接口，接口接收 `TargetContext` 并返回 Spring AI 标准 `ToolCallbackProvider`；`trading-infra` 实现该接口并调用 `IStockDataProvider`。`trading-domain` 不得依赖 `trading-infra` 具体类型。
+
+该集中入口负责：
 
 1. 从 `dynamicContext` 读取并验证 `TargetContext`。
-2. 通过 Trading Tool 工厂创建请求级工具集合。
-3. 将工具集合传给 `chatClient.prompt().toolCallbacks(...)`。项目使用 Spring AI `1.1.2`；`tools(Object...)` 面向包含 `@Tool` 方法的对象，已有 `ToolCallback` 必须通过 `toolCallbacks(ToolCallback...)` 或 `toolCallbacks(ToolCallbackProvider...)` 挂载。
-4. 返回可继续配置 memory、user prompt 和 stream 的请求规格。
+2. 将该目标与 `TradingContextVO.getTargetContext()` 的 `runId`、`targetId` 进行一致性校验；不一致时以 `IDENTITY_BOUNDARY_VIOLATION` 立即失败。
+3. 通过 Trading Tool 工厂创建请求级 `ToolCallbackProvider`，工具回调捕获校验后的不可变目标。
+4. 将 Provider 传给 `chatClient.prompt().toolCallbacks(...)`。项目使用 Spring AI `1.1.2`；`tools(Object...)` 面向包含 `@Tool` 方法的对象，已有 `ToolCallback` 必须通过 `toolCallbacks(ToolCallback...)` 或 `toolCallbacks(ToolCallbackProvider...)` 挂载。
+5. 返回可继续配置 memory、user prompt 和 stream 的请求规格。
 
-非 Trading ChatClient 不获得这些目标相关工具。Trading ChatClient 原有的 MCP 工具和非目标相关工具不受影响。
+非 Trading ChatClient 不获得这些目标相关工具。Trading ChatClient 原有的 MCP 工具和非目标相关工具不受影响。`search_stock_by_name` 不进入 Trading Run 的请求级工具集合；股票名称解析继续由 Run 建立前的现有身份解析流程负责。
 
 ### 身份边界
 
@@ -102,6 +105,12 @@ String effectiveTicker(Map<String, Object> input, TargetContext target)
 如果模型传入的 `ticker` 与权威目标不同，继续记录 `TOOL_TARGET_OVERRIDDEN` 日志和 `recordToolTargetOverride()` 指标，然后使用权威目标查询。
 
 `TradingLlmCallAudit` 保留调用前 `targetContext` 非空校验和失败审计，但直接执行 `invocation.get()`，不再调用 `TradingTargetScope.call()`。
+
+## DynamicContext 生命周期约束
+
+`dynamicContext["target_context"]` 是目标的唯一存储位置，但同一个 `DynamicContext` 可能被串行子任务复用并写入下一次 Trading Run 的目标。因此请求入口必须在创建 LLM 请求时读取、校验并捕获 `TargetContext`，ToolCallback 执行期间不得再次查询可变的 `DynamicContext`。
+
+同一个 `DynamicContext` 上的多个 Trading Run 必须保持串行。未来若将股票子任务改为并行执行，必须先为每个子任务创建独立 `DynamicContext`，不得依靠共享 `HashMap` 隔离目标。
 
 ## 数据流
 
@@ -122,6 +131,7 @@ TradingStarter 创建 TargetContext
 
 - `dynamicContext` 中缺少 `target_context`：在发起 LLM 请求前立即失败，不等待模型调用工具后才失败。
 - `target_context` 类型错误：抛出明确的身份边界异常并记录节点、runId 和 clientId。
+- `dynamicContext` 与 `TradingContextVO` 中的目标不一致：以 `IDENTITY_BOUNDARY_VIOLATION` 立即失败，不向 LLM 发送请求。
 - 模型传入其他股票：记录覆盖告警，继续使用绑定目标。
 - Provider 查询失败：保持现有 ToolCallback 错误转换和监控逻辑。
 - 请求结束后：请求级 ToolCallback 随请求释放，不需要显式清理 ThreadLocal。
@@ -133,8 +143,11 @@ TradingStarter 创建 TargetContext
 - 从 `dynamicContext` 能正确读取 `TargetContext` 并创建工具集合。
 - 缺少 `target_context` 时在 LLM 请求前失败。
 - `get_stock_info` 使用绑定的 `targetId` 查询 Provider。
+- `get_stock_info` 的数据源仍为现有 `IStockDataProvider`，不改为读取初始化阶段的 `StockInfoVO` 快照。
 - 模型传入不同 `ticker` 时仍查询绑定目标并记录覆盖指标。
 - 六个目标相关工具全部使用绑定目标。
+- Trading Run 的请求级工具集合不包含 `search_stock_by_name`。
+- `dynamicContext` 目标与 `TradingContextVO` 目标不一致时在调用 LLM 前失败。
 - `TradingLlmCallAudit` 不再依赖线程上下文，仍保留缺失目标和调用失败审计。
 
 ### 并发测试
@@ -142,6 +155,7 @@ TradingStarter 创建 TargetContext
 - 两个独立 `dynamicContext` 分别绑定股票 A、股票 B，并发执行工具时不串标。
 - ToolCallback 在 `boundedElastic` 上执行时仍能读取请求绑定目标。
 - 同一线程连续执行 A、B 两次请求时不残留前一次目标。
+- 同一个 `dynamicContext` 串行复用时，每次请求捕获各自目标；覆盖发生后，已创建的回调仍使用原目标。
 
 ### 集成回归
 
