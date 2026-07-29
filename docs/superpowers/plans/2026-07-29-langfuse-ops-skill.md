@@ -21,7 +21,7 @@
 
 | 任务 | status |
 |------|------|
-| 任务 1：初始化个人 Skill | append |
+| 任务 1：初始化个人 Skill | pass |
 
 **文件：**
 - 创建：`C:\Users\Denny\.codex\skills\langfuse-ops\SKILL.md`
@@ -53,7 +53,7 @@ Get-ChildItem -Recurse C:\Users\Denny\.codex\skills\langfuse-ops
 
 | 任务 | status |
 |------|------|
-| 任务 2：以测试驱动实现 REST 客户端 | append |
+| 任务 2：以测试驱动实现 REST 客户端 | pass |
 
 **文件：**
 - 创建：`C:\Users\Denny\.codex\skills\langfuse-ops\scripts\test_langfuse_api.py`
@@ -80,7 +80,9 @@ class LangfuseApiTests(unittest.TestCase):
 - [ ] **步骤 2：运行测试验证失败**
 
 ```powershell
-python -m unittest C:\Users\Denny\.codex\skills\langfuse-ops\scripts\test_langfuse_api.py -v
+Push-Location C:\Users\Denny\.codex\skills\langfuse-ops\scripts
+python -m unittest test_langfuse_api.py -v
+Pop-Location
 ```
 
 预期：因 `langfuse_api` 尚未实现而失败。
@@ -126,7 +128,9 @@ request METHOD PATH
 - [ ] **步骤 5：运行测试验证通过**
 
 ```powershell
-python -m unittest C:\Users\Denny\.codex\skills\langfuse-ops\scripts\test_langfuse_api.py -v
+Push-Location C:\Users\Denny\.codex\skills\langfuse-ops\scripts
+python -m unittest test_langfuse_api.py -v
+Pop-Location
 ```
 
 预期：所有认证、路径、分页、重试、限制和错误脱敏测试通过。
@@ -135,7 +139,7 @@ python -m unittest C:\Users\Denny\.codex\skills\langfuse-ops\scripts\test_langfu
 
 | 任务 | status |
 |------|------|
-| 任务 3：编写 Skill 工作流与界面元数据 | append |
+| 任务 3：编写 Skill 工作流与界面元数据 | pass |
 
 **文件：**
 - 修改：`C:\Users\Denny\.codex\skills\langfuse-ops\SKILL.md`
@@ -166,7 +170,7 @@ Get-Content -Raw C:\Users\Denny\.codex\skills\langfuse-ops\agents\openai.yaml
 
 | 任务 | status |
 |------|------|
-| 任务 4：验证与真实实例冒烟检查 | append |
+| 任务 4：验证与真实实例冒烟检查 | pass |
 
 **文件：**
 - 验证：`C:\Users\Denny\.codex\skills\langfuse-ops\`
@@ -183,7 +187,9 @@ python C:\Users\Denny\.codex\skills\.system\skill-creator\scripts\quick_validate
 
 ```powershell
 python -m py_compile C:\Users\Denny\.codex\skills\langfuse-ops\scripts\langfuse_api.py
-python -m unittest C:\Users\Denny\.codex\skills\langfuse-ops\scripts\test_langfuse_api.py -v
+Push-Location C:\Users\Denny\.codex\skills\langfuse-ops\scripts
+python -m unittest test_langfuse_api.py -v
+Pop-Location
 ```
 
 预期：语法检查无输出，所有测试通过。
