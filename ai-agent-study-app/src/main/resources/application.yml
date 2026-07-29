@@ -48,11 +48,11 @@ spring:
           vector-store:
             provider: pgvector
             config:
-              host: ${POSTGRES_HOST:111.228.9.124}
-              port: ${POSTGRES_PORT:15432}
+              host: ${POSTGRES_HOST:114}
+              port: ${POSTGRES_PORT:1522}
               dbname: ${POSTGRES_DB:ai-rag-knowledge}
               user: ${POSTGRES_USER:postgres}
-              password: ${POSTGRES_PASSWORD:postgres}
+              password: ${POSTGRES_PASSWORD:post2}
               collection-name: ${POSTGRES_COLLECTION_NAME:memories}
 #          graph-store:
 #            provider: neo4j
@@ -89,7 +89,7 @@ spring:
     pgvector:
       driver-class-name: org.postgresql.Driver
       username: ${PGVECTOR_USER:${POSTGRES_USER:postgres}}
-      password: ${PGVECTOR_PASSWORD:${POSTGRES_PASSWORD:postgres}}
+      password: ${PGVECTOR_PASSWORD:${POSTGRES_PASSWORD:pos213es}}
       url: ${PGVECTOR_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:15432}/${POSTGRES_DB:ai-rag-knowledge}}
       type: com.zaxxer.hikari.HikariDataSource
       # hikari连接池配置
@@ -112,7 +112,7 @@ spring:
         connection-test-query: SELECT 1
     mysql:
       username: navicat_user
-      password: Panzer1234@
+      password: Panzer12dssss
       url: jdbc:mysql://111.228.9.124:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=true
       driver-class-name: com.mysql.cj.jdbc.Driver
       type: com.zaxxer.hikari.HikariDataSource
@@ -174,7 +174,7 @@ redis:
     config:
       host: 111.228.9.124
       port: 16379
-      password: ${REDIS_PASSWORD:po4563}
+      password: ${REDIS_PASSWORD:po21363}
       pool-size: 10
       min-idle-size: 5
       idle-timeout: 30000
