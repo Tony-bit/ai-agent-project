@@ -8,6 +8,7 @@ import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
+import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
 import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
 import denny.ai.agent.trading.domain.pipeline.TradingPipelineException;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
@@ -300,7 +301,7 @@ public class TradingStarter {
     private void exposeRunContext(TradingStateContext stateContext) {
         DynamicContext dynamicContext = stateContext.getDynamicContext();
         TargetContext target = stateContext.getTargetContext();
-        dynamicContext.setValue("target_context", target);
+        dynamicContext.setValue(TradingTargetContextKeys.TARGET_CONTEXT, target);
         dynamicContext.setValue("trading_run_id", target.runId());
         dynamicContext.setValue("trading_target_id", target.targetId());
         dynamicContext.setValue("trading_prompt_snapshot", stateContext.getPromptSnapshot());

@@ -3,6 +3,7 @@ package denny.ai.agent.trading.domain.execution;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.trading.api.vo.StockAnalysisRequestVO;
 import denny.ai.agent.trading.domain.config.TradingStateContext;
+import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,6 +29,16 @@ class TradingLlmCallAuditTest {
                         }));
 
         assertSame(failure, thrown);
+    }
+
+    @Test
+    void rejectsInvocationWithoutTargetContext() {
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> TradingLlmCallAudit.execute(TradingContextVO.empty(),
+                        "6002", "FundamentalAnalystNode", () -> "response"));
+
+        assertEquals("IDENTITY_BOUNDARY_VIOLATION: LLM invocation has no targetContext",
+                thrown.getMessage());
     }
 
     private TradingStateContext context() {

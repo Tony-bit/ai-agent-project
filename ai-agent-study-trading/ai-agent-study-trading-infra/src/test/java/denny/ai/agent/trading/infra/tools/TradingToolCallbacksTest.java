@@ -1,18 +1,24 @@
 package denny.ai.agent.trading.infra.tools;
 
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
-import denny.ai.agent.trading.api.provider.TradingTargetScope;
+import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
+import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 import denny.ai.agent.trading.api.vo.OHLCVBarVO;
 import denny.ai.agent.trading.api.vo.StockSearchResultVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.model.ToolContext;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -25,11 +31,13 @@ class TradingToolCallbacksTest {
 
     private IStockDataProvider mockProvider;
     private TradingToolCallbacks tradingToolCallbacks;
+    private TradingRolloutMonitor rolloutMonitor;
 
     @BeforeEach
     void setUp() {
         mockProvider = mock(IStockDataProvider.class);
-        tradingToolCallbacks = new TradingToolCallbacks(mockProvider);
+        rolloutMonitor = new TradingRolloutMonitor();
+        tradingToolCallbacks = new TradingToolCallbacks(mockProvider, rolloutMonitor);
     }
 
     @Test
@@ -167,7 +175,7 @@ class TradingToolCallbacksTest {
 
         ToolCallback callback = tradingToolCallbacks.getHistoricalBarsCallback();
         String input = "{\"ticker\":\"001309\",\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}";
-        String result = TradingTargetScope.call(target(), () -> callback.call(input));
+        String result = callback.call(input, toolContext(target()));
 
         assertNotNull(result);
         assertFalse(result.contains("工具执行失败"));
@@ -181,7 +189,7 @@ class TradingToolCallbacksTest {
     }
 
     @Test
-    void targetBoundToolRejectsCallsWithoutJavaTargetScope() {
+    void targetBoundToolRejectsSingleArgumentCallsWithoutToolContext() {
         ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -191,9 +199,126 @@ class TradingToolCallbacksTest {
         verifyNoInteractions(mockProvider);
     }
 
+    @Test
+    void targetBoundToolUsesToolContextAndOverridesModelTicker() {
+        ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
+        TargetContext target = target();
+
+        String result = callback.call("{\"ticker\":\"000001.SZ\"}", toolContext(target));
+
+        assertEquals("未找到该股票信息", result);
+        verify(mockProvider).getStockInfo(target.targetId());
+        assertEquals(1, rolloutMonitor.snapshot().toolTargetOverrides());
+    }
+
+    @Test
+    void allTargetBoundToolsUseAuthoritativeTarget() {
+        TargetContext target = target();
+        ToolContext toolContext = toolContext(target);
+
+        tradingToolCallbacks.getStockInfoCallback().call("{}", toolContext);
+        tradingToolCallbacks.getHistoricalBarsCallback().call(
+                "{\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}", toolContext);
+        tradingToolCallbacks.getTechnicalIndicatorsCallback().call(
+                "{\"startDate\":\"2024-01-01\",\"endDate\":\"2024-01-05\"}", toolContext);
+        tradingToolCallbacks.getFundamentalDataCallback().call("{}", toolContext);
+        tradingToolCallbacks.getSentimentCallback().call("{}", toolContext);
+        tradingToolCallbacks.getStockNewsCallback().call("{\"limit\":3}", toolContext);
+
+        verify(mockProvider).getStockInfo(target.targetId());
+        verify(mockProvider).getHistoricalBars(target.targetId(), "2024-01-01", "2024-01-05");
+        verify(mockProvider).getTechnicalIndicators(target.targetId(), "2024-01-01", "2024-01-05");
+        verify(mockProvider).getFundamentalData(target.targetId());
+        verify(mockProvider).getSentiment(target.targetId());
+        verify(mockProvider).getNews(target.targetId(), 3);
+    }
+
+    @Test
+    void targetBoundToolRejectsNullAndInvalidToolContext() {
+        ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
+        ToolContext invalid = new ToolContext(Map.of(
+                TradingTargetContextKeys.TARGET_CONTEXT, "600000.SH"));
+
+        IllegalStateException nullError = assertThrows(IllegalStateException.class,
+                () -> callback.call("{}", null));
+        IllegalStateException invalidError = assertThrows(IllegalStateException.class,
+                () -> callback.call("{}", invalid));
+
+        assertTrue(nullError.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
+        assertTrue(invalidError.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
+        assertEquals(2, rolloutMonitor.snapshot().identityBoundaryViolations());
+        verifyNoInteractions(mockProvider);
+    }
+
+    @Test
+    void searchToolRejectsTargetContextAndWorksWithEmptyContext() {
+        List<StockSearchResultVO> results = List.of(
+                StockSearchResultVO.builder().ticker("603259").name("药明康德").build());
+        when(mockProvider.searchByName("药明康德")).thenReturn(results);
+        ToolCallback callback = tradingToolCallbacks.searchStockByNameCallback();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> callback.call("{\"name\":\"药明康德\"}", toolContext(target())));
+        String result = callback.call("{\"name\":\"药明康德\"}", new ToolContext(Map.of()));
+
+        assertTrue(error.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
+        assertTrue(result.contains("药明康德"));
+        verify(mockProvider).searchByName("药明康德");
+    }
+
+    @Test
+    void targetBoundToolWorksOnBoundedElastic() {
+        TargetContext target = target();
+
+        String result = Mono.fromCallable(() -> tradingToolCallbacks.getStockInfoCallback()
+                        .call("{}", toolContext(target)))
+                .subscribeOn(Schedulers.boundedElastic())
+                .block();
+
+        assertEquals("未找到该股票信息", result);
+        verify(mockProvider).getStockInfo(target.targetId());
+    }
+
+    @Test
+    void concurrentToolContextsDoNotCrossTargets() {
+        TargetContext first = target("600000.SH");
+        TargetContext second = target("000001.SZ");
+        ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
+
+        CompletableFuture<String> firstCall = CompletableFuture.supplyAsync(
+                () -> callback.call("{}", toolContext(first)));
+        CompletableFuture<String> secondCall = CompletableFuture.supplyAsync(
+                () -> callback.call("{}", toolContext(second)));
+
+        assertEquals("未找到该股票信息", firstCall.join());
+        assertEquals("未找到该股票信息", secondCall.join());
+        verify(mockProvider).getStockInfo(first.targetId());
+        verify(mockProvider).getStockInfo(second.targetId());
+    }
+
+    @Test
+    void providerFailureKeepsExistingErrorConversion() {
+        TargetContext target = target();
+        when(mockProvider.getStockInfo(target.targetId()))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        String result = tradingToolCallbacks.getStockInfoCallback()
+                .call("{}", toolContext(target));
+
+        assertTrue(result.contains("工具执行失败: provider unavailable"));
+    }
+
     private TargetContext target() {
-        return new TargetContext(UUID.randomUUID().toString(), "600000.SH",
+        return target("600000.SH");
+    }
+
+    private TargetContext target(String targetId) {
+        return new TargetContext(UUID.randomUUID().toString(), targetId,
                 "浦发银行", "银行", LocalDate.of(2026, 7, 28));
+    }
+
+    private ToolContext toolContext(TargetContext target) {
+        return new ToolContext(Map.of(TradingTargetContextKeys.TARGET_CONTEXT, target));
     }
 
     /**

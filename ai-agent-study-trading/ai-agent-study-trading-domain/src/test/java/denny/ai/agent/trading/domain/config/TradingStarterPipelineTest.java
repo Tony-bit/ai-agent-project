@@ -4,6 +4,7 @@ import denny.ai.agent.domain.model.entity.AutoAgentExecuteResultEntity;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.sse.SseEventSink;
 import denny.ai.agent.domain.service.sse.SseSessionState;
+import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.*;
 import denny.ai.agent.trading.domain.pipeline.TradingPipeline;
@@ -35,8 +36,8 @@ class TradingStarterPipelineTest {
         starter.start(createRequest(), first, (type, event) -> true);
         starter.start(createRequest(), second, (type, event) -> true);
 
-        TargetContext firstTarget = first.getValue("target_context");
-        TargetContext secondTarget = second.getValue("target_context");
+        TargetContext firstTarget = first.getValue(TradingTargetContextKeys.TARGET_CONTEXT);
+        TargetContext secondTarget = second.getValue(TradingTargetContextKeys.TARGET_CONTEXT);
         TradingContextVO firstTrading = first.getValue("trading_context");
         assertNotNull(firstTarget);
         assertEquals("000001.SZ", firstTarget.targetId());
@@ -108,11 +109,11 @@ class TradingStarterPipelineTest {
                 new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
 
         starter.startForSubTask("分析平安银行", Map.of("stockCode", "000001"), dynamicContext);
-        TargetContext firstTarget = dynamicContext.getValue("target_context");
+        TargetContext firstTarget = dynamicContext.getValue(TradingTargetContextKeys.TARGET_CONTEXT);
         TradingContextVO firstContext = dynamicContext.getValue("trading_context");
 
         starter.startForSubTask("分析浦发银行", Map.of("stockCode", "600000"), dynamicContext);
-        TargetContext secondTarget = dynamicContext.getValue("target_context");
+        TargetContext secondTarget = dynamicContext.getValue(TradingTargetContextKeys.TARGET_CONTEXT);
         TradingContextVO secondContext = dynamicContext.getValue("trading_context");
 
         assertNotEquals(firstTarget.runId(), secondTarget.runId());

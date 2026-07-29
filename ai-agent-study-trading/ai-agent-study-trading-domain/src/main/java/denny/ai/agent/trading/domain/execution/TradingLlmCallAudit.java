@@ -2,7 +2,6 @@ package denny.ai.agent.trading.domain.execution;
 
 import denny.ai.agent.trading.api.vo.TargetContext;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
-import denny.ai.agent.trading.api.provider.TradingTargetScope;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Objects;
@@ -28,7 +27,7 @@ public final class TradingLlmCallAudit {
                 throw new IllegalStateException(
                         "IDENTITY_BOUNDARY_VIOLATION: LLM invocation has no targetContext");
             }
-            return TradingTargetScope.call(target, invocation);
+            return invocation.get();
         } catch (RuntimeException error) {
             TargetContext target = context == null ? null : context.getTargetContext();
             log.error("trading_llm_execution_failed runId={} targetId={} clientId={} nodeName={}",

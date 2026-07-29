@@ -5,10 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
-import denny.ai.agent.trading.api.provider.TradingTargetScope;
+import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
 import denny.ai.agent.trading.api.vo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 
@@ -50,8 +51,9 @@ public class TradingToolCallbacks {
                 "获取A股股票的实时行情信息，包括当前价格、52周高低、日成交量、市盈率、市净率等。适用场景：需要查询股票当前价格、涨跌幅、市值等基本信息时调用。注意：仅支持A股股票代码（6位数字，如000001、600000）。",
                 buildInputSchema()) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
-                StockInfoVO vo = provider.getStockInfo(effectiveTicker(input));
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
+                StockInfoVO vo = provider.getStockInfo(effectiveTicker(input, target));
                 return formatStockInfo(vo);
             }
         };
@@ -64,9 +66,10 @@ public class TradingToolCallbacks {
                         "startDate", "开始日期，格式 yyyy-MM-dd，如 2024-01-01",
                         "endDate", "结束日期，格式 yyyy-MM-dd，如 2024-12-31")) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
                 List<OHLCVBarVO> bars = provider.getHistoricalBars(
-                        effectiveTicker(input),
+                        effectiveTicker(input, target),
                         (String) input.get("startDate"),
                         (String) input.get("endDate"));
                 return formatOHLCVBars(bars);
@@ -81,9 +84,10 @@ public class TradingToolCallbacks {
                         "startDate", "开始日期，格式 yyyy-MM-dd",
                         "endDate", "结束日期，格式 yyyy-MM-dd")) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
                 TechnicalIndicatorsVO vo = provider.getTechnicalIndicators(
-                        effectiveTicker(input),
+                        effectiveTicker(input, target),
                         (String) input.get("startDate"),
                         (String) input.get("endDate"));
                 return formatTechnicalIndicators(vo);
@@ -96,8 +100,9 @@ public class TradingToolCallbacks {
                 "获取A股股票的基本面数据，包括估值指标（PE、PB、PS、PEG）、盈利能力（ROE、毛利率、净利率）、财务数据（营收、净利润、EPS）、增长指标、现金流、偿债能力等。适用场景：需要进行价值投资分析、选股、基本面对比时调用。",
                 buildInputSchema()) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
-                FundamentalDataVO vo = provider.getFundamentalData(effectiveTicker(input));
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
+                FundamentalDataVO vo = provider.getFundamentalData(effectiveTicker(input, target));
                 return formatFundamentalData(vo);
             }
         };
@@ -108,8 +113,9 @@ public class TradingToolCallbacks {
                 "获取A股股票的市场情绪数据，包括综合情绪评分、分析师评级、短期/中期/长期情绪趋势、看涨/看跌比例、恐惧贪婪指数等。适用场景：需要判断市场情绪、辅助择时决策时调用。",
                 buildInputSchema()) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
-                SentimentDataVO vo = provider.getSentiment(effectiveTicker(input));
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
+                SentimentDataVO vo = provider.getSentiment(effectiveTicker(input, target));
                 return formatSentiment(vo);
             }
         };
@@ -121,9 +127,10 @@ public class TradingToolCallbacks {
                 buildInputSchemaWithTypes(
                         Map.of("limit", new ParamDef("integer", "返回条数上限，默认5条")))) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                TargetContext target = requireTarget(toolContext);
                 int limit = parseInteger(input.get("limit"), 5);
-                List<NewsItemVO> news = provider.getNews(effectiveTicker(input), limit);
+                List<NewsItemVO> news = provider.getNews(effectiveTicker(input, target), limit);
                 return formatNews(news);
             }
         };
@@ -134,8 +141,8 @@ public class TradingToolCallbacks {
                 "根据股票中文名称搜索股票代码。当用户提到公司名但未提供股票代码时，必须调用此工具。适用场景：用户说'分析一下药明康德'时，需要先调用此工具获取股票代码。",
                 buildInputSchema("name", "股票中文名称，支持模糊匹配，如 药明康德、贵州茅台、宁德时代、比亚迪")) {
             @Override
-            protected String doExecute(Map<String, Object> input) {
-                if (TradingTargetScope.currentTarget() != null) {
+            protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
+                if (currentTarget(toolContext) != null) {
                     throw new IllegalStateException(
                             "IDENTITY_BOUNDARY_VIOLATION: stock search is disabled inside a trading run");
                 }
@@ -169,11 +176,18 @@ public class TradingToolCallbacks {
         }
 
         @Override
-        public String call(String functionInput) {
+        public final String call(String functionInput) {
+            return call(functionInput, new ToolContext(Map.of()));
+        }
+
+        @Override
+        public final String call(String functionInput, ToolContext toolContext) {
             try {
+                ToolContext normalized = toolContext == null
+                        ? new ToolContext(Map.of()) : toolContext;
                 Map<String, Object> input = objectMapper.readValue(
                         functionInput, new TypeReference<Map<String, Object>>() {});
-                return doExecute(input);
+                return doExecute(input, normalized);
             } catch (Exception e) {
                 log.error("Tool[{}] 执行失败: input={}, error={}", name, functionInput, e.getMessage(), e);
                 if (e instanceof IllegalStateException
@@ -186,7 +200,7 @@ public class TradingToolCallbacks {
             }
         }
 
-        protected abstract String doExecute(Map<String, Object> input);
+        protected abstract String doExecute(Map<String, Object> input, ToolContext toolContext);
     }
 
     // ==================== 辅助方法：构建 inputSchema JSON ====================
@@ -244,8 +258,28 @@ public class TradingToolCallbacks {
         }
     }
 
-    private String effectiveTicker(Map<String, Object> input) {
-        TargetContext target = TradingTargetScope.requireTarget();
+    private TargetContext requireTarget(ToolContext toolContext) {
+        TargetContext target = currentTarget(toolContext);
+        if (target == null) {
+            throw new IllegalStateException(
+                    "IDENTITY_BOUNDARY_VIOLATION: trading target context is missing");
+        }
+        return target;
+    }
+
+    private TargetContext currentTarget(ToolContext toolContext) {
+        Object value = toolContext.getContext().get(TradingTargetContextKeys.TARGET_CONTEXT);
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof TargetContext target)) {
+            throw new IllegalStateException(
+                    "IDENTITY_BOUNDARY_VIOLATION: trading target context has invalid type");
+        }
+        return target;
+    }
+
+    private String effectiveTicker(Map<String, Object> input, TargetContext target) {
         Object original = input.get("ticker");
         if (original != null && !target.targetId().equalsIgnoreCase(original.toString().trim())) {
             log.warn("TOOL_TARGET_OVERRIDDEN runId={} originalTicker={} effectiveTicker={}",
