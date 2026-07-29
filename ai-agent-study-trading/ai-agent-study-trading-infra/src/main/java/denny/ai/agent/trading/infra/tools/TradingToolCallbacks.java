@@ -138,7 +138,7 @@ public class TradingToolCallbacks {
 
     public ToolCallback searchStockByNameCallback() {
         return new AbstractToolCallback("search_stock_by_name",
-                "根据股票中文名称搜索股票代码。当用户提到公司名但未提供股票代码时，必须调用此工具。适用场景：用户说'分析一下药明康德'时，需要先调用此工具获取股票代码。",
+                "根据股票中文名称搜索股票代码。仅用于交易启动前的标的解析。当用户未提供明确的股票代码且当前不存在已解析的交易目标时，可以调用。上下文已提供股票代码、TS代码或TargetContext时禁止调用；进入 Trading Run 后禁止调用；不得使用此工具重新解析或切换已锁定的分析标的。",
                 buildInputSchema("name", "股票中文名称，支持模糊匹配，如 药明康德、贵州茅台、宁德时代、比亚迪")) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {

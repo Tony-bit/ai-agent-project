@@ -31,6 +31,15 @@ class TradingPromptRendererTest {
     }
 
     @Test
+    void targetContextTellsTradingNodesNotToResolveTheLockedTargetAgain() {
+        String rendered = renderer.renderTargetContext(target());
+
+        assertTrue(rendered.contains("当前标的已完成解析并锁定"));
+        assertTrue(rendered.contains("禁止调用 `search_stock_by_name`"));
+        assertTrue(rendered.contains("不得重新解析、替换或切换本次分析标的"));
+    }
+
+    @Test
     void rendersNestedJsonInputsWithoutTreatingClosingBracesAsPlaceholders() {
         TargetContext target = target();
         String stockData = """

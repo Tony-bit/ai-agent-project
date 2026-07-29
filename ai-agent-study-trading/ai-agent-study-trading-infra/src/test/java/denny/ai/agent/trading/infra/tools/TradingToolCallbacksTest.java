@@ -72,6 +72,16 @@ class TradingToolCallbacksTest {
     }
 
     @Test
+    void searchToolDescriptionLimitsUseToPreRunTargetResolution() {
+        String description = tradingToolCallbacks.searchStockByNameCallback()
+                .getToolDefinition().description();
+
+        assertTrue(description.contains("仅用于交易启动前的标的解析"));
+        assertTrue(description.contains("进入 Trading Run 后禁止调用"));
+        assertFalse(description.contains("必须调用此工具"));
+    }
+
+    @Test
     void testAllCallbacksAreToolCallbackInstances() {
         ToolCallback[] callbacks = new ToolCallback[] {
             tradingToolCallbacks.getStockInfoCallback(),
