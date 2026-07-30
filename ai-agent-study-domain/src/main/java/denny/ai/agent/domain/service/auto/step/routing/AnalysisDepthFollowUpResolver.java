@@ -22,7 +22,7 @@ public class AnalysisDepthFollowUpResolver {
             "快速了解", "我要快速了解", "我想快速了解", "选择快速了解", "就快速了解"
     );
     private static final Set<String> FULL_CHOICES = Set.of(
-            "完整投资分析", "进行完整投资分析", "我要进行完整投资分析",
+            "完整投资分析", "完整的投资分析", "进行完整投资分析", "我要进行完整投资分析",
             "我想进行完整投资分析", "选择完整投资分析", "就进行完整投资分析"
     );
     private static final List<String> ANALYSIS_CUES = List.of(

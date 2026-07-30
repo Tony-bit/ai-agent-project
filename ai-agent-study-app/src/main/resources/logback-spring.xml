@@ -29,10 +29,6 @@
         </rollingPolicy>
     </appender>
 
-    <logger name="org.springframework" level="INFO"/>
-    <logger name="org.mybatis" level="INFO"/>
-    <logger name="denny.ai.agent" level="INFO"/>
-
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="APP_FILE"/>

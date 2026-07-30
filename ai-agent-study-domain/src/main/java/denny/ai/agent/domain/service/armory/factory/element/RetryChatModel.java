@@ -7,6 +7,7 @@ import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.service.compression.CompressionExhaustedException;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import denny.ai.agent.domain.util.TokenCountUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -15,13 +16,14 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Slf4j
 public class RetryChatModel implements ChatModel {
 
     private final ChatModel delegate;
@@ -83,11 +85,13 @@ public class RetryChatModel implements ChatModel {
             return Flux.error(new IllegalStateException("model call safety limit exhausted"));
         }
         state.modelCalls++;
+        int attemptNumber = state.modelCalls;
         AtomicReference<StreamPhase> phase = new AtomicReference<>(StreamPhase.AWAITING_RESPONSE);
         AtomicLong lastContentAtNanos = new AtomicLong();
         return Flux.defer(() -> {
                     long attemptStartedAtNanos = schedulerNowNanos();
                     lastContentAtNanos.set(attemptStartedAtNanos);
+                    List<ChatResponse> responses = new ArrayList<>();
                     return delegate.stream(state.currentPrompt)
                             .timeout(Mono.delay(streamingTimeouts.firstContentTimeout()), response -> {
                                 long now = schedulerNowNanos();
@@ -104,12 +108,17 @@ public class RetryChatModel implements ChatModel {
                                         : remaining(streamingTimeouts.firstContentTimeout(),
                                                 attemptStartedAtNanos, now);
                                 return Mono.delay(remaining);
-                            });
+                            })
+                            .doOnNext(responses::add)
+                            .thenMany(Flux.defer(() -> Flux.fromIterable(responses)))
+                            .doOnError(error -> {
+                                logAttemptFailure(attemptNumber, attemptStartedAtNanos,
+                                        responses, error);
+                                responses.clear();
+                            })
+                            .doFinally(signal -> responses.clear());
                 })
                 .onErrorResume(error -> {
-                    if (phase.get() != StreamPhase.AWAITING_RESPONSE) {
-                        return Flux.error(error);
-                    }
                     Exception exception = error instanceof Exception value
                             ? value : new RuntimeException(error);
                     String errorCode = errorCodeExtractor.extract(exception);
@@ -129,7 +138,7 @@ public class RetryChatModel implements ChatModel {
                             return Flux.error(compressionError);
                         }
                     }
-                    if (state.isOrdinaryRetryable(exception, errorCode)
+                    if (state.isOrdinaryRetryable(exception)
                             && state.ordinaryRetriesRemaining > 0) {
                         state.ordinaryRetriesRemaining--;
                         long delay = state.nextDelay();
@@ -138,6 +147,30 @@ public class RetryChatModel implements ChatModel {
                     }
                     return Flux.error(error);
                 });
+    }
+
+    private void logAttemptFailure(int attemptNumber,
+                                   long startedAtNanos,
+                                   List<ChatResponse> responses,
+                                   Throwable error) {
+        int partialLength = responses.stream().mapToInt(this::contentLength).sum();
+        String errorCode = error instanceof Exception exception
+                ? errorCodeExtractor.extract(exception) : AiErrorCodes.UNKNOWN;
+        long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                Math.max(0, schedulerNowNanos() - startedAtNanos));
+        log.warn("LLM stream query attempt failed | attemptNumber={} | durationMs={} "
+                        + "| chunkCount={} | partialLength={} | errorType={} | errorCode={}",
+                attemptNumber, durationMs, responses.size(), partialLength,
+                error.getClass().getName(), errorCode);
+    }
+
+    private int contentLength(ChatResponse response) {
+        if (response == null || response.getResult() == null
+                || response.getResult().getOutput() == null
+                || response.getResult().getOutput().getText() == null) {
+            return 0;
+        }
+        return response.getResult().getOutput().getText().length();
     }
 
     private boolean hasEffectiveContent(ChatResponse response) {
@@ -169,6 +202,8 @@ public class RetryChatModel implements ChatModel {
         private final RetryRuntimeContext runtimeContext;
         private final int maxCompressionAttempts;
         private final int maxModelCalls;
+        private final StreamQueryRetryClassifier retryClassifier;
+        private final double multiplier;
         private int ordinaryRetriesRemaining;
         private int compressionAttempts;
         private int modelCalls;
@@ -184,6 +219,9 @@ public class RetryChatModel implements ChatModel {
                     ? Math.max(1, Math.min(compressionPolicy.getMaxCompressionAttempts(), 3)) : 0;
             this.maxModelCalls = ordinaryAttempts + maxCompressionAttempts;
             this.ordinaryRetriesRemaining = ordinaryAttempts - 1;
+            this.retryClassifier = new StreamQueryRetryClassifier(retryConfig);
+            this.multiplier = retryConfig.getMultiplier() <= 0
+                    ? 1.0 : retryConfig.getMultiplier();
             this.maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
             this.interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
         }
@@ -216,24 +254,14 @@ public class RetryChatModel implements ChatModel {
                     && (runtimeContext == null || !runtimeContext.isCompressionCall());
         }
 
-        private boolean isOrdinaryRetryable(Exception error, String errorCode) {
-            Set<String> nonRetryable = toSet(retryConfig.getNonRetryableErrorCodes());
-            if (nonRetryable.contains(errorCode)) {
-                return false;
-            }
-            return toSet(retryConfig.getRetryableErrorCodes()).contains(errorCode)
-                    || RetryableExceptionTypes.isRetryable(error);
+        private boolean isOrdinaryRetryable(Exception error) {
+            return retryClassifier.isRetryable(error);
         }
 
         private long nextDelay() {
             long current = interval;
-            double multiplier = retryConfig.getMultiplier() <= 0 ? 1.0 : retryConfig.getMultiplier();
             interval = (long) Math.min(maxInterval, Math.max(0, interval * multiplier));
             return current;
-        }
-
-        private Set<String> toSet(List<String> values) {
-            return values == null ? Set.of() : Set.copyOf(values);
         }
     }
 

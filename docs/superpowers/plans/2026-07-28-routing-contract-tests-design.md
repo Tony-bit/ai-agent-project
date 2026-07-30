@@ -1,15 +1,12 @@
-# Routing Contract Tests Design
+# 路由契约测试设计
 
-## Goal
+## 目标
 
-Add fast, deterministic unit-test coverage for small routing transformations,
-node-to-node transitions, and parameter propagation. Prevent regressions where
-a field, context value, task order, or routing choice is changed or dropped
-between adjacent nodes.
+为路由流程中的简单转换、节点间跳转和参数传递补充快速、稳定的单元测试，防止字段、上下文数据、任务顺序或路由选择在相邻节点之间被修改或遗漏。
 
-## Scope
+## 范围
 
-Extend the existing domain-layer unit tests for:
+扩展以下领域层组件的现有单元测试：
 
 - `AnalysisDepthFollowUpResolver`
 - `IntentRoutingNode`
@@ -17,74 +14,54 @@ Extend the existing domain-layer unit tests for:
 - `TaskRoutingSlotNode`
 - `RoutingResultHandler`
 
-The tests cover the current `完整的投资分析` alias fix and the surrounding
-routing contracts. Production behavior is not changed by this work.
+测试覆盖当前对 `完整的投资分析` 别名的修复及其相邻路由契约。本次工作不修改生产逻辑。
 
-## Test Strategy
+## 测试策略
 
-Use layered contract tests in the existing test classes:
+在现有测试类中采用分层契约测试：
 
-1. Test pure transformations directly, including accepted aliases,
-   normalization, derived intent and executor values, and preservation of
-   existing slots and metrics.
-2. Capture arguments at service and node boundaries and assert every relevant
-   field instead of only verifying that a dependency was called.
-3. Verify branch transitions for clarification, single-task, multi-task, and
-   graph-validation fallback paths.
-4. Verify identity where adjacent nodes must receive the same request or
-   dynamic-context instance.
+1. 直接测试纯转换逻辑，包括可接受的别名、输入归一化、派生出的意图和执行节点，以及已有槽位和指标的保留行为。
+2. 在服务和节点边界捕获参数并逐项断言相关字段，不只验证依赖是否被调用。
+3. 验证澄清、单任务、多任务和任务图校验失败回退等分支的节点跳转。
+4. 对相邻节点必须共用的请求和动态上下文进行对象身份断言。
 
-## Coverage
+## 覆盖内容
 
-### Analysis depth follow-up
+### 分析深度追问解析
 
-- Recognize `完整的投资分析` as a full-analysis choice.
-- Preserve punctuation and whitespace normalization behavior.
-- Restore the nearest eligible financial request and derive the expected
-  effective query, intent, and executor node.
-- Preserve model-provided slots and metrics during enforcement.
-- Leave unresolved input and model output unchanged.
+- 将 `完整的投资分析` 识别为完整分析选项。
+- 保持现有标点和空白归一化行为。
+- 恢复最近一条符合条件的金融请求，并生成预期的有效查询、意图和执行节点。
+- 执行强制路由转换时保留模型返回的槽位和指标。
+- 输入无法解析时保持原始输入和模型结果不变。
 
-### Unified routing node
+### 统一路由节点
 
-- Pass message, prepared history, client configuration, session ID, and trace
-  context to the routing service without substitution.
-- When a follow-up is resolved, copy all `ExecuteCommandEntity` fields into the
-  effective downstream request while changing only the message.
-- When no follow-up is resolved, pass the original request unchanged.
-- Keep clarification responses out of business execution nodes.
+- 将消息、预先准备的历史记录、客户端配置、会话 ID 和链路跟踪上下文原样传给路由服务。
+- 追问解析成功时，仅修改下游请求的消息字段，完整复制 `ExecuteCommandEntity` 的其他字段。
+- 追问未解析时，将原请求原样传递给下游节点。
+- 澄清响应不得进入业务执行节点。
 
-### Split routing nodes
+### 拆分路由节点
 
-- Pass the original message, prepared history, client configuration, session
-  ID, and trace context into query decomposition.
-- Store the decomposition result, stage metrics, and start time under the
-  expected dynamic-context keys.
-- Pass the same request and context into `TaskRoutingSlotNode`.
-- Sort decomposed tasks by `taskIndex`, then pass each task's content, task ID,
-  derived sequence number, history, configuration, session ID, and trace
-  context into slot routing.
-- Pass converted subtasks and accumulated metrics to `RoutingResultHandler`.
-- Verify fallback arguments and results when graph validation fails.
+- 将原始消息、预先准备的历史记录、客户端配置、会话 ID 和链路跟踪上下文传给查询拆分服务。
+- 将拆分结果、阶段指标和开始时间写入约定的动态上下文键。
+- 将同一个请求和动态上下文实例传给 `TaskRoutingSlotNode`。
+- 按 `taskIndex` 对拆分任务排序，再将每个任务的内容、任务 ID、派生序号、历史记录、配置、会话 ID 和链路跟踪上下文传给槽位路由服务。
+- 将转换后的子任务和累计指标传给 `RoutingResultHandler`。
+- 任务图校验失败时，验证回退参数和回退结果。
 
-### Routing result handler
+### 路由结果处理器
 
-- Verify clarification, single-task, and multi-task state conversions.
-- Verify stored context keys, original message, slots, and selected executor.
-- Pass the same request and context instances into the selected downstream
-  node.
-- Do not invoke an execution node for clarification results.
+- 验证澄清、单任务和多任务三类状态转换。
+- 验证写入的上下文键、原始消息、槽位和选中的执行节点。
+- 将相同的请求和动态上下文实例传给选中的下游节点。
+- 澄清结果不得触发任何业务执行节点。
 
-## Isolation
+## 隔离约束
 
-All third-party components and external boundaries are mocked, including model
-routing services, conversation context providers, Spring application-context
-lookups, repositories, and downstream execution nodes. The tests do not start
-Spring, access a database, call a network service, or invoke a real model.
+所有第三方组件和外部边界均使用 mock，包括模型路由服务、会话上下文提供器、Spring 应用上下文查询、仓储以及下游执行节点。测试不启动 Spring，不访问数据库，不调用网络服务，也不调用真实模型。
 
-## Verification
+## 验证方式
 
-Run the five focused test classes through the Maven domain module, then run the
-complete `ai-agent-study-domain` unit-test suite. Any unrelated pre-existing
-failure is reported separately and is not hidden by changes to production
-code.
+先通过 Maven 在领域模块中运行上述五个测试类，再运行 `ai-agent-study-domain` 的完整单元测试套件。若存在与本次修改无关的既有失败，应单独报告，不得通过修改生产代码掩盖。

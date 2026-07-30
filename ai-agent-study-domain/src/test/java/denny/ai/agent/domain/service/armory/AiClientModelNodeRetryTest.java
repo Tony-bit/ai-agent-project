@@ -1,6 +1,7 @@
 package denny.ai.agent.domain.service.armory;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.model.valobj.AiClientModelVO.StreamingTimeoutConfig;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
@@ -15,6 +16,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.time.Duration;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,6 +51,33 @@ public class AiClientModelNodeRetryTest {
         assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOff) instanceof RetryChatModel);
         assertTrue(node.applyRetryDecorator(delegate, retryOff, compressionOn) instanceof RetryChatModel);
         assertTrue(node.applyRetryDecorator(delegate, retryOn, compressionOn) instanceof RetryChatModel);
+    }
+
+    @Test
+    public void shouldPassRetryAndStreamingTimeoutConfigurationToDecorator() {
+        AiClientModelNode node = new AiClientModelNode();
+        ReflectionTestUtils.setField(node, "promptCompressionService", compressionService);
+        RetryConfig retry = RetryConfig.builder()
+                .enabled(true)
+                .maxAttempts(4)
+                .initialIntervalMs(25)
+                .build();
+        StreamingTimeoutConfig timeouts = StreamingTimeoutConfig.builder()
+                .firstContentTimeoutMs(101L)
+                .idleTimeoutMs(202L)
+                .totalTimeoutMs(303L)
+                .build();
+
+        RetryChatModel decorated = (RetryChatModel) node.applyRetryDecorator(
+                mock(ChatModel.class), retry, CompressionPolicy.builder().build(), timeouts);
+
+        assertSame(retry, ReflectionTestUtils.getField(decorated, "retryConfig"));
+        AiStreamingProperties.StreamingTimeouts actual =
+                (AiStreamingProperties.StreamingTimeouts) ReflectionTestUtils.getField(
+                        decorated, "streamingTimeouts");
+        assertEquals(Duration.ofMillis(101), actual.firstContentTimeout());
+        assertEquals(Duration.ofMillis(202), actual.idleTimeout());
+        assertEquals(Duration.ofMillis(303), actual.totalTimeout());
     }
 
     /**

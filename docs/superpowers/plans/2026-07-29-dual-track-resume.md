@@ -61,7 +61,7 @@ TOKENS = {
 
 | 任务 | status |
 |------|------|
-| 任务 1：建立事实数据与口径测试 | append |
+| 任务 1：建立事实数据与口径测试 | pass |
 
 **文件：**
 - 创建：`C:/Users/Denny/Documents/Codex/2026-07-29/new-chat-4/work/resume/test_resume_content.py`
@@ -227,7 +227,7 @@ VARIANTS = {
 
 | 任务 | status |
 |------|------|
-| 任务 2：实现可复用 DOCX 构建器 | append |
+| 任务 2：实现可复用 DOCX 构建器 | pass |
 
 **文件：**
 - 创建：`C:/Users/Denny/Documents/Codex/2026-07-29/new-chat-4/work/resume/build_resumes.py`
@@ -291,7 +291,7 @@ Agent 精简版只取前两个工程要点；LoRA/SFT 仍在 AI 版完整保留�
 
 | 任务 | status |
 |------|------|
-| 任务 3：执行 DOCX 结构和内容验证 | append |
+| 任务 3：执行 DOCX 结构和内容验证 | pass |
 
 **文件：**
 - 创建：`C:/Users/Denny/Documents/Codex/2026-07-29/new-chat-4/work/resume/verify_resumes.py`
@@ -340,7 +340,7 @@ AI 版必须包含 LoRA/SFT 全部指标；Java 版必须包含 `15 亿+`、TP99
 
 | 任务 | status |
 |------|------|
-| 任务 4：渲染 DOCX 并导出 PDF | append |
+| 任务 4：渲染 DOCX 并导出 PDF | pass |
 
 **文件：**
 - 读取：`C:/Users/Denny/.codex/plugins/cache/openai-primary-runtime/documents/26.727.11326/skills/documents/render_docx.py`
@@ -375,7 +375,7 @@ AI 版必须包含 LoRA/SFT 全部指标；Java 版必须包含 `15 亿+`、TP99
 
 | 任务 | status |
 |------|------|
-| 任务 5：逐页视觉检查并迭代 | append |
+| 任务 5：逐页视觉检查并迭代 | pass |
 
 **文件：**
 - 检查：`C:/Users/Denny/Documents/Codex/2026-07-29/new-chat-4/work/resume/render-ai/page-1.png`
@@ -406,7 +406,7 @@ AI 版必须包含 LoRA/SFT 全部指标；Java 版必须包含 `15 亿+`、TP99
 
 | 任务 | status |
 |------|------|
-| 任务 6：执行最终 PDF、ATS 与交付审计 | append |
+| 任务 6：执行最终 PDF、ATS 与交付审计 | pass |
 
 **文件：**
 - 验证：`C:/Users/Denny/Documents/Codex/2026-07-29/new-chat-4/outputs/*.docx`

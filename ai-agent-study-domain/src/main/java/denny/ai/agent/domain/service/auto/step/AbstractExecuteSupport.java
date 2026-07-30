@@ -83,12 +83,16 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     protected String collectStreamingResponse(ChatClient.ChatClientRequestSpec requestSpec,
-                                              String operationName,
-                                              SseEventSink sseEventSink) {
+                                               String operationName,
+                                               SseEventSink sseEventSink) {
         StreamingChatResponseCollector collector = streamingChatResponseCollector == null
                 ? new StreamingChatResponseCollector() : streamingChatResponseCollector;
-        return collector.collect(requestSpec.stream().content(), operationName,
+        String response = collector.collect(requestSpec.stream().content(), operationName,
                 sseEventSink == null ? null : sseEventSink.cancellationSignal());
+        if (log.isDebugEnabled()) {
+            log.debug("LLM streaming output | operation={} | content=\n{}", operationName, response);
+        }
+        return response;
     }
 
     protected <T> T getBean(String beanName) {

@@ -112,17 +112,19 @@ public class RetryChatModelStreamTest {
     }
 
     @Test
-    public void errorAfterFirstChunkIsNotRetried() {
+    public void errorAfterFirstChunkRetriesWithoutEmittingFailedChunk() {
         Prompt prompt = prompt("question");
         RuntimeException error = new RuntimeException("{\"error\":{\"code\":\"429\"}}");
-        when(delegate.stream(prompt)).thenReturn(Flux.concat(Flux.just(successResponse), Flux.error(error)));
+        ChatResponse retryResponse = response("retry-success");
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.concat(Flux.just(successResponse), Flux.error(error)))
+                .thenReturn(Flux.just(retryResponse));
 
         StepVerifier.create(model().stream(prompt))
-                .expectNext(successResponse)
-                .expectErrorMatches(actual -> actual == error)
-                .verify();
+                .expectNext(retryResponse)
+                .verifyComplete();
 
-        verify(delegate, times(1)).stream(prompt);
+        verify(delegate, times(2)).stream(prompt);
     }
 
     @Test
@@ -143,18 +145,16 @@ public class RetryChatModelStreamTest {
     }
 
     @Test
-    public void should_retry_when_first_content_times_out_before_any_response() {
+    public void should_not_retry_when_first_content_times_out_before_any_response() {
         Prompt prompt = prompt("question");
-        when(delegate.stream(prompt))
-                .thenReturn(Flux.never())
-                .thenReturn(Flux.just(response("done")));
+        when(delegate.stream(prompt)).thenReturn(Flux.never());
 
         StepVerifier.withVirtualTime(() -> model(timeouts(5, 3, 20)).stream(prompt))
                 .thenAwait(Duration.ofSeconds(5))
-                .expectNextMatches(value -> "done".equals(value.getResult().getOutput().getText()))
-                .verifyComplete();
+                .expectError(java.util.concurrent.TimeoutException.class)
+                .verify();
 
-        verify(delegate, times(2)).stream(prompt);
+        verify(delegate, times(1)).stream(prompt);
     }
 
     @Test
@@ -164,7 +164,6 @@ public class RetryChatModelStreamTest {
                 Flux.concat(Flux.just(response("")), Flux.never()));
 
         StepVerifier.withVirtualTime(() -> model(timeouts(5, 3, 20)).stream(prompt))
-                .expectNextCount(1)
                 .thenAwait(Duration.ofSeconds(5))
                 .expectError(java.util.concurrent.TimeoutException.class)
                 .verify();
@@ -179,7 +178,6 @@ public class RetryChatModelStreamTest {
                 Flux.concat(Flux.just(response("first")), Flux.never()));
 
         StepVerifier.withVirtualTime(() -> model(timeouts(5, 3, 20)).stream(prompt))
-                .expectNextCount(1)
                 .thenAwait(Duration.ofSeconds(3))
                 .expectError(java.util.concurrent.TimeoutException.class)
                 .verify();
@@ -188,16 +186,64 @@ public class RetryChatModelStreamTest {
     }
 
     @Test
-    public void should_preserve_logical_call_budget_across_attempts() {
+    public void should_not_spend_retry_budget_when_first_content_timeout_occurs() {
         Prompt prompt = prompt("question");
         when(delegate.stream(prompt)).thenReturn(Flux.never());
 
         StepVerifier.withVirtualTime(() -> model(timeouts(4, 3, 6)).stream(prompt))
-                .thenAwait(Duration.ofSeconds(6))
+                .thenAwait(Duration.ofSeconds(4))
                 .expectError(java.util.concurrent.TimeoutException.class)
                 .verify();
 
+        verify(delegate, times(1)).stream(prompt);
+    }
+
+    @Test
+    public void should_preserve_total_timeout_without_retrying() {
+        Prompt prompt = prompt("question");
+        when(delegate.stream(prompt)).thenReturn(Flux.never());
+
+        StepVerifier.withVirtualTime(() -> model(timeouts(10, 10, 3)).stream(prompt))
+                .thenAwait(Duration.ofSeconds(3))
+                .expectError(java.util.concurrent.TimeoutException.class)
+                .verify();
+
+        verify(delegate, times(1)).stream(prompt);
+    }
+
+    @Test
+    public void should_ignore_retry_after_and_use_retry_config_backoff() {
+        Prompt prompt = prompt("question");
+        retryConfig.setInitialIntervalMs(1000);
+        retryConfig.setMaxIntervalMs(1000);
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.error(new RuntimeException(
+                        "Retry-After: 30 {\"error\":{\"code\":\"429\"}}")))
+                .thenReturn(Flux.just(response("done")));
+
+        StepVerifier.withVirtualTime(() -> model().stream(prompt))
+                .expectSubscription()
+                .expectNoEvent(Duration.ofMillis(999))
+                .thenAwait(Duration.ofMillis(1))
+                .expectNextMatches(value -> "done".equals(value.getResult().getOutput().getText()))
+                .verifyComplete();
+
         verify(delegate, times(2)).stream(prompt);
+    }
+
+    @Test
+    public void should_count_max_attempts_as_total_query_subscriptions() {
+        Prompt prompt = prompt("question");
+        RuntimeException finalError = new RuntimeException(
+                "{\"error\":{\"code\":\"503\"}}");
+        retryConfig.setMaxAttempts(3);
+        when(delegate.stream(prompt)).thenReturn(Flux.error(finalError));
+
+        StepVerifier.create(model().stream(prompt))
+                .expectErrorMatches(error -> error == finalError)
+                .verify();
+
+        verify(delegate, times(3)).stream(prompt);
     }
 
     private RetryChatModel model() {

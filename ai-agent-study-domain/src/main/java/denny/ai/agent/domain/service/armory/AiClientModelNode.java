@@ -86,12 +86,12 @@ public class AiClientModelNode extends AbstractArmorySupport{
         return router(requestParameter, dynamicContext);
     }
 
-    ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
+    public ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
                                   CompressionPolicy compressionPolicy) {
         return applyRetryDecorator(chatModel, retryConfig, compressionPolicy, null);
     }
 
-    ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
+    public ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
                                   CompressionPolicy compressionPolicy,
                                   StreamingTimeoutConfig streamingTimeoutConfig) {
         boolean retryEnabled = retryConfig != null && retryConfig.isEnabled();
