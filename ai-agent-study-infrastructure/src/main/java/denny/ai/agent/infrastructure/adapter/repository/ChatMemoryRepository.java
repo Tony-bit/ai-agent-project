@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -78,6 +79,7 @@ public class ChatMemoryRepository implements IChatMemoryRepository {
     }
 
     @Override
+    @Async("threadPoolExecutor")
     public void cacheMessagesToRedis(String sessionId, List<ChatMessageEntity> messages, int maxSize) {
         ConversationRuntimeWindow window = ConversationRuntimeWindow.builder()
                 .sessionId(sessionId)
@@ -92,6 +94,7 @@ public class ChatMemoryRepository implements IChatMemoryRepository {
     }
 
     @Override
+    @Async("threadPoolExecutor")
     public void cacheRuntimeWindowToRedis(String sessionId, ConversationRuntimeWindow window, int maxSize) {
         if (stringRedisTemplate == null) {
             log.warn("StringRedisTemplate 未配置，跳过 Redis 缓存: sessionId={}", sessionId);

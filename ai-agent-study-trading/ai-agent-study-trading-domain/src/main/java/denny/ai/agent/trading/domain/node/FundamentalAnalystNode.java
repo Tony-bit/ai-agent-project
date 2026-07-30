@@ -127,6 +127,7 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消基本面分析师调用");
         }
+        log.debug("LLM streaming input | operation=FundamentalAnalystNode | content=\n{}", prompt);
         String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
                 context, "6002", "FundamentalAnalystNode",
                 () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(

@@ -181,6 +181,7 @@ public class RecommendationNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消推荐节点调用");
         }
+        log.debug("LLM streaming input | operation=RecommendationNode | content=\n{}", prompt);
         String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
                 context, "6013", "RecommendationNode",
                 () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(

@@ -99,6 +99,7 @@ public class ConservativeRiskAnalystNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消保守风控分析师调用");
         }
+        log.debug("LLM streaming input | operation=ConservativeRiskAnalystNode | content=\n{}", prompt);
         String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
                 context, "6011", "ConservativeRiskAnalystNode",
                 () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(

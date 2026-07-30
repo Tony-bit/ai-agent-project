@@ -168,6 +168,7 @@ public class ResearchManagerNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消研究主管调用");
         }
+        log.debug("LLM streaming input | operation=ResearchManagerNode | content=\n{}", prompt);
         String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
                 context, "6008", "ResearchManagerNode",
                 () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(

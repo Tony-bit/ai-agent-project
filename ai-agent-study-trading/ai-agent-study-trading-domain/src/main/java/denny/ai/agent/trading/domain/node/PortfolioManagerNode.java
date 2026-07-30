@@ -159,6 +159,7 @@ public class PortfolioManagerNode extends AbstractExecuteSupport {
         if (!shouldContinueSse(dynamicContext)) {
             throw new IllegalStateException("SSE已关闭，取消组合经理调用");
         }
+        log.debug("LLM streaming input | operation=PortfolioManagerNode | content=\n{}", prompt);
         String response = denny.ai.agent.trading.domain.execution.TradingLlmCallAudit.execute(
                 context, "6009", "PortfolioManagerNode",
                 () -> collectStreamingResponse(denny.ai.agent.trading.domain.execution.TradingChatMemory.apply(
