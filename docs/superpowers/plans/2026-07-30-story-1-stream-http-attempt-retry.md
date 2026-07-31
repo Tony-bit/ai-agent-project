@@ -2,6 +2,8 @@
 
 > **文档状态：** 开发、回归与编译验收已完成。
 
+> **后续修订：** Story 3 `docs/superpowers/plans/2026-07-31-story-3-sse-timeout-query-retry-design.md` 在保留本 Story 基础退避公式的前提下，为 `RetryChatModel.stream()` 的实际等待增加 `0~1000ms` jitter；本文件记录 Story 1 完成时的历史基线。
+
 **目标：** 让 `RetryChatModel` 以“整次 LLM query”为最小重试单位处理普通可重试错误；任何 attempt 在 `onComplete` 前都不向下游提交 chunk，失败时整轮丢弃并从原始 `Prompt` 重试。
 
 **架构结论：** `RetryChatModel` 是唯一应用侧 stream retry owner。每个 delegate subscription 产生一个原子 query attempt：当前 attempt 的 `ChatResponse` 只做瞬时聚合，`onComplete` 后才按原顺序释放给下游；普通可重试 `onError` 时销毁全部临时结果并从原始 `Prompt` 重订阅。Story 1 不接入 timeout 重试；Story 2 允许把现有 timeout 观察点移动到原子聚合前，Story 3 再将 timeout 异常接入同一基础设施。
