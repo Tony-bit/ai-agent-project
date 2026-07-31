@@ -61,6 +61,7 @@ public class AiClientModelNodeRetryTest {
                 .enabled(true)
                 .maxAttempts(4)
                 .initialIntervalMs(25)
+                .retryOnStreamTimeout(true)
                 .build();
         StreamingTimeoutConfig timeouts = StreamingTimeoutConfig.builder()
                 .firstContentTimeoutMs(11_000L)
@@ -72,12 +73,34 @@ public class AiClientModelNodeRetryTest {
                 mock(ChatModel.class), retry, CompressionPolicy.builder().build(), timeouts);
 
         assertSame(retry, ReflectionTestUtils.getField(decorated, "retryConfig"));
+        assertTrue(((RetryConfig) ReflectionTestUtils.getField(
+                decorated, "retryConfig")).isRetryOnStreamTimeout());
         AiStreamingProperties.StreamingTimeouts actual =
                 (AiStreamingProperties.StreamingTimeouts) ReflectionTestUtils.getField(
                         decorated, "streamingTimeouts");
         assertEquals(Duration.ofSeconds(11), actual.firstContentTimeout());
         assertEquals(Duration.ofSeconds(20), actual.idleTimeout());
         assertEquals(Duration.ofSeconds(100), actual.totalTimeout());
+    }
+
+    @Test
+    public void should_disable_stream_timeout_retry_in_disabled_fallback() {
+        AiClientModelNode node = new AiClientModelNode();
+        ReflectionTestUtils.setField(node, "promptCompressionService", compressionService);
+        RetryConfig disabled = RetryConfig.builder()
+                .enabled(false)
+                .maxAttempts(4)
+                .retryOnStreamTimeout(true)
+                .build();
+
+        RetryChatModel decorated = (RetryChatModel) node.applyRetryDecorator(
+                mock(ChatModel.class), disabled, CompressionPolicy.builder().build());
+        RetryConfig effective = (RetryConfig) ReflectionTestUtils.getField(
+                decorated, "retryConfig");
+
+        assertFalse(effective.isEnabled());
+        assertEquals(1, effective.getMaxAttempts());
+        assertFalse(effective.isRetryOnStreamTimeout());
     }
 
     @Test

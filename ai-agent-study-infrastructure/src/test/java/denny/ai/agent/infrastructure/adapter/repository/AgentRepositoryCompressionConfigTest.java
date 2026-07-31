@@ -39,7 +39,8 @@ public class AgentRepositoryCompressionConfigTest {
     @Test
     public void should_parse_composite_runtime_config() {
         AiClientModelVO model = load("""
-                {"retryConfig":{"enabled":true,"maxAttempts":2},
+                {"retryConfig":{"enabled":true,"maxAttempts":2,
+                 "retryOnStreamTimeout":true},
                  "compressionConfig":{"proactiveThresholdTokens":4096,
                  "maxCompressionAttempts":2,"maxSummaryTokens":1000},
                  "streamingTimeout":{"firstContentTimeoutMs":60000}}
@@ -47,6 +48,7 @@ public class AgentRepositoryCompressionConfigTest {
 
         assertTrue(model.getRetryConfig().isEnabled());
         assertEquals(2, model.getRetryConfig().getMaxAttempts());
+        assertTrue(model.getRetryConfig().isRetryOnStreamTimeout());
         assertEquals(4096, model.getCompressionConfig().getProactiveThresholdTokens());
         assertEquals(2, model.getCompressionConfig().getMaxCompressionAttempts());
         assertEquals(1000, model.getCompressionConfig().getMaxSummaryTokens());
@@ -59,7 +61,22 @@ public class AgentRepositoryCompressionConfigTest {
 
         assertTrue(model.getRetryConfig().isEnabled());
         assertEquals(2, model.getRetryConfig().getMaxAttempts());
+        assertFalse(model.getRetryConfig().isRetryOnStreamTimeout());
         assertDefaults(model.getCompressionConfig());
+    }
+
+    @Test
+    public void should_not_share_stream_timeout_retry_between_model_parses() {
+        AiClientModelVO enabled = load("""
+                {"retryConfig":{"enabled":true,"maxAttempts":2,
+                 "retryOnStreamTimeout":true}}
+                """);
+        AiClientModelVO defaults = load("""
+                {"retryConfig":{"enabled":true,"maxAttempts":2}}
+                """);
+
+        assertTrue(enabled.getRetryConfig().isRetryOnStreamTimeout());
+        assertFalse(defaults.getRetryConfig().isRetryOnStreamTimeout());
     }
 
     @Test

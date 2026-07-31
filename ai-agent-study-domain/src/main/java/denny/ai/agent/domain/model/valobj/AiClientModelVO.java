@@ -65,6 +65,14 @@ public class AiClientModelVO {
         private boolean enabled;
 
         /**
+         * 是否允许两类结构化 SSE timeout 消耗 ordinary credit，
+         * 并从当前入口 Prompt 重启完整 stream query。
+         * 不控制 timeout 检测，也不影响同步 call()。
+         */
+        @Builder.Default
+        private boolean retryOnStreamTimeout = false;
+
+        /**
          * 最大重试次数
          */
         @Builder.Default
