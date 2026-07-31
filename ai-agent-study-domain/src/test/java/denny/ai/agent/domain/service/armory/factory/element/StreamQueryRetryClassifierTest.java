@@ -1,9 +1,11 @@
 package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.auto.step.ClientDisconnectedException;
 import denny.ai.agent.domain.service.armory.stream.FirstStreamChunkTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.StreamChunkIdleTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutType;
 import denny.ai.agent.domain.service.armory.stream.TimeoutDeadlineOwner;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -13,15 +15,74 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.io.EOFException;
 import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StreamQueryRetryClassifierTest {
+
+    @Test
+    void should_expose_structured_stream_timeout_types_through_cause_chain() {
+        StreamQueryRetryClassifier classifier = classifier(List.of(), List.of());
+
+        assertEquals(Optional.of(StreamTimeoutType.FIRST_CHUNK),
+                classifier.streamTimeoutType(firstChunkTimeout()));
+        assertEquals(Optional.of(StreamTimeoutType.CHUNK_IDLE),
+                classifier.streamTimeoutType(new RuntimeException("wrapped", chunkIdleTimeout())));
+        assertEquals(Optional.empty(), classifier.streamTimeoutType(
+                new RuntimeException("idle timeout 90 with status 429")));
+        assertEquals(Optional.empty(), classifier.streamTimeoutType(queryAttemptTimeout()));
+    }
+
+    @Test
+    void should_expose_safety_exclusions_before_recovery_facts() {
+        StreamQueryRetryClassifier classifier = classifier(List.of(), List.of());
+        List<Throwable> exclusions = List.of(
+                new CancellationException("cancelled"),
+                new ClientDisconnectedException("disconnected"),
+                new ToolExecutionException(ToolDefinition.builder().name("tool")
+                        .description("test").inputSchema("{}").build(),
+                        new EOFException("connection reset")),
+                new TestDecodingException("decode", null),
+                new ResponseValidationException(
+                        ResponseValidationFailureType.JSON_PARSE_ERROR, "invalid"),
+                new TimeoutException("timeout"),
+                new SocketTimeoutException("socket timeout"),
+                new HttpTimeoutException("http timeout"),
+                http(401), http(403));
+
+        for (Throwable exclusion : exclusions) {
+            assertTrue(classifier.isSafetyExcluded(
+                    new RuntimeException("wrapped", exclusion)), exclusion.getClass().getName());
+        }
+        assertTrue(classifier.isSafetyExcluded(new RuntimeException(
+                "wrapped", new RuntimeException(queryAttemptTimeout()))));
+        FirstStreamChunkTimeoutException mixedTimeout = firstChunkTimeout();
+        mixedTimeout.initCause(queryAttemptTimeout());
+        assertTrue(classifier.isSafetyExcluded(new RuntimeException("wrapped", mixedTimeout)));
+        assertFalse(classifier.isSafetyExcluded(firstChunkTimeout()));
+        assertFalse(classifier.isSafetyExcluded(chunkIdleTimeout()));
+    }
+
+    @Test
+    void should_expose_veto_and_definite_non_retryable_http_facts() {
+        StreamQueryRetryClassifier veto = classifier(List.of(), List.of("1261"));
+
+        assertTrue(veto.matchesNonRetryableCode(new RuntimeException("wrapped",
+                http(400, "{\"error\":{\"code\":\"1261\"}}"))));
+        assertTrue(classifier(List.of(), List.of()).isDefiniteNonRetryable4xx(http(400)));
+        assertFalse(classifier(List.of(), List.of()).isDefiniteNonRetryable4xx(http(429)));
+        assertFalse(classifier(List.of(), List.of()).isDefiniteNonRetryable4xx(http(503)));
+    }
 
     @Test
     void should_retry_only_supported_structured_http_statuses() {

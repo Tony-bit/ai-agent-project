@@ -2,7 +2,10 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.service.auto.step.ClientDisconnectedException;
+import denny.ai.agent.domain.service.armory.stream.FirstStreamChunkTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.LlmTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamChunkIdleTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutType;
 import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -19,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
@@ -53,8 +57,55 @@ public final class StreamQueryRetryClassifier {
     }
 
     public boolean isRetryable(Throwable error) {
+        return isOrdinaryRetryable(error);
+    }
+
+    Optional<StreamTimeoutType> streamTimeoutType(Throwable error) {
+        for (Throwable cause : causes(error)) {
+            if (cause instanceof FirstStreamChunkTimeoutException) {
+                return Optional.of(StreamTimeoutType.FIRST_CHUNK);
+            }
+            if (cause instanceof StreamChunkIdleTimeoutException) {
+                return Optional.of(StreamTimeoutType.CHUNK_IDLE);
+            }
+        }
+        return Optional.empty();
+    }
+
+    boolean isSafetyExcluded(Throwable error) {
         List<Throwable> causes = causes(error);
-        if (causes.isEmpty() || causes.stream().anyMatch(this::isHardExcluded)) {
+        if (causes.isEmpty()) {
+            return true;
+        }
+        if (causes.stream().anyMatch(this::isSafetyExcludedCause)) {
+            return true;
+        }
+        Set<String> statuses = structuredHttpStatuses(causes);
+        return statuses.contains(AiErrorCodes.HTTP_401)
+                || statuses.contains(AiErrorCodes.HTTP_403);
+    }
+
+    boolean matchesNonRetryableCode(Throwable error) {
+        List<Throwable> causes = causes(error);
+        if (causes.isEmpty() || nonRetryableCodes.isEmpty()) {
+            return false;
+        }
+        Set<String> observedCodes = observedCodes(causes);
+        return observedCodes.stream().anyMatch(nonRetryableCodes::contains);
+    }
+
+    boolean isDefiniteNonRetryable4xx(Throwable error) {
+        return structuredHttpStatuses(causes(error)).stream()
+                .anyMatch(status -> is4xx(status)
+                        && !AiErrorCodes.HTTP_429.equals(status));
+    }
+
+    boolean isOrdinaryRetryable(Throwable error) {
+        List<Throwable> causes = causes(error);
+        if (causes.isEmpty()
+                || causes.stream().anyMatch(LlmTimeoutException.class::isInstance)
+                || isSafetyExcluded(error)
+                || matchesNonRetryableCode(error)) {
             return false;
         }
 
@@ -64,13 +115,6 @@ public final class StreamQueryRetryClassifier {
             normalizedProviderCodes.add(normalizeProviderCode(providerCode));
         }
         Set<String> httpStatuses = structuredHttpStatuses(causes);
-
-        Set<String> observedCodes = new HashSet<>(providerCodes);
-        observedCodes.addAll(normalizedProviderCodes);
-        observedCodes.addAll(httpStatuses);
-        if (observedCodes.stream().anyMatch(nonRetryableCodes::contains)) {
-            return false;
-        }
 
         if (!httpStatuses.isEmpty()) {
             if (httpStatuses.stream().allMatch(this::isSuccessfulStatus)) {
@@ -84,6 +128,25 @@ public final class StreamQueryRetryClassifier {
         return causes.stream().anyMatch(this::isTransportFailure);
     }
 
+    private Set<String> observedCodes(List<Throwable> causes) {
+        Set<String> providerCodes = providerCodes(causes);
+        Set<String> observedCodes = new HashSet<>(providerCodes);
+        for (String providerCode : providerCodes) {
+            observedCodes.add(normalizeProviderCode(providerCode));
+        }
+        observedCodes.addAll(structuredHttpStatuses(causes));
+        return observedCodes;
+    }
+
+    private boolean is4xx(String status) {
+        try {
+            int value = Integer.parseInt(status);
+            return value >= 400 && value < 500;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
     private boolean isSuccessfulStatus(String status) {
         try {
             int value = Integer.parseInt(status);
@@ -93,8 +156,10 @@ public final class StreamQueryRetryClassifier {
         }
     }
 
-    private boolean isHardExcluded(Throwable error) {
-        if (error instanceof LlmTimeoutException
+    private boolean isSafetyExcludedCause(Throwable error) {
+        if ((error instanceof LlmTimeoutException
+                && !(error instanceof FirstStreamChunkTimeoutException)
+                && !(error instanceof StreamChunkIdleTimeoutException))
                 || error instanceof TimeoutException
                 || error instanceof SocketTimeoutException
                 || error instanceof HttpTimeoutException
