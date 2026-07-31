@@ -6,6 +6,9 @@ import org.junit.Test;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.lang.reflect.Field;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,6 +24,8 @@ public class GeneralChatNodeToolInjectionTest {
     @Before
     public void setUp() {
         generalChatNode = new GeneralChatNode();
+        injectField(generalChatNode, "clock",
+                Clock.fixed(Instant.parse("2026-07-31T00:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -39,17 +44,20 @@ public class GeneralChatNodeToolInjectionTest {
     }
 
     @Test
-    public void testBuildSystemPrompt_WithoutUserId_ReturnsNull() {
+    public void testBuildSystemPrompt_WithoutUserId_IncludesCurrentDate() {
         String result = invokeBuildSystemPrompt(IntentTypeEnum.GENERAL_CHAT, null);
 
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.contains("2026-07-31"));
+        assertFalse(result.contains("当前用户ID"));
     }
 
     @Test
-    public void testBuildSystemPrompt_EmptyUserId_ReturnsNull() {
+    public void testBuildSystemPrompt_EmptyUserId_IncludesCurrentDate() {
         String result = invokeBuildSystemPrompt(IntentTypeEnum.GENERAL_CHAT, "");
 
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.contains("2026-07-31"));
     }
 
     @Test

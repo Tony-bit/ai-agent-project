@@ -16,6 +16,7 @@ import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 
@@ -49,10 +50,10 @@ public class TradingToolCallbacks {
     public ToolCallback getStockInfoCallback() {
         return new AbstractToolCallback("get_stock_info",
                 "获取A股股票的实时行情信息，包括当前价格、52周高低、日成交量、市盈率、市净率等。适用场景：需要查询股票当前价格、涨跌幅、市值等基本信息时调用。注意：仅支持A股股票代码（6位数字，如000001、600000）。",
-                buildInputSchema()) {
+                buildDataInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 StockInfoVO vo = provider.getStockInfo(effectiveTicker(input, target));
                 return formatStockInfo(vo);
             }
@@ -62,12 +63,12 @@ public class TradingToolCallbacks {
     public ToolCallback getHistoricalBarsCallback() {
         return new AbstractToolCallback("get_historical_bars",
                 "获取A股股票的历史K线数据（OHLCV），包含每日开盘价、最高价、最低价、收盘价、成交量、成交额、涨跌额、涨跌幅。适用场景：需要分析股票历史走势、价格波动、成交活跃度、技术分析时调用。",
-                buildInputSchema(
+                buildDataInputSchema(
                         "startDate", "开始日期，格式 yyyy-MM-dd，如 2024-01-01",
                         "endDate", "结束日期，格式 yyyy-MM-dd，如 2024-12-31")) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 List<OHLCVBarVO> bars = provider.getHistoricalBars(
                         effectiveTicker(input, target),
                         (String) input.get("startDate"),
@@ -80,12 +81,12 @@ public class TradingToolCallbacks {
     public ToolCallback getTechnicalIndicatorsCallback() {
         return new AbstractToolCallback("get_technical_indicators",
                 "获取A股股票的技术指标数据，包括均线（MA5/10/20/60/120）、MACD、RSI、KDJ、布林带、ATR、ADX等。适用场景：需要进行技术分析、判断趋势方向、寻找买卖点时调用。RSI>70超买、RSI<30超卖；ADX>25表示趋势较强。",
-                buildInputSchema(
+                buildDataInputSchema(
                         "startDate", "开始日期，格式 yyyy-MM-dd",
                         "endDate", "结束日期，格式 yyyy-MM-dd")) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 TechnicalIndicatorsVO vo = provider.getTechnicalIndicators(
                         effectiveTicker(input, target),
                         (String) input.get("startDate"),
@@ -98,10 +99,10 @@ public class TradingToolCallbacks {
     public ToolCallback getFundamentalDataCallback() {
         return new AbstractToolCallback("get_fundamental_data",
                 "获取A股股票的基本面数据，包括估值指标（PE、PB、PS、PEG）、盈利能力（ROE、毛利率、净利率）、财务数据（营收、净利润、EPS）、增长指标、现金流、偿债能力等。适用场景：需要进行价值投资分析、选股、基本面对比时调用。",
-                buildInputSchema()) {
+                buildDataInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 FundamentalDataVO vo = provider.getFundamentalData(effectiveTicker(input, target));
                 return formatFundamentalData(vo);
             }
@@ -111,10 +112,10 @@ public class TradingToolCallbacks {
     public ToolCallback getSentimentCallback() {
         return new AbstractToolCallback("get_sentiment",
                 "获取A股股票的市场情绪数据，包括综合情绪评分、分析师评级、短期/中期/长期情绪趋势、看涨/看跌比例、恐惧贪婪指数等。适用场景：需要判断市场情绪、辅助择时决策时调用。",
-                buildInputSchema()) {
+                buildDataInputSchema()) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 SentimentDataVO vo = provider.getSentiment(effectiveTicker(input, target));
                 return formatSentiment(vo);
             }
@@ -124,11 +125,11 @@ public class TradingToolCallbacks {
     public ToolCallback getStockNewsCallback() {
         return new AbstractToolCallback("get_stock_news",
                 "获取指定A股股票的近期新闻列表，包括新闻标题、来源、发布时间、摘要和情感得分。",
-                buildInputSchemaWithTypes(
+                buildDataInputSchemaWithTypes(
                         Map.of("limit", new ParamDef("integer", "返回条数上限，默认5条")))) {
             @Override
             protected String doExecute(Map<String, Object> input, ToolContext toolContext) {
-                TargetContext target = requireTarget(toolContext);
+                TargetContext target = currentTarget(toolContext);
                 int limit = parseInteger(input.get("limit"), 5);
                 List<NewsItemVO> news = provider.getNews(effectiveTicker(input, target), limit);
                 return formatNews(news);
@@ -206,9 +207,22 @@ public class TradingToolCallbacks {
     // ==================== 辅助方法：构建 inputSchema JSON ====================
 
     private String buildInputSchema(String... pairs) {
+        return buildStringInputSchema(false, pairs);
+    }
+
+    private String buildDataInputSchema(String... pairs) {
+        return buildStringInputSchema(true, pairs);
+    }
+
+    private String buildStringInputSchema(boolean includeTicker, String... pairs) {
         try {
             Map<String, Map<String, String>> properties = new java.util.LinkedHashMap<>();
             List<String> required = new java.util.ArrayList<>();
+            if (includeTicker) {
+                properties.put("ticker", Map.of(
+                        "type", "string",
+                        "description", "6 位 A 股代码，可带 .SH、.SZ 或 .BJ 后缀"));
+            }
             for (int i = 0; i < pairs.length; i += 2) {
                 String name = pairs[i];
                 String desc = pairs[i + 1];
@@ -228,9 +242,22 @@ public class TradingToolCallbacks {
     }
 
     private String buildInputSchemaWithTypes(Map<String, ParamDef> params) {
+        return buildTypedInputSchema(false, params);
+    }
+
+    private String buildDataInputSchemaWithTypes(Map<String, ParamDef> params) {
+        return buildTypedInputSchema(true, params);
+    }
+
+    private String buildTypedInputSchema(boolean includeTicker, Map<String, ParamDef> params) {
         try {
             Map<String, Map<String, String>> properties = new java.util.LinkedHashMap<>();
             List<String> required = new java.util.ArrayList<>();
+            if (includeTicker) {
+                properties.put("ticker", Map.of(
+                        "type", "string",
+                        "description", "6 位 A 股代码，可带 .SH、.SZ 或 .BJ 后缀"));
+            }
             for (Map.Entry<String, ParamDef> e : params.entrySet()) {
                 properties.put(e.getKey(), Map.of("type", e.getValue().type(), "description", e.getValue().description()));
                 required.add(e.getKey());
@@ -258,15 +285,6 @@ public class TradingToolCallbacks {
         }
     }
 
-    private TargetContext requireTarget(ToolContext toolContext) {
-        TargetContext target = currentTarget(toolContext);
-        if (target == null) {
-            throw new IllegalStateException(
-                    "IDENTITY_BOUNDARY_VIOLATION: trading target context is missing");
-        }
-        return target;
-    }
-
     private TargetContext currentTarget(ToolContext toolContext) {
         Object value = toolContext.getContext().get(TradingTargetContextKeys.TARGET_CONTEXT);
         if (value == null) {
@@ -281,12 +299,23 @@ public class TradingToolCallbacks {
 
     private String effectiveTicker(Map<String, Object> input, TargetContext target) {
         Object original = input.get("ticker");
-        if (original != null && !target.targetId().equalsIgnoreCase(original.toString().trim())) {
-            log.warn("TOOL_TARGET_OVERRIDDEN runId={} originalTicker={} effectiveTicker={}",
-                    target.runId(), original, target.targetId());
-            rolloutMonitor.recordToolTargetOverride();
+        if (target != null) {
+            if (original != null && !target.targetId().equalsIgnoreCase(original.toString().trim())) {
+                log.warn("TOOL_TARGET_OVERRIDDEN runId={} originalTicker={} effectiveTicker={}",
+                        target.runId(), original, target.targetId());
+                rolloutMonitor.recordToolTargetOverride();
+            }
+            return target.targetId();
         }
-        return target.targetId();
+        if (original == null || original.toString().isBlank()) {
+            throw new IllegalArgumentException("ticker is required outside a Trading Run");
+        }
+        String ticker = original.toString().trim().toUpperCase(Locale.ROOT);
+        if (!ticker.matches("^[0-9]{6}(\\.(SH|SZ|BJ))?$")) {
+            throw new IllegalArgumentException(
+                    "ticker must be a 6-digit A-share code with optional exchange suffix");
+        }
+        return ticker;
     }
 
     // ==================== 格式化方法 ====================

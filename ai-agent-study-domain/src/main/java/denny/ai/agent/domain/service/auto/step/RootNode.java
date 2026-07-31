@@ -3,6 +3,7 @@ package denny.ai.agent.domain.service.auto.step;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
@@ -41,6 +42,9 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Resource
     private IntelligentInspection intelligentInspection;
+
+    @Resource
+    private GeneralChatNode generalChatNode;
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -105,7 +109,11 @@ public class RootNode extends AbstractExecuteSupport {
             return intelligentInspection;
         }
 
-        // 有显式 aiAgentId → PE 链路
+        // 显式 Agent ID 路由。
+        if (Objects.equals(requestParameter.getAiAgentId(), "8")) {
+            return generalChatNode;
+        }
+
         return step1AnalyzerNode;
     }
 

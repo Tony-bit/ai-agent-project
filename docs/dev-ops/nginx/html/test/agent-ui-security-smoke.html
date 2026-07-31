@@ -406,9 +406,11 @@
         checks.push('configured host and authenticated user');
 
         const configuredUrls = agentWindow.__fixtureRequests.map((request) => request.url);
+        const configuredAgentRequests = [];
         agentWindow.fetch = (url, options = {}) => {
             configuredUrls.push(String(url));
             if (String(url).includes('/agent/auto_agent')) {
+                configuredAgentRequests.push(JSON.parse(options.body));
                 return Promise.resolve(createSseResponse(agentWindow, [
                     'data: {"type":"complete","content":"完成","completed":true}\n\n'
                 ]));
@@ -429,9 +431,23 @@
         await agentWindow.loadSessionList(false);
         await agentWindow.loadSessionMessages('session-config', false);
         await agentWindow.syncMemory();
-        agentDocument.getElementById('messageInput').value = 'configured-general';
+        const agentSelect = agentDocument.getElementById('aiAgentSelect');
+        assert(Array.from(agentSelect.options).some((option) => option.value === '8'
+                && option.textContent.trim() === '通用对话助手'),
+            'General chat agent option is missing');
+        agentSelect.value = '8';
+        agentDocument.getElementById('messageInput').value = 'configured-general-chat';
         agentWindow.sendMessage();
         await waitFor(() => !agentDocument.getElementById('sendBtn').disabled);
+        agentSelect.value = '3';
+        agentDocument.getElementById('messageInput').value = 'configured-pe-agent';
+        agentWindow.sendMessage();
+        await waitFor(() => !agentDocument.getElementById('sendBtn').disabled);
+        assert(configuredAgentRequests.length === 2
+                && configuredAgentRequests[0].aiAgentId === '8'
+                && configuredAgentRequests[1].aiAgentId === '3',
+            `Agent selector request contract is invalid: ${JSON.stringify(configuredAgentRequests)}`);
+        checks.push('general chat and PE agent request routing');
         agentWindow.switchMode('trading');
         agentDocument.getElementById('tradingTicker').value = 'MSFT';
         agentWindow.sendTradingAnalysis();

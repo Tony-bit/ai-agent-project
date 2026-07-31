@@ -162,6 +162,23 @@ public class GeneralChatNodeTest {
         assertTrue(allEvents.contains("successful"));
     }
 
+    @Test
+    public void should_propagate_stream_failure_after_sending_error_event() throws Exception {
+        ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        ChatClient.StreamResponseSpec streamSpec = mock(ChatClient.StreamResponseSpec.class);
+        when(requestSpec.stream()).thenReturn(streamSpec);
+        when(streamSpec.content()).thenReturn(Flux.error(new IllegalStateException("tool failed")));
+        ResponseBodyEmitter emitter = mock(ResponseBodyEmitter.class);
+        dynamicContext.setValue("emitter", emitter);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                ReflectionTestUtils.invokeMethod(generalChatNode, "streamToEmitter",
+                        dynamicContext, requestSpec, "general_chat_response", "session"));
+
+        assertTrue(error.getMessage().contains("tool failed"));
+        verify(emitter, atLeast(2)).send(any(Object.class));
+    }
+
     private ChatResponse response(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
     }

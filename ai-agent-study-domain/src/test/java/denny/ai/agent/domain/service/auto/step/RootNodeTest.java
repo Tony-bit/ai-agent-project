@@ -4,6 +4,7 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import denny.ai.agent.domain.adapter.repository.IAgentRepository;
 import denny.ai.agent.domain.model.entity.ExecuteCommandEntity;
 import denny.ai.agent.domain.model.valobj.AiAgentClientFlowConfigVO;
+import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingNode;
 import denny.ai.agent.domain.service.auto.step.routing.IntentRoutingMode;
@@ -55,6 +56,9 @@ public class RootNodeTest {
     private IntelligentInspection intelligentInspection;
 
     @Mock
+    private GeneralChatNode generalChatNode;
+
+    @Mock
     private IAgentRepository repository;
 
     @Mock
@@ -73,6 +77,7 @@ public class RootNodeTest {
         setField(rootNode, "intentRoutingProperties", new IntentRoutingProperties());
         setField(rootNode, "step1AnalyzerNode", step1AnalyzerNode);
         setField(rootNode, "intelligentInspection", intelligentInspection);
+        setField(rootNode, "generalChatNode", generalChatNode);
         setField(rootNode, "repository", repository);
         setField(rootNode, "chatMemoryPersistenceService", chatMemoryPersistenceService);
 
@@ -120,6 +125,34 @@ public class RootNodeTest {
                 .aiAgentId("123")
                 .sessionId("test-session")
                 .message("PE任务")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(step1AnalyzerNode, handler);
+    }
+
+    @Test
+    public void shouldRouteGeneralChatAgentToGeneralChatNode() throws Exception {
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("8")
+                .sessionId("test-session")
+                .message("hello")
+                .build();
+
+        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
+                rootNode.get(request, dynamicContext);
+
+        assertEquals(generalChatNode, handler);
+    }
+
+    @Test
+    public void shouldNotTreatSimilarAgentIdAsGeneralChat() throws Exception {
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .aiAgentId("80")
+                .sessionId("test-session")
+                .message("PE task")
                 .build();
 
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =

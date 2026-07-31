@@ -1,5 +1,7 @@
 package denny.ai.agent.trading.infra.tools;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
 import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
@@ -48,7 +50,7 @@ class TradingToolCallbacksTest {
         assertEquals("get_stock_info", callback.getToolDefinition().name());
         assertNotNull(callback.getToolDefinition().description());
         assertNotNull(callback.getToolDefinition().inputSchema());
-        assertFalse(callback.getToolDefinition().inputSchema().contains("ticker"));
+        assertTrue(callback.getToolDefinition().inputSchema().contains("ticker"));
 
         System.out.println("=== get_stock_info ===");
         System.out.println("Name: " + callback.getToolDefinition().name());
@@ -199,13 +201,24 @@ class TradingToolCallbacksTest {
     }
 
     @Test
-    void targetBoundToolRejectsSingleArgumentCallsWithoutToolContext() {
+    void standaloneToolUsesValidatedTickerWithoutTargetContext() {
+        ToolCallback callback = tradingToolCallbacks.getHistoricalBarsCallback();
+
+        callback.call("{\"ticker\":\"001309.SZ\",\"startDate\":\"2026-07-30\",\"endDate\":\"2026-07-30\"}");
+
+        verify(mockProvider).getHistoricalBars(
+                "001309.SZ", "2026-07-30", "2026-07-30");
+    }
+
+    @Test
+    void standaloneToolRejectsMissingAndInvalidTickerWithoutCallingProvider() {
         ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> callback.call("{}"));
+        String missing = callback.call("{}");
+        String invalid = callback.call("{\"ticker\":\"not-a-stock\"}");
 
-        assertTrue(error.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
+        assertTrue(missing.contains("ticker"));
+        assertTrue(invalid.contains("ticker"));
         verifyNoInteractions(mockProvider);
     }
 
@@ -244,20 +257,46 @@ class TradingToolCallbacksTest {
     }
 
     @Test
-    void targetBoundToolRejectsNullAndInvalidToolContext() {
+    void nullContextUsesStandaloneModeAndInvalidTargetTypeIsRejected() {
         ToolCallback callback = tradingToolCallbacks.getStockInfoCallback();
         ToolContext invalid = new ToolContext(Map.of(
                 TradingTargetContextKeys.TARGET_CONTEXT, "600000.SH"));
 
-        IllegalStateException nullError = assertThrows(IllegalStateException.class,
-                () -> callback.call("{}", null));
+        callback.call("{\"ticker\":\"600000.SH\"}", null);
         IllegalStateException invalidError = assertThrows(IllegalStateException.class,
                 () -> callback.call("{}", invalid));
 
-        assertTrue(nullError.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
         assertTrue(invalidError.getMessage().startsWith("IDENTITY_BOUNDARY_VIOLATION"));
-        assertEquals(2, rolloutMonitor.snapshot().identityBoundaryViolations());
-        verifyNoInteractions(mockProvider);
+        assertEquals(1, rolloutMonitor.snapshot().identityBoundaryViolations());
+        verify(mockProvider).getStockInfo("600000.SH");
+    }
+
+    @Test
+    void dataToolSchemasExposeOptionalTicker() throws Exception {
+        ToolCallback[] callbacks = {
+                tradingToolCallbacks.getStockInfoCallback(),
+                tradingToolCallbacks.getHistoricalBarsCallback(),
+                tradingToolCallbacks.getTechnicalIndicatorsCallback(),
+                tradingToolCallbacks.getFundamentalDataCallback(),
+                tradingToolCallbacks.getSentimentCallback(),
+                tradingToolCallbacks.getStockNewsCallback()
+        };
+        ObjectMapper mapper = new ObjectMapper();
+
+        for (ToolCallback callback : callbacks) {
+            JsonNode schema = mapper.readTree(callback.getToolDefinition().inputSchema());
+            assertTrue(schema.path("properties").has("ticker"),
+                    callback.getToolDefinition().name());
+            for (JsonNode required : schema.path("required")) {
+                assertNotEquals("ticker", required.asText(),
+                        callback.getToolDefinition().name());
+            }
+        }
+
+        JsonNode barsSchema = mapper.readTree(
+                tradingToolCallbacks.getHistoricalBarsCallback().getToolDefinition().inputSchema());
+        assertTrue(barsSchema.path("required").toString().contains("startDate"));
+        assertTrue(barsSchema.path("required").toString().contains("endDate"));
     }
 
     @Test

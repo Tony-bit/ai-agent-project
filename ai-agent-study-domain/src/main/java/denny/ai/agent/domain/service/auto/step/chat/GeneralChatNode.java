@@ -17,9 +17,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
@@ -44,6 +47,9 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
 
     @Autowired(required = false)
     private List<ToolCallback> searchEpisodicMemoryCallbacks;
+
+    @Autowired(required = false)
+    private Clock clock = Clock.systemDefaultZone();
 
     private static final String RECOGNIZED_INTENT_KEY = "recognizedIntent";
 
@@ -154,11 +160,12 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
     }
 
     private String buildSystemPrompt(IntentTypeEnum recognizedIntent, String userId) {
-        // prompt 已从数据库加载（通过 clientId=3001），这里只追加 userId 上下文
+        StringBuilder context = new StringBuilder("[上下文] 当前日期: ")
+                .append(LocalDate.now(clock));
         if (userId != null && !userId.isBlank()) {
-            return String.format("[上下文] 当前用户ID: %s", userId);
+            context.append("\n[上下文] 当前用户ID: ").append(userId);
         }
-        return null;
+        return context.toString();
     }
 
     private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
@@ -202,6 +209,7 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
         // 使用 StringBuilder 收集完整响应
         StringBuilder fullContent = new StringBuilder();
         CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Throwable> streamError = new AtomicReference<>();
 
         // 真流式：subscribe 实时发送
         promptBuilder.stream().content()
@@ -222,6 +230,7 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
                         },
                         // onError: 异常处理
                         error -> {
+                            streamError.set(error);
                             log.error("流式输出异常: subType={}, error={}", subType, error.getMessage(), error);
                             sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.builder()
                                     .type("error")
@@ -250,6 +259,14 @@ public class GeneralChatNode extends AbstractExecuteSupport implements ExecutorA
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("流式输出等待被中断: subType={}", subType);
+        }
+
+        Throwable error = streamError.get();
+        if (error instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (error != null) {
+            throw new IllegalStateException("General chat stream failed: " + error.getMessage(), error);
         }
 
         return fullContent.toString();
