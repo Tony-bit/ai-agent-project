@@ -16,6 +16,7 @@ import reactor.test.scheduler.VirtualTimeScheduler;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,7 +68,7 @@ class RetryChatModelAtomicAttemptTest {
     }
 
     @Test
-    void should_discard_all_partial_results_and_propagate_last_error_when_exhausted() {
+    void should_not_keep_failed_attempt_responses_or_errors() {
         ChatModel delegate = mock(ChatModel.class);
         Prompt prompt = prompt();
         RuntimeException firstError = reset();
@@ -96,23 +97,28 @@ class RetryChatModelAtomicAttemptTest {
     }
 
     @Test
-    void should_finish_previous_attempt_before_subscribing_next_attempt() {
+    void should_wait_for_failed_attempt_termination_before_zero_backoff_retry() {
         ChatModel delegate = mock(ChatModel.class);
         Prompt prompt = prompt();
         AtomicInteger subscriptions = new AtomicInteger();
         AtomicInteger active = new AtomicInteger();
-        AtomicBoolean secondStartedAfterCleanup = new AtomicBoolean();
+        AtomicInteger maxActive = new AtomicInteger();
+        List<String> events = new CopyOnWriteArrayList<>();
         ChatResponse success = response("success");
         when(delegate.stream(prompt)).thenAnswer(invocation -> Flux.defer(() -> {
             int attempt = subscriptions.incrementAndGet();
             if (attempt == 2) {
-                secondStartedAfterCleanup.set(active.get() == 0);
+                events.add("attempt-2-subscribe");
             }
-            active.incrementAndGet();
+            int currentActive = active.incrementAndGet();
+            maxActive.accumulateAndGet(currentActive, Math::max);
             Flux<ChatResponse> source = attempt == 1
                     ? Flux.concat(Flux.just(response("discarded")), Flux.error(reset()))
                     : Flux.just(success);
-            return source.doFinally(signal -> active.decrementAndGet());
+            return source.doFinally(signal -> {
+                events.add("attempt-" + attempt + "-finally-" + signal);
+                active.decrementAndGet();
+            });
         }));
 
         StepVerifier.create(model(delegate, 2, 0).stream(prompt))
@@ -121,11 +127,15 @@ class RetryChatModelAtomicAttemptTest {
 
         assertEquals(2, subscriptions.get());
         assertEquals(0, active.get());
-        assertTrue(secondStartedAfterCleanup.get());
+        assertEquals(1, maxActive.get());
+        assertTrue(events.contains("attempt-1-finally-onError"));
+        assertTrue(events.contains("attempt-2-subscribe"));
+        assertTrue(events.indexOf("attempt-1-finally-onError")
+                < events.indexOf("attempt-2-subscribe"));
     }
 
     @Test
-    void should_cancel_active_attempt_once_without_retry() {
+    void should_cancel_active_attempt_without_late_retry() {
         ChatModel delegate = mock(ChatModel.class);
         AtomicInteger active = new AtomicInteger();
         AtomicInteger cancelled = new AtomicInteger();
@@ -144,7 +154,7 @@ class RetryChatModelAtomicAttemptTest {
     }
 
     @Test
-    void should_cancel_backoff_without_starting_next_attempt() {
+    void should_cancel_backoff_without_subscribing_next_attempt() {
         VirtualTimeScheduler scheduler = VirtualTimeScheduler.getOrSet();
         try {
             ChatModel delegate = mock(ChatModel.class);
@@ -172,7 +182,35 @@ class RetryChatModelAtomicAttemptTest {
     }
 
     @Test
-    void should_isolate_attempt_state_between_concurrent_subscriptions() {
+    void should_cancel_new_attempt_immediately_when_cancel_races_with_retry_tick() {
+        VirtualTimeScheduler scheduler = VirtualTimeScheduler.getOrSet();
+        try {
+            ChatModel delegate = mock(ChatModel.class);
+            AtomicInteger subscriptions = new AtomicInteger();
+            AtomicInteger cancelled = new AtomicInteger();
+            when(delegate.stream(any(Prompt.class))).thenAnswer(invocation -> Flux.defer(() -> {
+                int attempt = subscriptions.incrementAndGet();
+                return attempt == 1
+                        ? Flux.error(reset())
+                        : Flux.<ChatResponse>never().doOnCancel(cancelled::incrementAndGet);
+            }));
+
+            Disposable subscription = model(delegate, 3, 0).stream(prompt()).subscribe();
+            scheduler.advanceTimeBy(Duration.ZERO);
+            subscription.dispose();
+            scheduler.advanceTimeBy(Duration.ofMinutes(5));
+
+            assertTrue(subscriptions.get() <= 2);
+            if (subscriptions.get() == 2) {
+                assertEquals(1, cancelled.get());
+            }
+        } finally {
+            VirtualTimeScheduler.reset();
+        }
+    }
+
+    @Test
+    void should_isolate_retry_state_between_concurrent_subscriptions() {
         ChatModel delegate = mock(ChatModel.class);
         AtomicInteger calls = new AtomicInteger();
         ConcurrentMap<Prompt, AtomicInteger> callsByPrompt = new ConcurrentHashMap<>();

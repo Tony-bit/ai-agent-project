@@ -19,6 +19,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
@@ -104,26 +105,34 @@ public class RetryChatModel implements ChatModel {
     }
 
     private Flux<ChatResponse> streamAttempt(StreamState state) {
-        if (state.modelCalls >= state.maxModelCalls) {
-            return Flux.error(new IllegalStateException("model call safety limit exhausted"));
-        }
-        state.modelCalls++;
-        int attemptNumber = state.modelCalls;
-        Flux<ChatResponse> attempt = streamingTimeouts.timeoutMode()
-                == AiStreamingProperties.TimeoutMode.LEGACY
-                ? legacyStreamAttempt(state, attemptNumber)
-                : layeredStreamAttempt(state, attemptNumber);
-        return attempt.onErrorResume(error -> resumeAfterStreamError(state, error));
+        return Flux.defer(() -> {
+            if (state.modelCalls >= state.maxModelCalls) {
+                return Flux.error(new IllegalStateException(
+                        "model call safety limit exhausted"));
+            }
+            state.modelCalls++;
+            int attemptNumber = state.modelCalls;
+            Sinks.One<Void> terminated = Sinks.one();
+            Flux<ChatResponse> attempt = streamingTimeouts.timeoutMode()
+                    == AiStreamingProperties.TimeoutMode.LEGACY
+                    ? legacyStreamAttempt(state, attemptNumber, terminated)
+                    : layeredStreamAttempt(state, attemptNumber, terminated);
+            return attempt
+                    .onErrorResume(error -> terminated.asMono()
+                            .thenMany(Flux.defer(() ->
+                                    resumeAfterStreamError(state, error))));
+        });
     }
 
-    private Flux<ChatResponse> legacyStreamAttempt(StreamState state, int attemptNumber) {
+    private Flux<ChatResponse> legacyStreamAttempt(StreamState state, int attemptNumber,
+                                                   Sinks.One<Void> terminated) {
         AtomicReference<StreamPhase> phase = new AtomicReference<>(StreamPhase.AWAITING_RESPONSE);
         AtomicLong lastContentAtNanos = new AtomicLong();
         return Flux.defer(() -> {
                     long attemptStartedAtNanos = schedulerNowNanos();
                     lastContentAtNanos.set(attemptStartedAtNanos);
                     List<ChatResponse> responses = new ArrayList<>();
-                    return delegate.stream(state.currentPrompt)
+                    return delegateStream(state, terminated)
                             .timeout(Mono.delay(streamingTimeouts.firstContentTimeout()), response -> {
                                 long now = schedulerNowNanos();
                                 if (hasEffectiveContent(response)) {
@@ -151,7 +160,8 @@ public class RetryChatModel implements ChatModel {
                 });
     }
 
-    private Flux<ChatResponse> layeredStreamAttempt(StreamState state, int attemptNumber) {
+    private Flux<ChatResponse> layeredStreamAttempt(StreamState state, int attemptNumber,
+                                                    Sinks.One<Void> terminated) {
         return Flux.defer(() -> {
             long attemptStartedAtNanos = schedulerNowNanos();
             long attemptDeadlineNanos = addWithSaturation(attemptStartedAtNanos,
@@ -163,7 +173,7 @@ public class RetryChatModel implements ChatModel {
                     state.logicalCallId, modelId);
             List<ChatResponse> responses = new ArrayList<>();
 
-            Mono<List<ChatResponse>> completion = delegate.stream(state.currentPrompt)
+            Mono<List<ChatResponse>> completion = delegateStream(state, terminated)
                     .doOnNext(responses::add)
                     .then(Mono.fromSupplier(() -> List.copyOf(responses)))
                     .contextWrite(StreamTimeoutContext.withPolicy(policy))
@@ -181,6 +191,19 @@ public class RetryChatModel implements ChatModel {
                         responses.clear();
                     })
                     .doFinally(signal -> responses.clear());
+        });
+    }
+
+    private Flux<ChatResponse> delegateStream(StreamState state,
+                                              Sinks.One<Void> terminated) {
+        return Flux.defer(() -> {
+            try {
+                return delegate.stream(state.currentPrompt)
+                        .doFinally(signal -> terminated.tryEmitEmpty());
+            } catch (Throwable error) {
+                terminated.tryEmitEmpty();
+                return Flux.error(error);
+            }
         });
     }
 
@@ -224,7 +247,7 @@ public class RetryChatModel implements ChatModel {
         }
         try {
             state.currentPrompt = state.compress(state.currentPrompt, errorCode);
-            return Flux.defer(() -> streamAttempt(state));
+            return nextAttempt(state, Duration.ZERO);
         } catch (RuntimeException compressionError) {
             return Flux.error(compressionError);
         }
@@ -246,7 +269,12 @@ public class RetryChatModel implements ChatModel {
         state.ordinaryRetriesRemaining--;
         state.ordinaryRetriesUsed++;
         long delay = state.nextDelay();
-        return Mono.delay(Duration.ofMillis(delay))
+        return nextAttempt(state, Duration.ofMillis(delay));
+    }
+
+    private Flux<ChatResponse> nextAttempt(StreamState state, Duration delay) {
+        Duration schedulingDelay = delay.isZero() ? Duration.ofMillis(1) : delay;
+        return Mono.delay(schedulingDelay)
                 .thenMany(Flux.defer(() -> streamAttempt(state)));
     }
 
