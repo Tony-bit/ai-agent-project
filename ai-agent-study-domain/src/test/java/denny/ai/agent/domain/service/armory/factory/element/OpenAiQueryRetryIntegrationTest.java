@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.AiClientHttpTimeoutConfig;
+import denny.ai.agent.domain.service.armory.AiStreamingProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -13,9 +15,9 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -139,14 +141,15 @@ class OpenAiQueryRetryIntegrationTest {
 
     private OpenAiApi openAiApi(int port) {
         HttpClient client = HttpClient.newBuilder().build();
+        WebClient.Builder streamingBuilder = new AiClientHttpTimeoutConfig()
+                .aiClientWebClientBuilder(new AiStreamingProperties(), Schedulers.parallel());
         return OpenAiApi.builder()
                 .baseUrl("http://127.0.0.1:" + port + "/")
                 .apiKey("test-key")
                 .completionsPath("v1/chat/completions")
                 .restClientBuilder(RestClient.builder()
                         .requestFactory(new JdkClientHttpRequestFactory(client)))
-                .webClientBuilder(WebClient.builder()
-                        .clientConnector(new JdkClientHttpConnector(client)))
+                .webClientBuilder(streamingBuilder)
                 .build();
     }
 

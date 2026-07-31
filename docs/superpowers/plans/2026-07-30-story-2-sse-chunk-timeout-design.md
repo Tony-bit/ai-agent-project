@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：架构评审意见已逐条对齐，等待书面规格复核与实现计划。
+- 状态：实现完成；专项回归、Trading timeout 回归、全仓编译与全量测试均已通过。
 - 日期：2026-07-30。
 - 前置 Story：`2026-07-30-story-1-stream-http-attempt-retry.md`。
 - 后续 Story：Story 3 将本 Story 的结构化 timeout 接入 Story 1 的 stream query retry。

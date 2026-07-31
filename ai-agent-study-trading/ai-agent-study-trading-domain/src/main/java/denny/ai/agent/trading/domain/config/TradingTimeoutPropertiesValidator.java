@@ -19,6 +19,6 @@ public class TradingTimeoutPropertiesValidator implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         tradingProperties.validateAgainstModelTimeout(
-                streamingProperties.resolve(null).totalTimeout());
+                streamingProperties.resolve(null).queryAttemptTimeout());
     }
 }

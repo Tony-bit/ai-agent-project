@@ -3,6 +3,9 @@ package denny.ai.agent.domain.service.armory.factory.element;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.armory.AiStreamingProperties;
+import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamChunkTimeoutPolicy;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutContext;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import org.junit.Before;
@@ -17,11 +20,15 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -212,6 +219,58 @@ public class RetryChatModelStreamTest {
     }
 
     @Test
+    public void layered_attempt_timeout_should_not_be_refreshed_by_responses() {
+        Prompt prompt = prompt("question");
+        when(delegate.stream(prompt)).thenReturn(Flux.interval(Duration.ofSeconds(1))
+                .map(index -> response("chunk-" + index)));
+
+        StepVerifier.withVirtualTime(() -> model(layeredTimeouts(2, 1, 3, 5)).stream(prompt))
+                .expectSubscription()
+                .expectNoEvent(Duration.ofSeconds(4))
+                .thenAwait(Duration.ofSeconds(1))
+                .expectError(LlmQueryAttemptTimeoutException.class)
+                .verify();
+
+        verify(delegate, times(1)).stream(prompt);
+    }
+
+    @Test
+    public void layered_retry_should_receive_a_fresh_attempt_window() {
+        Prompt prompt = prompt("question");
+        RuntimeException retryable = new RuntimeException("{\"error\":{\"code\":\"429\"}}");
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.defer(() -> Mono.delay(Duration.ofSeconds(4))
+                        .thenMany(Flux.error(retryable))))
+                .thenReturn(Flux.never());
+
+        StepVerifier.withVirtualTime(() -> model(layeredTimeouts(2, 1, 3, 5)).stream(prompt))
+                .expectSubscription()
+                .expectNoEvent(Duration.ofSeconds(8))
+                .thenAwait(Duration.ofSeconds(1))
+                .expectError(LlmQueryAttemptTimeoutException.class)
+                .verify();
+
+        verify(delegate, times(2)).stream(prompt);
+    }
+
+    @Test
+    public void layered_attempt_should_expose_policy_in_reactor_context() {
+        Prompt prompt = prompt("question");
+        AtomicReference<StreamChunkTimeoutPolicy> observed = new AtomicReference<>();
+        when(delegate.stream(prompt)).thenReturn(Flux.deferContextual(context -> {
+            observed.set(StreamTimeoutContext.findPolicy(context).orElse(null));
+            return Flux.just(successResponse);
+        }));
+
+        StepVerifier.create(model(layeredTimeouts(2, 1, 3, 5)).stream(prompt))
+                .expectNext(successResponse)
+                .verifyComplete();
+
+        assertNotNull(observed.get());
+        assertEquals(Duration.ofSeconds(5), observed.get().queryAttemptTimeout());
+    }
+
+    @Test
     public void should_ignore_retry_after_and_use_retry_config_backoff() {
         Prompt prompt = prompt("question");
         retryConfig.setInitialIntervalMs(1000);
@@ -264,6 +323,15 @@ public class RetryChatModelStreamTest {
         return new AiStreamingProperties.StreamingTimeouts(
                 Duration.ofSeconds(1), Duration.ofSeconds(firstSeconds),
                 Duration.ofSeconds(idleSeconds), Duration.ofSeconds(totalSeconds));
+    }
+
+    private AiStreamingProperties.StreamingTimeouts layeredTimeouts(
+            long firstSeconds, long stallSeconds, long idleSeconds, long attemptSeconds) {
+        return new AiStreamingProperties.StreamingTimeouts(
+                AiStreamingProperties.TimeoutMode.LAYERED,
+                Duration.ofSeconds(1), Duration.ofSeconds(firstSeconds),
+                Duration.ofSeconds(stallSeconds), Duration.ofSeconds(idleSeconds),
+                Duration.ofSeconds(attemptSeconds));
     }
 
     private ChatResponse response(String content) {

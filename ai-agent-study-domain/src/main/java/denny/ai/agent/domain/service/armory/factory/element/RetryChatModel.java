@@ -3,6 +3,11 @@ package denny.ai.agent.domain.service.armory.factory.element;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.model.valobj.runtime.RetryRuntimeContext;
 import denny.ai.agent.domain.service.armory.AiStreamingProperties;
+import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.LlmTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamChunkTimeoutPolicy;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutContext;
+import denny.ai.agent.domain.service.armory.stream.TimeoutDeadlineOwner;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.service.compression.CompressionExhaustedException;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
@@ -19,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +38,7 @@ public class RetryChatModel implements ChatModel {
     private final PromptCompressionService compressionService;
     private final AiErrorCodeExtractor errorCodeExtractor;
     private final AiStreamingProperties.StreamingTimeouts streamingTimeouts;
+    private final String modelId;
 
     public RetryChatModel(ChatModel delegate, RetryConfig retryConfig) {
         this(delegate, retryConfig, null, null, null);
@@ -52,12 +59,24 @@ public class RetryChatModel implements ChatModel {
                           PromptCompressionService compressionService,
                           AiErrorCodeExtractor errorCodeExtractor,
                           AiStreamingProperties.StreamingTimeouts streamingTimeouts) {
+        this(delegate, retryConfig, compressionPolicy, compressionService, errorCodeExtractor,
+                streamingTimeouts, null);
+    }
+
+    public RetryChatModel(ChatModel delegate,
+                          RetryConfig retryConfig,
+                          CompressionPolicy compressionPolicy,
+                          PromptCompressionService compressionService,
+                          AiErrorCodeExtractor errorCodeExtractor,
+                          AiStreamingProperties.StreamingTimeouts streamingTimeouts,
+                          String modelId) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         this.retryConfig = Objects.requireNonNull(retryConfig, "retryConfig must not be null");
         this.compressionPolicy = compressionPolicy;
         this.compressionService = compressionService;
         this.errorCodeExtractor = errorCodeExtractor != null ? errorCodeExtractor : new AiErrorCodeExtractor();
         this.streamingTimeouts = Objects.requireNonNull(streamingTimeouts, "streamingTimeouts must not be null");
+        this.modelId = modelId;
     }
 
     @Override
@@ -69,7 +88,7 @@ public class RetryChatModel implements ChatModel {
     @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
         RetryRuntimeContext capturedContext = RetryRuntimeContextHolder.current();
-        return Flux.defer(() -> {
+        Flux<ChatResponse> logicalCall = Flux.defer(() -> {
             StreamState state = new StreamState(prompt, capturedContext);
             try {
                 state.compressProactivelyIfRequired();
@@ -77,7 +96,10 @@ public class RetryChatModel implements ChatModel {
             } catch (RuntimeException error) {
                 return Flux.error(error);
             }
-        }).timeout(streamingTimeouts.totalTimeout());
+        });
+        return streamingTimeouts.timeoutMode() == AiStreamingProperties.TimeoutMode.LEGACY
+                ? logicalCall.timeout(streamingTimeouts.totalTimeout())
+                : logicalCall;
     }
 
     private Flux<ChatResponse> streamAttempt(StreamState state) {
@@ -86,6 +108,14 @@ public class RetryChatModel implements ChatModel {
         }
         state.modelCalls++;
         int attemptNumber = state.modelCalls;
+        Flux<ChatResponse> attempt = streamingTimeouts.timeoutMode()
+                == AiStreamingProperties.TimeoutMode.LEGACY
+                ? legacyStreamAttempt(state, attemptNumber)
+                : layeredStreamAttempt(state, attemptNumber);
+        return attempt.onErrorResume(error -> resumeAfterStreamError(state, error));
+    }
+
+    private Flux<ChatResponse> legacyStreamAttempt(StreamState state, int attemptNumber) {
         AtomicReference<StreamPhase> phase = new AtomicReference<>(StreamPhase.AWAITING_RESPONSE);
         AtomicLong lastContentAtNanos = new AtomicLong();
         return Flux.defer(() -> {
@@ -117,36 +147,99 @@ public class RetryChatModel implements ChatModel {
                                 responses.clear();
                             })
                             .doFinally(signal -> responses.clear());
-                })
-                .onErrorResume(error -> {
-                    Exception exception = error instanceof Exception value
-                            ? value : new RuntimeException(error);
-                    String errorCode = errorCodeExtractor.extract(exception);
-                    if (AiErrorCodes.isContextOverflow(errorCode)) {
-                        if (!state.compressionEnabled()) {
-                            return Flux.error(error);
-                        }
-                        if (state.compressionAttempts >= state.maxCompressionAttempts) {
-                            return Flux.error(new CompressionExhaustedException(
-                                    "context overflow after " + state.compressionAttempts
-                                            + " compression attempts", error));
-                        }
-                        try {
-                            state.currentPrompt = state.compress(state.currentPrompt, errorCode);
-                            return streamAttempt(state);
-                        } catch (RuntimeException compressionError) {
-                            return Flux.error(compressionError);
-                        }
-                    }
-                    if (state.isOrdinaryRetryable(exception)
-                            && state.ordinaryRetriesRemaining > 0) {
-                        state.ordinaryRetriesRemaining--;
-                        long delay = state.nextDelay();
-                        return Mono.delay(Duration.ofMillis(delay))
-                                .thenMany(streamAttempt(state));
-                    }
-                    return Flux.error(error);
                 });
+    }
+
+    private Flux<ChatResponse> layeredStreamAttempt(StreamState state, int attemptNumber) {
+        return Flux.defer(() -> {
+            long attemptStartedAtNanos = schedulerNowNanos();
+            long attemptDeadlineNanos = addWithSaturation(attemptStartedAtNanos,
+                    streamingTimeouts.queryAttemptTimeout().toNanos());
+            StreamChunkTimeoutPolicy policy = new StreamChunkTimeoutPolicy(
+                    streamingTimeouts.firstChunkTimeout(), streamingTimeouts.stallThreshold(),
+                    streamingTimeouts.chunkIdleTimeout(), streamingTimeouts.queryAttemptTimeout(),
+                    attemptStartedAtNanos, attemptDeadlineNanos,
+                    state.logicalCallId, modelId);
+            List<ChatResponse> responses = new ArrayList<>();
+
+            Mono<List<ChatResponse>> completion = delegate.stream(state.currentPrompt)
+                    .doOnNext(responses::add)
+                    .then(Mono.fromSupplier(() -> List.copyOf(responses)))
+                    .contextWrite(StreamTimeoutContext.withPolicy(policy))
+                    .timeout(Mono.delay(streamingTimeouts.queryAttemptTimeout())
+                            .flatMap(ignored -> Mono.error(queryAttemptTimeout(
+                                    policy, responses.size()))));
+
+            return completion.flatMapMany(Flux::fromIterable)
+                    .doOnError(error -> {
+                        if (error instanceof LlmTimeoutException timeout) {
+                            logStreamTimeout(timeout);
+                        }
+                        logAttemptFailure(attemptNumber, attemptStartedAtNanos,
+                                responses, error);
+                        responses.clear();
+                    })
+                    .doFinally(signal -> responses.clear());
+        });
+    }
+
+    private Flux<ChatResponse> resumeAfterStreamError(StreamState state, Throwable error) {
+        Exception exception = error instanceof Exception value
+                ? value : new RuntimeException(error);
+        String errorCode = errorCodeExtractor.extract(exception);
+        if (AiErrorCodes.isContextOverflow(errorCode)) {
+            if (!state.compressionEnabled()) {
+                return Flux.error(error);
+            }
+            if (state.compressionAttempts >= state.maxCompressionAttempts) {
+                return Flux.error(new CompressionExhaustedException(
+                        "context overflow after " + state.compressionAttempts
+                                + " compression attempts", error));
+            }
+            try {
+                state.currentPrompt = state.compress(state.currentPrompt, errorCode);
+                return streamAttempt(state);
+            } catch (RuntimeException compressionError) {
+                return Flux.error(compressionError);
+            }
+        }
+        if (state.isOrdinaryRetryable(exception)
+                && state.ordinaryRetriesRemaining > 0) {
+            state.ordinaryRetriesRemaining--;
+            long delay = state.nextDelay();
+            return Mono.delay(Duration.ofMillis(delay))
+                    .thenMany(streamAttempt(state));
+        }
+        return Flux.error(error);
+    }
+
+    private LlmQueryAttemptTimeoutException queryAttemptTimeout(
+            StreamChunkTimeoutPolicy policy, long observedChunkCount) {
+        long now = schedulerNowNanos();
+        Duration elapsed = Duration.ofNanos(Math.max(0,
+                now - policy.attemptStartedAtNanos()));
+        return new LlmQueryAttemptTimeoutException(policy.queryAttemptTimeout(),
+                policy.queryAttemptTimeout(), TimeoutDeadlineOwner.QUERY_ATTEMPT,
+                elapsed, observedChunkCount, policy.logicalCallId(), policy.modelId());
+    }
+
+    private void logStreamTimeout(LlmTimeoutException timeout) {
+        log.warn("llm_stream_timeout | timeoutType={} | configuredTimeoutMs={} "
+                        + "| effectiveTimeoutMs={} | deadlineOwner={} | elapsedMs={} "
+                        + "| observedChunkCount={} | logicalCallId={} | modelId={}",
+                timeout.getClass().getSimpleName(),
+                timeout.getConfiguredTimeout().toMillis(),
+                timeout.getEffectiveTimeout().toMillis(),
+                timeout.getDeadlineOwner(), timeout.getElapsed().toMillis(),
+                timeout.getObservedChunkCount(), timeout.getLogicalCallId(),
+                timeout.getModelId());
+    }
+
+    private long addWithSaturation(long value, long increment) {
+        if (increment > 0 && value > Long.MAX_VALUE - increment) {
+            return Long.MAX_VALUE;
+        }
+        return value + increment;
     }
 
     private void logAttemptFailure(int attemptNumber,
@@ -209,10 +302,12 @@ public class RetryChatModel implements ChatModel {
         private int modelCalls;
         private long interval;
         private final long maxInterval;
+        private final String logicalCallId;
 
         private StreamState(Prompt prompt, RetryRuntimeContext runtimeContext) {
             this.currentPrompt = prompt;
             this.runtimeContext = runtimeContext;
+            this.logicalCallId = logicalCallId(runtimeContext);
             int ordinaryAttempts = retryConfig.isEnabled()
                     ? Math.max(1, Math.min(retryConfig.getMaxAttempts(), 10)) : 1;
             this.maxCompressionAttempts = compressionEnabled()
@@ -224,6 +319,14 @@ public class RetryChatModel implements ChatModel {
                     ? 1.0 : retryConfig.getMultiplier();
             this.maxInterval = Math.max(0, retryConfig.getMaxIntervalMs());
             this.interval = Math.min(Math.max(0, retryConfig.getInitialIntervalMs()), maxInterval);
+        }
+
+        private String logicalCallId(RetryRuntimeContext context) {
+            if (context != null && context.getTraceId() != null
+                    && !context.getTraceId().isBlank()) {
+                return context.getTraceId();
+            }
+            return UUID.randomUUID().toString();
         }
 
         private void compressProactivelyIfRequired() {

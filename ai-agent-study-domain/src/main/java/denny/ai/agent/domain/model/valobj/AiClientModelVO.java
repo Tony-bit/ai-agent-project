@@ -141,8 +141,19 @@ public class AiClientModelVO {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class StreamingTimeoutConfig {
+        private Long firstChunkTimeoutMs;
+        private Long stallThresholdMs;
+        private Long chunkIdleTimeoutMs;
+        private Long queryAttemptTimeoutMs;
+
+        /** @deprecated use {@link #firstChunkTimeoutMs}. */
+        @Deprecated
         private Long firstContentTimeoutMs;
+        /** @deprecated use {@link #stallThresholdMs}. */
+        @Deprecated
         private Long idleTimeoutMs;
+        /** @deprecated use {@link #queryAttemptTimeoutMs}. */
+        @Deprecated
         private Long totalTimeoutMs;
     }
 

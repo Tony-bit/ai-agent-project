@@ -6,16 +6,19 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TradingTimeoutPropertiesValidatorTest {
 
     @Test
     void should_accept_default_timeout_budget() {
+        TradingAgentProperties trading = new TradingAgentProperties();
         TradingTimeoutPropertiesValidator validator = new TradingTimeoutPropertiesValidator(
-                new TradingAgentProperties(), new AiStreamingProperties());
+                trading, new AiStreamingProperties());
 
         assertDoesNotThrow(validator::afterPropertiesSet);
+        assertEquals(Duration.ofSeconds(240), trading.getNodeTimeout());
     }
 
     @Test

@@ -1,6 +1,10 @@
 package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.stream.FirstStreamChunkTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.StreamChunkIdleTimeoutException;
+import denny.ai.agent.domain.service.armory.stream.TimeoutDeadlineOwner;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -10,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import java.io.EOFException;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 
@@ -42,6 +47,17 @@ class StreamQueryRetryClassifierTest {
         assertFalse(classifier.isRetryable(new ToolExecutionException(
                 ToolDefinition.builder().name("tool").description("test")
                         .inputSchema("{}").build(), new EOFException("connection reset"))));
+    }
+
+    @Test
+    void should_hard_exclude_all_llm_timeout_subtypes_through_cause_chain() {
+        StreamQueryRetryClassifier classifier = classifier(List.of(), List.of());
+
+        assertFalse(classifier.isRetryable(firstChunkTimeout()));
+        assertFalse(classifier.isRetryable(new RuntimeException("wrapped", chunkIdleTimeout())));
+        assertFalse(classifier.isRetryable(new RuntimeException("wrapped",
+                new RuntimeException(queryAttemptTimeout()))));
+        assertTrue(classifier.isRetryable(new ConnectException("connection refused")));
     }
 
     @Test
@@ -123,6 +139,24 @@ class StreamQueryRetryClassifierTest {
     private WebClientResponseException http(int status, String body) {
         return WebClientResponseException.create(status, "status", HttpHeaders.EMPTY,
                 body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+    }
+
+    private FirstStreamChunkTimeoutException firstChunkTimeout() {
+        return new FirstStreamChunkTimeoutException(Duration.ofSeconds(45),
+                Duration.ofSeconds(40), TimeoutDeadlineOwner.FIRST_CHUNK,
+                Duration.ofSeconds(40), 0, "call-1", "model-1");
+    }
+
+    private StreamChunkIdleTimeoutException chunkIdleTimeout() {
+        return new StreamChunkIdleTimeoutException(Duration.ofSeconds(90),
+                Duration.ofSeconds(80), TimeoutDeadlineOwner.CHUNK_IDLE,
+                Duration.ofSeconds(80), 3, "call-1", "model-1");
+    }
+
+    private LlmQueryAttemptTimeoutException queryAttemptTimeout() {
+        return new LlmQueryAttemptTimeoutException(Duration.ofSeconds(150),
+                Duration.ofSeconds(150), TimeoutDeadlineOwner.QUERY_ATTEMPT,
+                Duration.ofSeconds(150), 5, "call-1", "model-1");
     }
 
     private static final class TestDecodingException extends RuntimeException {

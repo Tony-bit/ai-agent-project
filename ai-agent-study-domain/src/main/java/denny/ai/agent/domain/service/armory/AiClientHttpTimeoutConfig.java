@@ -1,12 +1,16 @@
 package denny.ai.agent.domain.service.armory;
 
+import denny.ai.agent.domain.service.armory.stream.SseChunkTimeoutFilter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 import java.net.http.HttpClient;
 
@@ -38,13 +42,25 @@ public class AiClientHttpTimeoutConfig {
     }
 
     @Bean
-    public WebClient.Builder aiClientWebClientBuilder(AiStreamingProperties properties) {
+    public WebClient.Builder aiClientWebClientBuilder(
+            AiStreamingProperties properties,
+            @Qualifier("aiStreamTimeoutScheduler") Scheduler scheduler) {
         properties.validate();
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .build();
         log.info("[AiClientHttpTimeoutConfig] WebClient configured, connectTimeout={}ms",
                 properties.getConnectTimeout().toMillis());
-        return WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient));
+        WebClient.Builder builder = WebClient.builder()
+                .clientConnector(new JdkClientHttpConnector(httpClient));
+        if (properties.resolve(null).timeoutMode() == AiStreamingProperties.TimeoutMode.LAYERED) {
+            builder.filter(new SseChunkTimeoutFilter(scheduler));
+        }
+        return builder;
+    }
+
+    @Bean(name = "aiStreamTimeoutScheduler", destroyMethod = "")
+    public Scheduler aiStreamTimeoutScheduler() {
+        return Schedulers.parallel();
     }
 }

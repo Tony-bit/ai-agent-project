@@ -63,9 +63,9 @@ public class AiClientModelNodeRetryTest {
                 .initialIntervalMs(25)
                 .build();
         StreamingTimeoutConfig timeouts = StreamingTimeoutConfig.builder()
-                .firstContentTimeoutMs(101L)
-                .idleTimeoutMs(202L)
-                .totalTimeoutMs(303L)
+                .firstContentTimeoutMs(11_000L)
+                .idleTimeoutMs(20_000L)
+                .totalTimeoutMs(100_000L)
                 .build();
 
         RetryChatModel decorated = (RetryChatModel) node.applyRetryDecorator(
@@ -75,9 +75,21 @@ public class AiClientModelNodeRetryTest {
         AiStreamingProperties.StreamingTimeouts actual =
                 (AiStreamingProperties.StreamingTimeouts) ReflectionTestUtils.getField(
                         decorated, "streamingTimeouts");
-        assertEquals(Duration.ofMillis(101), actual.firstContentTimeout());
-        assertEquals(Duration.ofMillis(202), actual.idleTimeout());
-        assertEquals(Duration.ofMillis(303), actual.totalTimeout());
+        assertEquals(Duration.ofSeconds(11), actual.firstContentTimeout());
+        assertEquals(Duration.ofSeconds(20), actual.idleTimeout());
+        assertEquals(Duration.ofSeconds(100), actual.totalTimeout());
+    }
+
+    @Test
+    public void shouldPassModelIdToStreamingPolicyOwner() {
+        AiClientModelNode node = new AiClientModelNode();
+        ReflectionTestUtils.setField(node, "promptCompressionService", compressionService);
+
+        RetryChatModel decorated = (RetryChatModel) node.applyRetryDecorator(
+                mock(ChatModel.class), RetryConfig.builder().enabled(false).build(),
+                CompressionPolicy.builder().build(), null, "model-42");
+
+        assertEquals("model-42", ReflectionTestUtils.getField(decorated, "modelId"));
     }
 
     /**

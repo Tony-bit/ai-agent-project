@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.armory.factory.element;
 
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
 import denny.ai.agent.domain.service.auto.step.ClientDisconnectedException;
+import denny.ai.agent.domain.service.armory.stream.LlmTimeoutException;
 import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -93,7 +94,8 @@ public final class StreamQueryRetryClassifier {
     }
 
     private boolean isHardExcluded(Throwable error) {
-        if (error instanceof TimeoutException
+        if (error instanceof LlmTimeoutException
+                || error instanceof TimeoutException
                 || error instanceof SocketTimeoutException
                 || error instanceof HttpTimeoutException
                 || error instanceof CancellationException

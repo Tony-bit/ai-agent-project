@@ -79,7 +79,7 @@ public class AiClientModelNode extends AbstractArmorySupport{
             CompressionPolicy compressionPolicy = toCompressionPolicy(
                     modelVO.getCompressionConfig(), systemPromptMap);
             ChatModel registeredModel = applyRetryDecorator(chatModel, modelVO.getRetryConfig(),
-                    compressionPolicy, modelVO.getStreamingTimeoutConfig());
+                    compressionPolicy, modelVO.getStreamingTimeoutConfig(), modelVO.getModelId());
             registerBean(getBeanName(modelVO.getModelId()), ChatModel.class, registeredModel);
         }
 
@@ -94,6 +94,14 @@ public class AiClientModelNode extends AbstractArmorySupport{
     public ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
                                   CompressionPolicy compressionPolicy,
                                   StreamingTimeoutConfig streamingTimeoutConfig) {
+        return applyRetryDecorator(chatModel, retryConfig, compressionPolicy,
+                streamingTimeoutConfig, null);
+    }
+
+    public ChatModel applyRetryDecorator(ChatModel chatModel, RetryConfig retryConfig,
+                                  CompressionPolicy compressionPolicy,
+                                  StreamingTimeoutConfig streamingTimeoutConfig,
+                                  String modelId) {
         boolean retryEnabled = retryConfig != null && retryConfig.isEnabled();
         RetryConfig effectiveRetryConfig = retryEnabled
                 ? retryConfig
@@ -109,7 +117,7 @@ public class AiClientModelNode extends AbstractArmorySupport{
                 ? new AiStreamingProperties() : aiStreamingProperties;
         return new RetryChatModel(chatModel, effectiveRetryConfig, compressionPolicy,
                 promptCompressionService, new AiErrorCodeExtractor(),
-                properties.resolve(streamingTimeoutConfig));
+                properties.resolve(streamingTimeoutConfig), modelId);
     }
 
     private CompressionPolicy toCompressionPolicy(CompressionConfig config,

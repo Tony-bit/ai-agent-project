@@ -44,7 +44,7 @@ public class TradingAgentProperties {
     /**
      * End-to-end deadline for one Trading node, including data loading and parsing.
      */
-    private Duration nodeTimeout = Duration.ofSeconds(180);
+    private Duration nodeTimeout = Duration.ofSeconds(240);
 
     public void validate() {
         if (nodeTimeout == null || nodeTimeout.isZero() || nodeTimeout.isNegative()) {
