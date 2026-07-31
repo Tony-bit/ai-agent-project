@@ -6,6 +6,7 @@ import denny.ai.agent.domain.service.armory.AiStreamingProperties;
 import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.LlmTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.StreamChunkTimeoutPolicy;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutType;
 import denny.ai.agent.domain.service.armory.stream.StreamTimeoutContext;
 import denny.ai.agent.domain.service.armory.stream.TimeoutDeadlineOwner;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
@@ -187,30 +188,66 @@ public class RetryChatModel implements ChatModel {
         Exception exception = error instanceof Exception value
                 ? value : new RuntimeException(error);
         String errorCode = errorCodeExtractor.extract(exception);
-        if (AiErrorCodes.isContextOverflow(errorCode)) {
-            if (!state.compressionEnabled()) {
-                return Flux.error(error);
-            }
-            if (state.compressionAttempts >= state.maxCompressionAttempts) {
-                return Flux.error(new CompressionExhaustedException(
-                        "context overflow after " + state.compressionAttempts
-                                + " compression attempts", error));
-            }
-            try {
-                state.currentPrompt = state.compress(state.currentPrompt, errorCode);
-                return streamAttempt(state);
-            } catch (RuntimeException compressionError) {
-                return Flux.error(compressionError);
-            }
+        StreamTimeoutType timeoutType = state.retryClassifier
+                .streamTimeoutType(error).orElse(null);
+
+        if (state.retryClassifier.isSafetyExcluded(error)) {
+            return Flux.error(error);
         }
-        if (state.isOrdinaryRetryable(exception)
-                && state.ordinaryRetriesRemaining > 0) {
-            state.ordinaryRetriesRemaining--;
-            long delay = state.nextDelay();
-            return Mono.delay(Duration.ofMillis(delay))
-                    .thenMany(streamAttempt(state));
+        if (state.retryClassifier.matchesNonRetryableCode(error)) {
+            return Flux.error(error);
+        }
+        if (AiErrorCodes.isContextOverflow(errorCode)) {
+            return compressAndRetryOrPropagate(state, error, errorCode);
+        }
+        if (state.retryClassifier.isDefiniteNonRetryable4xx(error)) {
+            return Flux.error(error);
+        }
+        if (timeoutType != null) {
+            return retryStreamTimeoutOrPropagate(state, error);
+        }
+        if (state.retryClassifier.isOrdinaryRetryable(exception)) {
+            return retryOrdinaryOrPropagate(state, error);
         }
         return Flux.error(error);
+    }
+
+    private Flux<ChatResponse> compressAndRetryOrPropagate(
+            StreamState state, Throwable error, String errorCode) {
+        if (!state.compressionEnabled()) {
+            return Flux.error(error);
+        }
+        if (state.compressionAttempts >= state.maxCompressionAttempts) {
+            return Flux.error(new CompressionExhaustedException(
+                    "context overflow after " + state.compressionAttempts
+                            + " compression attempts", error));
+        }
+        try {
+            state.currentPrompt = state.compress(state.currentPrompt, errorCode);
+            return Flux.defer(() -> streamAttempt(state));
+        } catch (RuntimeException compressionError) {
+            return Flux.error(compressionError);
+        }
+    }
+
+    private Flux<ChatResponse> retryStreamTimeoutOrPropagate(
+            StreamState state, Throwable error) {
+        if (!retryConfig.isEnabled() || !retryConfig.isRetryOnStreamTimeout()) {
+            return Flux.error(error);
+        }
+        return retryOrdinaryOrPropagate(state, error);
+    }
+
+    private Flux<ChatResponse> retryOrdinaryOrPropagate(
+            StreamState state, Throwable error) {
+        if (state.ordinaryRetriesRemaining <= 0) {
+            return Flux.error(error);
+        }
+        state.ordinaryRetriesRemaining--;
+        state.ordinaryRetriesUsed++;
+        long delay = state.nextDelay();
+        return Mono.delay(Duration.ofMillis(delay))
+                .thenMany(Flux.defer(() -> streamAttempt(state)));
     }
 
     private LlmQueryAttemptTimeoutException queryAttemptTimeout(
@@ -298,6 +335,7 @@ public class RetryChatModel implements ChatModel {
         private final StreamQueryRetryClassifier retryClassifier;
         private final double multiplier;
         private int ordinaryRetriesRemaining;
+        private int ordinaryRetriesUsed;
         private int compressionAttempts;
         private int modelCalls;
         private long interval;
