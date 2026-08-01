@@ -25,10 +25,12 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Component
 @Order(10)
@@ -88,23 +90,37 @@ public class AnalystCollectionStage implements TradingStage {
         context.sendSseResult("trading", "trading_init", "交易分析开始", false);
 
         List<AnalystTypeEnum> analysts = context.getSelectedAnalysts();
+        ExecutorCompletionService<NodeExecutionResult<?>> completions =
+                new ExecutorCompletionService<>(tradingTaskExecutor);
         List<AnalystTask> tasks = analysts.stream()
-                .map(analyst -> createTask(analyst, context))
+                .map(analyst -> createTask(analyst, context, completions))
                 .toList();
 
+        long deadlineNanos = System.nanoTime()
+                + TimeUnit.MILLISECONDS.toNanos(nodeTimeoutMillis());
+        int completed = 0;
         try {
-            CompletableFuture.allOf(tasks.stream().map(AnalystTask::future)
-                            .toArray(CompletableFuture[]::new))
-                    .get(nodeTimeoutMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            tasks.forEach(task -> {
-                if (!task.future().isDone()) {
-                    task.scope().markTimedOut();
-                    task.future().cancel(true);
+            while (completed < tasks.size()) {
+                if (!TradingPipelineSseGuard.shouldContinue(context)) {
+                    cancelOutstanding(tasks, CancellationReason.CLIENT);
+                    return;
                 }
-            });
-        } catch (Exception e) {
-            // Individual failures are represented as NodeExecutionResult and handled below.
+                long remainingNanos = deadlineNanos - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    cancelOutstanding(tasks, CancellationReason.TIMEOUT);
+                    break;
+                }
+                Future<NodeExecutionResult<?>> done = completions.poll(
+                        Math.min(remainingNanos, TimeUnit.MILLISECONDS.toNanos(50)),
+                        TimeUnit.NANOSECONDS);
+                if (done != null) {
+                    completed++;
+                }
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            cancelOutstanding(tasks, CancellationReason.INTERRUPTED);
+            return;
         }
         if (!TradingPipelineSseGuard.shouldContinue(context)) {
             return;
@@ -149,13 +165,28 @@ public class AnalystCollectionStage implements TradingStage {
         return effective.getNodeTimeout().toMillis();
     }
 
-    private AnalystTask createTask(AnalystTypeEnum analyst, TradingStateContext context) {
+    private AnalystTask createTask(AnalystTypeEnum analyst, TradingStateContext context,
+                                   ExecutorCompletionService<NodeExecutionResult<?>> completions) {
         NodeExecutionScope scope = new NodeExecutionScope(
                 java.time.Instant.now().plusMillis(nodeTimeoutMillis()),
                 () -> !TradingPipelineSseGuard.shouldContinue(context));
-        CompletableFuture<NodeExecutionResult<?>> future = CompletableFuture.supplyAsync(
-                () -> prepareAnalyst(analyst, context, scope), tradingTaskExecutor);
+        Future<NodeExecutionResult<?>> future = completions.submit(
+                () -> prepareAnalyst(analyst, context, scope));
         return new AnalystTask(analyst, scope, future);
+    }
+
+    private void cancelOutstanding(List<AnalystTask> tasks, CancellationReason reason) {
+        for (AnalystTask task : tasks) {
+            if (task.future().isDone()) {
+                continue;
+            }
+            if (reason == CancellationReason.TIMEOUT) {
+                task.scope().markTimedOut();
+            } else {
+                task.scope().markCancelled();
+            }
+            task.future().cancel(true);
+        }
     }
 
     private NodeExecutionResult<?> prepareAnalyst(AnalystTypeEnum analyst,
@@ -191,8 +222,16 @@ public class AnalystCollectionStage implements TradingStage {
         if (!TradingPipelineSseGuard.shouldContinue(context)) {
             return false;
         }
-        NodeExecutionResult<Object> result = (NodeExecutionResult<Object>) task.future().getNow(null);
-        if (result == null) {
+        if (!task.future().isDone() || task.future().isCancelled()) {
+            return false;
+        }
+        NodeExecutionResult<Object> result;
+        try {
+            result = (NodeExecutionResult<Object>) task.future().get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (CancellationException | ExecutionException failure) {
             return false;
         }
         String nodeName = analystNodeName(task.analyst());
@@ -244,6 +283,12 @@ public class AnalystCollectionStage implements TradingStage {
 
     private record AnalystTask(AnalystTypeEnum analyst,
                                NodeExecutionScope scope,
-                               CompletableFuture<NodeExecutionResult<?>> future) {
+                               Future<NodeExecutionResult<?>> future) {
+    }
+
+    private enum CancellationReason {
+        TIMEOUT,
+        CLIENT,
+        INTERRUPTED
     }
 }
