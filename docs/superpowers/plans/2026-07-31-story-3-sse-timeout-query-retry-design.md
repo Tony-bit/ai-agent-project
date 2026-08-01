@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：设计讨论已确认，等待用户书面复核。
+- 状态：实现与自动化回归已完成，等待人工 DML 与运行时验收。
 - 日期：2026-07-31。
 - 前置 Story：`docs/superpowers/plans/2026-07-30-story-1-stream-http-attempt-retry.md`。
 - 前置 Story：`docs/superpowers/plans/2026-07-30-story-2-sse-chunk-timeout-design.md`。
@@ -499,7 +499,7 @@ Story 3 采用最小增量方案：在唯一的 `RetryConfig` 增加默认关闭
 
 | 任务 | status |
 |---|---|
-| 任务 1：增加配置字段并锁定解析兼容 | append |
+| 任务 1：增加配置字段并锁定解析兼容 | pass |
 
 **文件：**
 
@@ -568,7 +568,7 @@ git commit -m "feat: add stream timeout retry switch"
 
 | 任务 | status |
 |---|---|
-| 任务 2：把错误分类拆成可组合的结构化事实 | append |
+| 任务 2：把错误分类拆成可组合的结构化事实 | pass |
 
 **文件：**
 
@@ -648,7 +648,7 @@ git commit -m "refactor: expose structured stream retry facts"
 
 | 任务 | status |
 |---|---|
-| 任务 3：在 RetryChatModel 编排唯一恢复动作和共享预算 | append |
+| 任务 3：在 RetryChatModel 编排唯一恢复动作和共享预算 | pass |
 
 **文件：**
 
@@ -729,7 +729,7 @@ git commit -m "feat: retry complete query on stream timeout"
 
 | 任务 | status |
 |---|---|
-| 任务 4：建立 attempt 终止屏障并锁定取消语义 | append |
+| 任务 4：建立 attempt 终止屏障并锁定取消语义 | pass |
 
 **文件：**
 
@@ -804,7 +804,7 @@ git commit -m "fix: serialize stream retry attempt lifecycle"
 
 | 任务 | status |
 |---|---|
-| 任务 5：增加 stream jitter、结构化日志和低基数指标 | append |
+| 任务 5：增加 stream jitter、结构化日志和低基数指标 | pass |
 
 **文件：**
 
@@ -902,7 +902,7 @@ git commit -m "feat: observe stream timeout retry decisions"
 
 | 任务 | status |
 |---|---|
-| 任务 6：验证真实 HTTP watchdog 和工具后第二轮 timeout | append |
+| 任务 6：验证真实 HTTP watchdog 和工具后第二轮 timeout | pass |
 
 **文件：**
 
@@ -966,7 +966,7 @@ git commit -m "test: cover stream timeout query retry integration"
 
 | 任务 | status |
 |---|---|
-| 任务 7：修复 Trading 并行 analyst 的真实取消链路 | append |
+| 任务 7：修复 Trading 并行 analyst 的真实取消链路 | pass |
 
 **文件：**
 
@@ -1051,7 +1051,7 @@ git commit -m "fix: propagate analyst cancellation to worker stream"
 
 | 任务 | status |
 |---|---|
-| 任务 8：建立 collector 覆盖门禁并执行全量回归 | append |
+| 任务 8：建立 collector 覆盖门禁并执行全量回归 | pass |
 
 **文件：**
 
