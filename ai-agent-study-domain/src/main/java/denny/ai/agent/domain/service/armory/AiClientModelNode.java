@@ -14,12 +14,15 @@ import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.AiErrorCodeExtractor;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutRetryMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -45,6 +48,9 @@ public class AiClientModelNode extends AbstractArmorySupport{
 
     @Resource
     private AiStreamingProperties aiStreamingProperties;
+
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
@@ -117,7 +123,8 @@ public class AiClientModelNode extends AbstractArmorySupport{
                 ? new AiStreamingProperties() : aiStreamingProperties;
         return new RetryChatModel(chatModel, effectiveRetryConfig, compressionPolicy,
                 promptCompressionService, new AiErrorCodeExtractor(),
-                properties.resolve(streamingTimeoutConfig), modelId);
+                properties.resolve(streamingTimeoutConfig), modelId,
+                new StreamTimeoutRetryMetrics(meterRegistry));
     }
 
     private CompressionPolicy toCompressionPolicy(CompressionConfig config,

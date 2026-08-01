@@ -1,12 +1,19 @@
 package denny.ai.agent.domain.service.armory.factory.element;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import denny.ai.agent.domain.model.valobj.AiClientModelVO.RetryConfig;
+import denny.ai.agent.domain.service.armory.AiStreamingProperties;
 import denny.ai.agent.domain.service.armory.stream.FirstStreamChunkTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.StreamChunkIdleTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.TimeoutDeadlineOwner;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutRetryMetrics;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,9 +25,12 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -30,6 +40,118 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RetryChatModelStreamTimeoutRetryTest {
+
+    @Test
+    void should_share_backoff_and_apply_fixed_jitter_sequence() {
+        ChatModel delegate = mock(ChatModel.class);
+        Prompt prompt = prompt("question");
+        ChatResponse success = response("success");
+        RetryConfig config = config(true, true, 3);
+        config.setInitialIntervalMs(1000);
+        config.setMultiplier(2.0);
+        config.setMaxIntervalMs(10_000);
+        AtomicInteger index = new AtomicInteger();
+        long[] sequence = {250, 750};
+        LongSupplier jitter = () -> sequence[index.getAndIncrement()];
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.error(http(503, "")))
+                .thenReturn(Flux.error(chunkIdleTimeout()))
+                .thenReturn(Flux.just(success));
+
+        StepVerifier.withVirtualTime(() -> model(delegate, config, jitter, null).stream(prompt))
+                .expectSubscription()
+                .expectNoEvent(Duration.ofMillis(1249))
+                .thenAwait(Duration.ofMillis(1))
+                .expectNoEvent(Duration.ofMillis(2749))
+                .thenAwait(Duration.ofMillis(1))
+                .expectNext(success)
+                .verifyComplete();
+    }
+
+    @Test
+    void should_clamp_jitter_to_zero_and_one_thousand_milliseconds() {
+        ChatModel delegate = mock(ChatModel.class);
+        Prompt prompt = prompt("question");
+        RetryConfig config = config(true, true, 3);
+        config.setInitialIntervalMs(1000);
+        config.setMultiplier(10.0);
+        config.setMaxIntervalMs(1000);
+        AtomicInteger index = new AtomicInteger();
+        long[] sequence = {-1, 2000};
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.error(http(503, "")))
+                .thenReturn(Flux.error(chunkIdleTimeout()))
+                .thenReturn(Flux.just(response("success")));
+
+        StepVerifier.withVirtualTime(() -> model(delegate, config,
+                        () -> sequence[index.getAndIncrement()], null).stream(prompt))
+                .expectSubscription()
+                .expectNoEvent(Duration.ofMillis(999))
+                .thenAwait(Duration.ofMillis(1))
+                .expectNoEvent(Duration.ofMillis(1999))
+                .thenAwait(Duration.ofMillis(1))
+                .expectNextCount(1)
+                .verifyComplete();
+    }
+
+    @Test
+    void should_record_each_timeout_decision_once() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        StreamTimeoutRetryMetrics metrics = new StreamTimeoutRetryMetrics(registry);
+
+        runDecision(config(true, true, 2), firstChunkTimeout(), metrics);
+        runDecision(config(true, false, 2), firstChunkTimeout(), metrics);
+        runDecision(config(true, true, 1), firstChunkTimeout(), metrics);
+        runDecision(config(true, true, 2),
+                mixed(firstChunkTimeout(), queryAttemptTimeout()), metrics);
+
+        assertDecisionCount(registry, "SCHEDULED", 1.0);
+        assertDecisionCount(registry, "DISABLED", 1.0);
+        assertDecisionCount(registry, "EXHAUSTED", 1.0);
+        assertDecisionCount(registry, "HARD_EXCLUDED", 1.0);
+    }
+
+    @Test
+    void should_log_retry_decision_without_prompt_or_partial_content() {
+        Logger logger = (Logger) LoggerFactory.getLogger(RetryChatModel.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.WARN);
+        try {
+            ChatModel delegate = mock(ChatModel.class);
+            Prompt prompt = prompt("prompt-secret");
+            when(delegate.stream(prompt))
+                    .thenReturn(Flux.concat(Flux.just(response("partial-secret-tool-arg")),
+                            Flux.error(chunkIdleTimeout())))
+                    .thenReturn(Flux.just(response("success")));
+
+            StepVerifier.create(model(delegate, config(true, true, 2), () -> 0L, null)
+                            .stream(prompt))
+                    .expectNextCount(1)
+                    .verifyComplete();
+
+            List<String> decisions = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(message -> message.contains("llm_stream_query_retry_decision"))
+                    .toList();
+            org.junit.jupiter.api.Assertions.assertEquals(1, decisions.size());
+            String decision = decisions.get(0);
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    decision.contains("querySubscriptionNumber="));
+            org.junit.jupiter.api.Assertions.assertTrue(decision.contains("maxModelCalls="));
+            org.junit.jupiter.api.Assertions.assertTrue(decision.contains("baseBackoffMs="));
+            org.junit.jupiter.api.Assertions.assertTrue(decision.contains("jitterMs="));
+            org.junit.jupiter.api.Assertions.assertTrue(decision.contains("actualBackoffMs="));
+            org.junit.jupiter.api.Assertions.assertFalse(decision.contains("prompt-secret"));
+            org.junit.jupiter.api.Assertions.assertFalse(
+                    decision.contains("partial-secret-tool-arg"));
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+        }
+    }
 
     @Test
     void should_retry_first_chunk_timeout_when_both_switches_are_enabled() {
@@ -170,6 +292,13 @@ class RetryChatModelStreamTimeoutRetryTest {
     }
 
     private RetryChatModel model(ChatModel delegate, RetryConfig config,
+                                 LongSupplier jitter,
+                                 StreamTimeoutRetryMetrics metrics) {
+        return new RetryChatModel(delegate, config, null, null, null,
+                new AiStreamingProperties().resolve(null), null, jitter, metrics);
+    }
+
+    private RetryChatModel model(ChatModel delegate, RetryConfig config,
                                  PromptCompressionService compression, int maxCompressionAttempts) {
         CompressionPolicy policy = CompressionPolicy.builder()
                 .proactiveThresholdTokens(Integer.MAX_VALUE)
@@ -232,5 +361,24 @@ class RetryChatModelStreamTimeoutRetryTest {
 
     private ChatResponse response(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    }
+
+    private void runDecision(RetryConfig config, Throwable error,
+                             StreamTimeoutRetryMetrics metrics) {
+        ChatModel delegate = mock(ChatModel.class);
+        when(delegate.stream(any(Prompt.class))).thenReturn(
+                Flux.error(error), Flux.just(response("success")));
+        model(delegate, config, () -> 0L, metrics).stream(prompt("question"))
+                .onErrorResume(ignored -> Flux.empty())
+                .blockLast();
+    }
+
+    private void assertDecisionCount(SimpleMeterRegistry registry, String decision,
+                                     double expected) {
+        double count = registry.get("llm_stream_timeout_retry_decisions_total")
+                .tag("timeoutType", "FIRST_CHUNK")
+                .tag("decision", decision)
+                .counter().count();
+        org.junit.jupiter.api.Assertions.assertEquals(expected, count);
     }
 }

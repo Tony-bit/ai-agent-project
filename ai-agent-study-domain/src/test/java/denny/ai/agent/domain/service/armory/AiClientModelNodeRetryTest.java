@@ -5,6 +5,8 @@ import denny.ai.agent.domain.model.valobj.AiClientModelVO.StreamingTimeoutConfig
 import denny.ai.agent.domain.service.armory.factory.element.CompressionPolicy;
 import denny.ai.agent.domain.service.armory.factory.element.RetryChatModel;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutRetryMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -113,6 +115,22 @@ public class AiClientModelNodeRetryTest {
                 CompressionPolicy.builder().build(), null, "model-42");
 
         assertEquals("model-42", ReflectionTestUtils.getField(decorated, "modelId"));
+    }
+
+    @Test
+    public void should_pass_optional_meter_registry_to_retry_metrics() {
+        AiClientModelNode node = new AiClientModelNode();
+        ReflectionTestUtils.setField(node, "promptCompressionService", compressionService);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(node, "meterRegistry", registry);
+
+        RetryChatModel decorated = (RetryChatModel) node.applyRetryDecorator(
+                mock(ChatModel.class), RetryConfig.builder().enabled(true).build(),
+                CompressionPolicy.builder().build());
+        StreamTimeoutRetryMetrics metrics = (StreamTimeoutRetryMetrics)
+                ReflectionTestUtils.getField(decorated, "timeoutRetryMetrics");
+
+        assertSame(registry, ReflectionTestUtils.getField(metrics, "meterRegistry"));
     }
 
     /**

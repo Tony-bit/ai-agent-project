@@ -6,6 +6,7 @@ import denny.ai.agent.domain.service.armory.AiStreamingProperties;
 import denny.ai.agent.domain.service.armory.stream.LlmQueryAttemptTimeoutException;
 import denny.ai.agent.domain.service.armory.stream.StreamChunkTimeoutPolicy;
 import denny.ai.agent.domain.service.armory.stream.StreamTimeoutContext;
+import denny.ai.agent.domain.service.armory.stream.StreamTimeoutRetryMetrics;
 import denny.ai.agent.domain.service.compression.PromptCompressionService;
 import denny.ai.agent.domain.service.runtime.RetryRuntimeContextHolder;
 import org.junit.Before;
@@ -247,6 +248,7 @@ public class RetryChatModelStreamTest {
                 .expectSubscription()
                 .expectNoEvent(Duration.ofSeconds(8))
                 .thenAwait(Duration.ofSeconds(1))
+                .thenAwait(Duration.ofMillis(1))
                 .expectError(LlmQueryAttemptTimeoutException.class)
                 .verify();
 
@@ -310,11 +312,14 @@ public class RetryChatModelStreamTest {
     }
 
     private RetryChatModel model(CompressionPolicy policy) {
-        return new RetryChatModel(delegate, retryConfig, policy, compressionService, null);
+        return new RetryChatModel(delegate, retryConfig, policy, compressionService, null,
+                new AiStreamingProperties().resolve(null), null, () -> 0L,
+                new StreamTimeoutRetryMetrics(null));
     }
 
     private RetryChatModel model(AiStreamingProperties.StreamingTimeouts timeouts) {
-        return new RetryChatModel(delegate, retryConfig, compressionPolicy, compressionService, null, timeouts);
+        return new RetryChatModel(delegate, retryConfig, compressionPolicy, compressionService,
+                null, timeouts, null, () -> 0L, new StreamTimeoutRetryMetrics(null));
     }
 
     private AiStreamingProperties.StreamingTimeouts timeouts(long firstSeconds,
