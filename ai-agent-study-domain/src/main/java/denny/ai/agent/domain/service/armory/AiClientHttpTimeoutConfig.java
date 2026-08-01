@@ -7,6 +7,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.client.reactive.JdkClientHttpConnector;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.scheduler.Scheduler;
@@ -52,7 +54,8 @@ public class AiClientHttpTimeoutConfig {
         log.info("[AiClientHttpTimeoutConfig] WebClient configured, connectTimeout={}ms",
                 properties.getConnectTimeout().toMillis());
         WebClient.Builder builder = WebClient.builder()
-                .clientConnector(new JdkClientHttpConnector(httpClient));
+                .clientConnector(new JdkClientHttpConnector(httpClient))
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
         if (properties.resolve(null).timeoutMode() == AiStreamingProperties.TimeoutMode.LAYERED) {
             builder.filter(new SseChunkTimeoutFilter(scheduler));
         }

@@ -2,6 +2,7 @@ package denny.ai.agent.domain.service.armory;
 
 import denny.ai.agent.domain.service.armory.stream.SseChunkTimeoutFilter;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.scheduler.Schedulers;
 
@@ -22,6 +23,20 @@ class AiClientHttpTimeoutConfigTest {
             inspected.incrementAndGet();
             assertEquals(1, filters.size());
             assertTrue(filters.get(0) instanceof SseChunkTimeoutFilter);
+        });
+
+        assertEquals(1, inspected.get());
+    }
+
+    @Test
+    void should_mark_openai_webclient_requests_as_streaming_by_default() {
+        WebClient.Builder builder = new AiClientHttpTimeoutConfig()
+                .aiClientWebClientBuilder(new AiStreamingProperties(), Schedulers.parallel());
+        AtomicInteger inspected = new AtomicInteger();
+
+        builder.defaultHeaders(headers -> {
+            inspected.incrementAndGet();
+            assertEquals(java.util.List.of(MediaType.TEXT_EVENT_STREAM), headers.getAccept());
         });
 
         assertEquals(1, inspected.get());

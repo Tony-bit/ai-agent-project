@@ -185,6 +185,22 @@ class RetryChatModelStreamTimeoutRetryTest {
     }
 
     @Test
+    void should_retry_stream_timeout_wrapped_by_successful_http_response() {
+        ChatModel delegate = mock(ChatModel.class);
+        Prompt prompt = prompt("question");
+        ChatResponse success = response("success");
+        WebClientResponseException wrapped = http(200, "");
+        wrapped.initCause(chunkIdleTimeout());
+        when(delegate.stream(prompt))
+                .thenReturn(Flux.error(wrapped))
+                .thenReturn(Flux.just(success));
+
+        StepVerifier.create(model(delegate, config(true, true, 2)).stream(prompt))
+                .expectNext(success)
+                .verifyComplete();
+    }
+
+    @Test
     void should_not_retry_stream_timeout_when_child_switch_is_disabled() {
         assertNoRetry(config(true, false, 2), firstChunkTimeout());
     }
