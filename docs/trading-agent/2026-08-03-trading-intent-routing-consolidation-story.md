@@ -6,6 +6,7 @@
 | 状态 | pending |
 | 优先级 | P0 |
 | 关联设计 | `docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-design.md` |
+| 关联测试 | `docs/superpowers/test/2026-08-03-trading-intent-routing-consolidation-test.md` |
 
 ## 1. 用户故事
 
