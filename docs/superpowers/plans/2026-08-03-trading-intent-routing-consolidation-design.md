@@ -21,7 +21,7 @@
 
 1. 删除 6001 节点及其第二次 LLM 意图识别。
 2. 3201 成为唯一意图识别入口。
-3. 3201 沿用现有 Skills/Tool 能力，将完整 A 股名称精确解析为 ticker，并填充股票槽位。
+3. 3201 沿用现有 Skills/Tool 能力，将 A 股名称解析为 ticker，并填充股票槽位。
 4. 使用固定 Java `TradingRequestNode` 校验槽位、构造 `StockAnalysisRequestVO` 并调用
    `TradingStarter`。
 5. 保持 `TradingStarter` 当前创建 `StockInfoVO`、`TargetContext` 和 Trading run 的行为。
@@ -29,7 +29,8 @@
 
 ## 非目标
 
-- 不支持不完整股票名称、简称、别名、前缀、后缀或子串匹配。
+- 不专门实现不完整股票名称、简称、别名、前缀、后缀或子串匹配；本 Story 也不额外拦截
+  `search_stock_by_name` 偶然成功解析的简称。
 - 不实现候选消歧、跨请求 Pending 或二次澄清状态机。
 - 不建设股票信息数据库快照或新的定时刷新任务。
 - 不改变 `StockInfoVO` 获取与缓存策略。
@@ -47,13 +48,13 @@ Query + session history
        -> classify intent
        -> preserve existing analysisDepth behavior
        -> explicit 6-digit ticker: fill StockSlot directly
-       -> complete A-share name: call search_stock_by_name through existing Skills/Tool
-       -> require exact unique match
-       -> fill StockSlot with stockMention, stockName and canonical stockCode
+       -> A-share name: call search_stock_by_name through existing Skills/Tool
+       -> require a unique result
+       -> fill StockSlot with stockName and canonical stockCode
   -> RoutingResultHandler
        -> STOCK_ANALYSIS: resolve tradingRequestNode
   -> TradingRequestNode (plain Java, no LLM, no ChatMemory)
-       -> validate exact-name contract and canonical ticker
+       -> validate slot completeness and ticker format
        -> map current-query analysis slots
        -> build StockAnalysisRequestVO
        -> call TradingStarter
@@ -65,13 +66,12 @@ Query + session history
 
 ## 3201 股票槽位契约
 
-现有 `StockSlot.stockCode` 在迁移期保留。为支持 Java 精确校验，新增：
+现有 `StockSlot.stockCode` 在迁移期保留。为支持 Java 权威身份校验，新增 `stockName`：
 
 ```text
 StockSlot
   stockCode: 603259
   stockName: 药明康德
-  stockMention: 药明康德
   stockQueryType: 综合分析
   timeRange: null
   exchange: SH
@@ -79,14 +79,13 @@ StockSlot
 
 规则如下：
 
-- 用户明确输入 6 位 A 股代码时，`stockMention` 保存原文，`stockCode` 保存规范化代码；不要求
-  `stockName` 非空，由 Trading 初始化阶段进行权威身份查询。
+- 用户明确输入 6 位 A 股代码时，`stockCode` 保存规范化代码；不要求 `stockName` 非空，由 Trading
+  初始化阶段进行权威身份查询。
 - 用户输入股票名称时，3201 必须通过现有 Skills/`search_stock_by_name` 查询。
-- 只有工具返回唯一结果，且规范化后的 `stockMention` 与工具返回 `stockName` 完全一致时，才填写
-  `stockCode` 并允许启动 Trading。
-- “药明康德”可以解析；“药明”即使工具返回药明康德，也不得启动 Trading。
-- 0 个结果、多个结果、名称不完全一致或 ticker 格式非法时，本轮返回“请提供完整 A 股名称或
-  6 位代码”，不创建 runId，也不保存跨请求 Pending。
+- 工具返回唯一结果时填写结果中的 `stockCode` 和 `stockName`。本 Story 不增加简称识别逻辑，
+  也不额外比较用户原文与权威名称；正式的模糊匹配行为由后续 Story 定义。
+- 0 个结果、多个结果或 ticker 格式非法时，本轮返回“请提供完整 A 股名称或 6 位代码”，不创建
+  runId，也不保存跨请求 Pending。
 - LLM 不得凭记忆生成 ticker；最终 ticker 必须来自用户明确代码或工具结果。
 
 3201 的结构化输出 Schema、Prompt、Few-Shot 和 Validator 同步增加新字段。旧 `stockCode` 输入
@@ -143,10 +142,18 @@ LLM，不读取主会话历史，也不维护 ChatMemory。
 
 1. 从 `DynamicContext` 读取 `StockSlot`。
 2. 校验 ticker 为 6 位 A 股代码或标准 `ts_code`。
-3. 名称输入场景再次校验 `stockMention == stockName`，防止 LLM 绕过精确名称限制。
-4. 将 `stockQueryType` 映射为当前请求的 `selectedAnalysts`；未指定时使用现有默认值。
-5. 构造 `StockAnalysisRequestVO`，设置现有默认辩论轮次、风控轮次和 `sessionId`。
-6. 调用 `TradingStarter.start()`。
+3. 将 `stockQueryType` 映射为当前请求的 `selectedAnalysts`；未指定时使用现有默认值。
+4. 构造 `StockAnalysisRequestVO`，透传 `stockName`，并设置现有默认辩论轮次、风控轮次和
+   `sessionId`。
+5. 调用 `TradingStarter.start()`。
+
+`TradingStarter` 创建 `TargetContext` 时，`TargetContextFactory` 继续使用
+`IStockDataProvider.findStockIdentities()` 查询权威身份，并增加名称校验：
+
+- 始终校验请求 ticker 与权威 `targetId` 一致。
+- 名称输入场景校验请求 `stockName` 与权威 `stockName` 一致。
+- 代码输入场景允许请求 `stockName` 为空，名称以权威记录为准。
+- 校验通过后才创建 `runId` 和 `TargetContext`；失败则按 Trading 初始化失败处理。
 
 校验失败时通过现有意图澄清 SSE 返回前端，并写入 Root 可持久化的最终回复字段；本轮停止。
 
@@ -178,18 +185,18 @@ API 保留。
 ## 错误处理
 
 - 3201 非 JSON 或 Schema 校验失败：沿用统一路由现有重试和降级，不进入 Trading。
-- 股票名称非完整精确名称：返回完整名称或代码提示，不进行模糊猜测。
 - 工具无结果、多个结果或调用失败：不填充可执行 ticker，不进入 Trading。
 - `TradingRequestNode` 校验失败：返回澄清提示，不调用 `TradingStarter`。
+- `TargetContextFactory` 发现请求代码或名称与权威身份不一致：初始化失败，不执行 Trading pipeline。
 - `TradingStarter.getStockInfo()` 失败：沿用当前初始化失败处理；这是数据获取错误，不回到意图路由。
 
 ## 测试策略
 
 - 3201 对“对药明康德进行完整投资分析”调用搜索工具并输出 `603259`。
 - 3201 对明确 6 位代码不调用名称搜索。
-- “药明”“平安”等非完整名称不得启动 Trading。
 - 搜索无结果、多结果和工具异常不得生成 ticker。
-- `TradingRequestNode` 拒绝非法 ticker 和名称不一致的槽位。
+- `TradingRequestNode` 拒绝非法 ticker 和空槽位。
+- `TargetContextFactory` 同时校验 ticker 与名称；直接代码输入允许名称为空。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。

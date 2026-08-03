@@ -25,14 +25,14 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 
 - 删除 6001 节点和所有运行资产。
 - 3201 成为唯一意图路由 Client。
-- 完整 A 股名称通过现有 Skills/`search_stock_by_name` 精确解析 ticker。
+- A 股名称通过现有 Skills/`search_stock_by_name` 解析 ticker。
 - 3201 输出可由 Java 校验的完整股票槽位。
 - 新增无状态 `TradingRequestNode` 构造 `StockAnalysisRequestVO` 并调用 `TradingStarter`。
 - 保持 `TradingStarter.populateStockInfo()` 为正式 `StockInfoVO` 来源。
 
 ## 4. 非目标
 
-- 不支持股票简称或模糊名称。
+- 不专门实现股票简称或模糊名称，也不额外拦截工具偶然成功解析的简称。
 - 不支持候选消歧、Pending 或二次澄清。
 - 不改股票缓存、数据表或定时任务。
 - 不改 `getStockInfo()` 调用位置。
@@ -44,51 +44,45 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 用户：对药明康德进行完整投资分析
   -> 3201 识别 STOCK_ANALYSIS
   -> search_stock_by_name("药明康德")
-  -> 精确唯一结果 603259
-  -> StockSlot(stockMention=药明康德, stockName=药明康德, stockCode=603259)
+  -> 唯一结果 603259
+  -> StockSlot(stockName=药明康德, stockCode=603259)
   -> TradingRequestNode 校验并构造 StockAnalysisRequestVO
-  -> TradingStarter 创建 TargetContext/runId
+  -> TradingStarter 调用 TargetContextFactory 校验权威 stockCode + stockName
+  -> 创建 TargetContext/runId
   -> TradingStarter.populateStockInfo()
   -> Trading pipeline
 ```
 
-```text
-用户：分析一下药明
-  -> 3201 或 Java 校验判定名称不完整
-  -> 返回“请提供完整 A 股名称或 6 位代码”
-  -> 不创建 runId
-```
-
 ## 6. 数据契约
 
-`StockSlot` 新增 `stockName` 和 `stockMention`，保留已有字段：
+`StockSlot` 新增 `stockName`，保留已有字段：
 
 ```json
 {
   "stockCode": "603259",
   "stockName": "药明康德",
-  "stockMention": "药明康德",
   "stockQueryType": "综合分析",
   "timeRange": null,
   "exchange": "SH"
 }
 ```
 
-名称输入只有在 `normalize(stockMention) == normalize(stockName)` 且 ticker 来自唯一工具结果时有效。
-代码输入只要求通过 A 股代码格式和后续 `TargetContextFactory` 权威校验。
+名称输入要求 ticker 来自唯一工具结果。`TradingRequestNode` 将 `stockName` 透传到
+`StockAnalysisRequestVO`，`TargetContextFactory` 对请求中的 ticker 和 `stockName` 执行权威校验。
+代码输入允许 `stockName` 为空，只要求通过 A 股代码格式和后续权威 ticker 校验。
 
 ## 7. 代码改造
 
 | 范围 | 改造内容 |
 |------|----------|
-| 3201 Prompt | 合并完整股票名称精确解析规则，禁止生成 ticker 和执行完整分析 |
-| 3201 Schema | 增加 `stockName`、`stockMention` 并更新 Validator、Few-Shot 和评测契约 |
+| 3201 Prompt | 合并股票名称解析规则，禁止凭记忆生成 ticker 和执行完整分析 |
+| 3201 Schema | 增加 `stockName` 并更新 Validator、Few-Shot 和评测契约 |
 | 工具边界 | 新增 `Map<String, List<String>> allowedToolsByClient`，只对白名单内 Client 装配指定 Trading Tools |
-| Java 下游 | 新增无状态 `TradingRequestNode`，校验槽位并构造 `StockAnalysisRequestVO` |
+| Java 下游 | 新增无状态 `TradingRequestNode`，校验槽位并将 `stockName` 写入 `StockAnalysisRequestVO` |
 | 路由 | `RoutingResultHandler` 从 `tradingIntentRoutingNode` 改为 `tradingRequestNode` |
 | 6001 | 删除节点、Prompt、Service、ChatMemory、配置、数据库关系和专属测试 |
-| Trading | 保持 `TradingStarter.populateStockInfo()` 与 pipeline 行为 |
-| SSE | 名称不完整或槽位非法时返回现有澄清事件并结束本轮 |
+| Trading | `TargetContextFactory` 增加权威名称校验；保持 `populateStockInfo()` 与 pipeline 行为 |
+| SSE | 槽位非法时返回现有澄清事件并结束本轮 |
 
 ## 8. 验收标准
 
@@ -97,9 +91,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-001 | 唯一路由 | 单任务股票请求只调用 3201，不调用 6001 |
 | AC-002 | 完整名称 | “药明康德”精确解析为 `603259` |
 | AC-003 | 明确代码 | 6 位 A 股代码无需名称搜索即可通过 |
-| AC-004 | 禁止模糊 | “药明”“平安”等非完整名称不启动 Trading |
+| AC-004 | Story 边界 | 不新增简称匹配规则；工具偶然解析成功的简称不额外拦截 |
 | AC-005 | ticker 来源 | ticker 只能来自用户代码或唯一工具结果 |
-| AC-006 | Java 校验 | 名称不一致、非法 ticker、空槽位均被拒绝 |
+| AC-006 | 权威校验 | 名称输入同时校验 ticker 和 `stockName`；代码输入校验 ticker |
 | AC-007 | 请求构造 | `TradingRequestNode` 正确构造并提交 `StockAnalysisRequestVO` |
 | AC-008 | StockInfo 来源 | `StockInfoVO` 仍由 `TradingStarter.populateStockInfo()` 生成并写入上下文 |
 | AC-009 | 连续分析 | 连续分析两只完整名称股票不会读取 6001 历史，第二次创建新 run |
@@ -115,8 +109,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 ## 9. 测试场景
 
 - 完整名称、明确代码、名称带首尾空格。
-- 不完整名称、零结果、多结果、工具异常。
-- LLM 返回候选外 ticker、名称不一致或非法代码。
+- 零结果、多结果、工具异常。
+- LLM 返回候选外 ticker、名称与权威记录不一致或非法代码。
+- 直接代码输入未携带名称时，使用权威身份成功创建 `TargetContext`。
 - 药明康德完成后，经过现有 analysisDepth 澄清再分析兆易创新。
 - 6001 Bean、Client 配置、Skills 白名单和 ChatMemory Key 不再存在。
 - 验证缺失 Client、空列表、重复工具名和未知工具名配置。
@@ -131,7 +126,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 |------|------|------|
 | Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
 | Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
-| Task 3 | 实现 `TradingRequestNode` 和请求构造映射 | pending |
+| Task 3 | 实现 `TradingRequestNode`、请求构造映射及 `TargetContextFactory` 名称校验 | pending |
 | Task 4 | 切换 `RoutingResultHandler` 下游 Bean | pending |
 | Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
 | Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |
