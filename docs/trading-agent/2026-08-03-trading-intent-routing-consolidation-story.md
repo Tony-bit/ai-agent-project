@@ -72,7 +72,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 {
   "stockCode": "603259",
   "stockName": "药明康德",
-  "stockQueryType": "综合分析",
+  "stockQueryType": "ALL",
   "timeRange": null,
   "exchange": "SH"
 }
@@ -89,7 +89,8 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | 3201 Prompt | 合并股票名称解析规则，禁止凭记忆生成 ticker 和执行完整分析 |
 | 3201 Schema | 增加 `stockName` 并更新 Validator、Few-Shot 和评测契约 |
 | 工具边界 | 新增 `Map<String, List<String>> allowedToolsByClient`，只对白名单内 Client 装配指定 Trading Tools |
-| Java 下游 | 新增无状态 `TradingRequestNode`，校验槽位并将 `stockName` 写入 `StockAnalysisRequestVO` |
+| 类型映射 | 从 6001 提取无状态 `AnalysisTypeMapper`，保留现有分析类型映射语义 |
+| Java 下游 | `TradingRequestNode` 校验槽位并写入 `stockName` 和映射后的 `selectedAnalysts` |
 | 路由 | `RoutingResultHandler` 从 `tradingIntentRoutingNode` 改为 `tradingRequestNode` |
 | 多任务门禁 | 多任务包含 `STOCK_ANALYSIS` 时整轮拒绝；普通多任务保持原行为 |
 | SSE 所有权 | 下游登记终止响应，`IntentRoutingNode` 发送业务事件，`AutoAgentExecuteStrategy` 关闭 emitter |
@@ -123,6 +124,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-020 | 终止响应 | 槽位失败和多任务门禁均登记 `routingTerminalResponse` 与 `clarificationPrompt` |
 | AC-021 | SSE 单一所有者 | `IntentRoutingNode` 各发送一次澄清和完成事件，外层只关闭一次 emitter |
 | AC-022 | 会话持久化 | 路由终止文本作为本轮助手回复持久化，可供下一轮会话读取 |
+| AC-023 | 类型映射迁移 | `ALL`、四个单类型及逗号组合与原 6001 映射结果一致 |
+| AC-024 | 类型默认值 | 空值或全部非法的类型使用 Trading 当前默认全部分析师 |
+| AC-025 | 类型契约 | 3201 只输出标准类型码，直接 Trading API 行为不变 |
 
 ## 9. 测试场景
 
@@ -138,6 +142,11 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 股票多任务门禁发送一次相同协议的终止事件，不执行任何子任务。
 - SSE 发送失败或客户端断开时不重发，外层清理流程正常结束。
 - 路由终止响应写入会话记录，下一轮能够从历史读取。
+- `ALL`、空值分别使用全部默认分析师。
+- `FUNDAMENTAL`、`TECHNICAL`、`SENTIMENT`、`NEWS` 分别只启用对应分析师。
+- 合法逗号组合、大小写和首尾空格正确归一化；混合非法项时保留合法子集。
+- 全部非法的分析类型降级为默认全部分析师并记录警告。
+- 直接 Trading API 显式指定分析师和不指定分析师的行为均保持不变。
 - 6001 Bean、Client 配置、Skills 白名单和 ChatMemory Key 不再存在。
 - 验证缺失 Client、空列表、重复工具名和未知工具名配置。
 - 验证 3201 无法调用行情、新闻、技术指标、基本面和 `get_stock_info`。
@@ -151,7 +160,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 |------|------|------|
 | Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
 | Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
-| Task 3 | 实现 `TradingRequestNode`、请求构造映射及 `TargetContextFactory` 名称校验 | pending |
+| Task 3 | 提取 `AnalysisTypeMapper`，实现 `TradingRequestNode` 请求映射及权威名称校验 | pending |
 | Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pending |
 | Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
 | Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |

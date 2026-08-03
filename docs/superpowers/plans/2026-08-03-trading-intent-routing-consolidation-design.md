@@ -56,7 +56,7 @@ Query + session history
        -> STOCK_ANALYSIS: resolve tradingRequestNode
   -> TradingRequestNode (plain Java, no LLM, no ChatMemory)
        -> 校验失败：登记 routingTerminalResponse 后返回
-       -> map current-query analysis slots
+       -> AnalysisTypeMapper 映射当前请求的分析师集合
        -> build StockAnalysisRequestVO
        -> call TradingStarter
   -> TradingStarter (existing behavior)
@@ -75,7 +75,7 @@ Query + session history
 StockSlot
   stockCode: 603259
   stockName: 药明康德
-  stockQueryType: 综合分析
+  stockQueryType: ALL
   timeRange: null
   exchange: SH
 ```
@@ -145,7 +145,7 @@ LLM，不读取主会话历史，也不维护 ChatMemory。
 
 1. 从 `DynamicContext` 读取 `StockSlot`。
 2. 校验 ticker 为 6 位 A 股代码或标准 `ts_code`。
-3. 将 `stockQueryType` 映射为当前请求的 `selectedAnalysts`；未指定时使用现有默认值。
+3. 使用 `AnalysisTypeMapper` 将 `stockQueryType` 映射为当前请求的 `selectedAnalysts`。
 4. 构造 `StockAnalysisRequestVO`，透传 `stockName`，并设置现有默认辩论轮次、风控轮次和
    `sessionId`。
 5. 调用 `TradingStarter.start()`。
@@ -185,6 +185,34 @@ SSE 所有权约束：
 - `TradingStarter` 已开始初始化后的 Provider 或权威身份异常继续使用现有 `trading/error`，不转换为
   路由澄清。
 - SSE 发送失败时不重复发送；控制流正常返回，由外层执行清理和关闭。
+
+## 分析类型映射
+
+删除 `TradingIntentRoutingService` 前，将其现有 `parseAnalysisType()` 逻辑提取为 Trading 模块内的
+无状态 Java 组件 `AnalysisTypeMapper`，由 `TradingRequestNode` 调用。3201 只负责输出标准分析类型，
+不直接构造 `AnalystTypeEnum` 列表。
+
+标准映射保持现有语义：
+
+| `stockQueryType` | `selectedAnalysts` |
+|---|---|
+| `ALL`、`null`、空值 | 使用 Trading 当前默认全部分析师 |
+| `FUNDAMENTAL` | `FUNDAMENTAL` |
+| `TECHNICAL` | `TECHNICAL` |
+| `SENTIMENT` | `SENTIMENT` |
+| `NEWS` | `NEWS` |
+| 逗号分隔的合法枚举码 | 对应的多个分析师 |
+
+兼容规则：
+
+- 3201 Schema、Prompt、Few-Shot 和 Validator 将 `stockQueryType` 约束为上述标准枚举码或合法的
+  逗号组合，不再输出“走势分析”等自由文本。
+- Mapper 对输入执行 `trim` 和大小写归一化。
+- 逗号组合沿用现有逻辑：忽略无法识别的项；至少存在一个合法项时使用合法子集。
+- 输入全部无法识别时沿用现有降级语义，返回默认全部分析师，并记录警告日志。
+- `TradingRequestNode` 将映射结果显式写入 `StockAnalysisRequestVO.selectedAnalysts`；不得依赖 LLM
+  直接生成 `AnalystTypeEnum`。
+- 直接 `/trading/analysis` API 的 `selectedAnalysts` 请求字段及默认行为不变。
 
 ## 6001 删除范围
 
@@ -230,6 +258,8 @@ API 保留。
 - 搜索无结果、多结果和工具异常不得生成 ticker。
 - `TradingRequestNode` 拒绝非法 ticker 和空槽位。
 - `TargetContextFactory` 同时校验 ticker 与名称；直接代码输入允许名称为空。
+- `AnalysisTypeMapper` 保持原 6001 对 `ALL`、单个类型和逗号组合的映射行为；未知值降级为当前
+  默认全部分析师。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
 - `RoutingResultHandler` 拒绝任何包含 `STOCK_ANALYSIS` 的多任务，且不调用
   `MultiTaskExecutionNode`、`TradingRequestNode` 或 `TradingStarter`。
