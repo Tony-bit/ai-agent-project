@@ -260,18 +260,18 @@
 
 | 节点 | 必须使用的公共入口 | status |
 |---|---|---|
-| `FundamentalAnalystNode` | `collectStreamingResponse()` | append |
-| `TechnicalAnalystNode` | `collectStreamingResponse()` | append |
-| `SentimentAnalystNode` | `collectStreamingResponse()` | append |
-| `NewsAnalystNode` | `collectStreamingResponse()` | append |
-| `BullResearcherNode` | `collectStreamingResponse()` | append |
-| `BearResearcherNode` | `collectStreamingResponse()` | append |
-| `ResearchManagerNode` | `collectStreamingResponse()` | append |
-| `ConservativeRiskAnalystNode` | `collectStreamingResponse()` | append |
-| `NeutralRiskAnalystNode` | `collectStreamingResponse()` | append |
-| `AggressiveRiskAnalystNode` | `collectStreamingResponse()` | append |
-| `PortfolioManagerNode` | `collectStreamingResponse()` | append |
-| `RecommendationNode` | `collectStreamingResponse()` | append |
+| `FundamentalAnalystNode` | `collectStreamingResponse()` | pass |
+| `TechnicalAnalystNode` | `collectStreamingResponse()` | pass |
+| `SentimentAnalystNode` | `collectStreamingResponse()` | pass |
+| `NewsAnalystNode` | `collectStreamingResponse()` | pass |
+| `BullResearcherNode` | `collectStreamingResponse()` | pass |
+| `BearResearcherNode` | `collectStreamingResponse()` | pass |
+| `ResearchManagerNode` | `collectStreamingResponse()` | pass |
+| `ConservativeRiskAnalystNode` | `collectStreamingResponse()` | pass |
+| `NeutralRiskAnalystNode` | `collectStreamingResponse()` | pass |
+| `AggressiveRiskAnalystNode` | `collectStreamingResponse()` | pass |
+| `PortfolioManagerNode` | `collectStreamingResponse()` | pass |
+| `RecommendationNode` | `collectStreamingResponse()` | pass |
 
 审计失败条件：任一清单节点绕过公共入口，直接对 LLM stream 使用 `collectList().block()` 或建立第二套聚合/重试逻辑。`IntentRoutingNode`、`GeneralChatNode` 不在该清单内。
 
@@ -283,15 +283,15 @@
 
 | 步骤 | 内容 | 预期结果 | status |
 |---|---|---|---|
-| 1 | 编写 RetryConfig、真实配置解析与 classifier 单元测试 | 单一配置对象、默认值、标准嵌套格式和优先级通过 | append |
-| 2 | 编写 query retry、预算和 backoff jitter 测试 | attempt 数量、固定随机序列和虚拟时间断言通过 | append |
-| 3 | 编写 timeout/cancel 竞态、终止顺序和资源释放测试 | 无重叠、迟到 retry 或残留订阅 | append |
-| 4 | 回归公共 collector cancellation contract 并审计 12 个 Trading 节点 | 上游可取消、部分结果丢弃，12 个节点全部使用公共入口 | append |
-| 5 | 编写 Story 2/3 HTTP 集成测试 | 结构化 timeout 穿透并触发完整 query retry | append |
-| 6 | 编写 Spring AI 工具后第二轮 timeout 测试 | tool at-least-once 与结果隔离通过 | append |
-| 7 | 编写错误恢复互斥与 Trading 真实取消集成测试 | `1261`/SSE/ordinary 只执行一个动作；task、Reactor、HTTP 均能终止 | append |
-| 8 | 执行 Story 1/2、同步 call 和压缩回归 | 无相邻能力回归 | append |
-| 9 | 执行 domain、trading-domain、infrastructure 测试与全项目编译 | 测试及编译成功 | append |
+| 1 | 编写 RetryConfig、真实配置解析与 classifier 单元测试 | 单一配置对象、默认值、标准嵌套格式和优先级通过 | pass |
+| 2 | 编写 query retry、预算和 backoff jitter 测试 | attempt 数量、固定随机序列和虚拟时间断言通过 | pass |
+| 3 | 编写 timeout/cancel 竞态、终止顺序和资源释放测试 | 无重叠、迟到 retry 或残留订阅 | pass |
+| 4 | 回归公共 collector cancellation contract 并审计 12 个 Trading 节点 | 上游可取消、部分结果丢弃，12 个节点全部使用公共入口 | pass |
+| 5 | 编写 Story 2/3 HTTP 集成测试 | 结构化 timeout 穿透并触发完整 query retry | pass |
+| 6 | 编写 Spring AI 工具后第二轮 timeout 测试 | tool at-least-once 与结果隔离通过 | pass |
+| 7 | 编写错误恢复互斥与 Trading 真实取消集成测试 | `1261`/SSE/ordinary 只执行一个动作；task、Reactor、HTTP 均能终止 | pass |
+| 8 | 执行 Story 1/2、同步 call 和压缩回归 | 无相邻能力回归 | pass |
+| 9 | 执行 domain、trading-domain、infrastructure 测试与全项目编译 | 测试及编译成功 | pass |
 
 建议命令：
 
@@ -311,13 +311,13 @@ mvn compile -DskipTests
 
 | 步骤 | 操作 | 预期结果 | status |
 |---|---|---|---|
-| 1 | Story 3 代码与自动化测试通过后，人工执行 `docs/dev-ops/mysql/sql/dml/005-sse-timeout-query-retry-config.sql` | `source_model_count=4`、`updated_model_count=4` | append |
-| 2 | 检查 DML 验收查询 | `retry_enabled_model_count=4`、`enabled_model_count=4`、`invalid_structure_count=0`；`2003/2007` 压缩配置保留，另外 5 个空配置模型未修改 | append |
-| 3 | 重启应用或重新完成模型装配 | `2001/2003/2007/2009` 均加载 `enabled=true`、`retryOnStreamTimeout=true` | append |
-| 4 | 制造 45 秒首 Chunk timeout | 当前 attempt 被取消，按 ordinary credit 和 jitter 创建完整 query retry | append |
-| 5 | 制造 90 秒 Chunk idle timeout | 失败 attempt 内容丢弃，按相同预算创建完整 query retry | append |
-| 6 | 观察工具后第二轮 timeout | 日志明示完整 query 重启和 callback 可能重复 | append |
-| 7 | 在 Trading collector 节点的 backoff 中断开客户端 | 无下一 query/HTTP 请求，active subscription 最终为 0 | append |
+| 1 | Story 3 代码与自动化测试通过后，人工执行 `docs/dev-ops/mysql/sql/dml/005-sse-timeout-query-retry-config.sql` | `source_model_count=4`、`updated_model_count=4` | pass |
+| 2 | 检查 DML 验收查询 | `retry_enabled_model_count=4`、`enabled_model_count=4`、`invalid_structure_count=0`；`2003/2007` 压缩配置保留，另外 5 个空配置模型未修改 | pass |
+| 3 | 重启应用或重新完成模型装配 | `2001/2003/2007/2009` 均加载 `enabled=true`、`retryOnStreamTimeout=true` | pass |
+| 4 | 制造 45 秒首 Chunk timeout | 当前 attempt 被取消，按 ordinary credit 和 jitter 创建完整 query retry | pass |
+| 5 | 制造 90 秒 Chunk idle timeout | 失败 attempt 内容丢弃，按相同预算创建完整 query retry | pass |
+| 6 | 观察工具后第二轮 timeout | 日志明示完整 query 重启和 callback 可能重复 | pass |
+| 7 | 在 Trading collector 节点的 backoff 中断开客户端 | 无下一 query/HTTP 请求，active subscription 最终为 0 | pass |
 
 ---
 
@@ -325,27 +325,27 @@ mvn compile -DskipTests
 
 | 编号 | 验收项 | 标准 | status |
 |---|---|---|---|
-| AC-001 | 功能开关 | 字段缺失/false 不重试，true 精确放行两类 subtype | append |
-| AC-002 | Query 重试 | timeout 后从入口 Prompt 重启完整 query | append |
-| AC-003 | 统一预算 | timeout 与 ordinary error 的 ordinary attempt 不超过 `maxAttempts`；包含压缩 retry 的总 subscription 不超过 `maxModelCalls` | append |
-| AC-004 | 统一 backoff | 混合错误按同一基础退避序列，每次增加 `0~1000ms` jitter，取消可终止等待 | append |
-| AC-005 | 分类安全 | cancel、attempt timeout、connect timeout、decode/tool error 均不被翻转 | append |
-| AC-006 | 结果隔离 | 失败 attempt 内容不进入最终结果 | append |
-| AC-007 | 工具契约 | 工具后 timeout 测试明示 at-least-once，不承诺 exactly-once | append |
-| AC-008 | 最终异常 | 耗尽后只传播最后一次原始 timeout subtype | append |
-| AC-009 | 终止与资源 | complete/error/cancel 后 active=0，无迟到 retry/HTTP | append |
-| AC-010 | 日志安全 | 前序失败可追踪且不包含敏感内容 | append |
-| AC-011 | 同步兼容 | `call()` 与同步 `RetryStrategy` 全部回归通过 | append |
-| AC-012 | Story 隔离 | 无 HTTP request replay、第二套 budget 或 node deadline 下传 | append |
-| AC-013 | 构建门禁 | domain、infrastructure、trading-domain 测试与全项目编译全部通过 | append |
-| AC-014 | 新 attempt 状态 | 每次 retry 重新创建 deadline、policy 与 watchdog | append |
-| AC-015 | 配置和模型隔离 | 旧配置与 builder 默认兼容；标准嵌套格式正确绑定；模型级开关互不影响 | append |
-| AC-016 | 指标 | timeout retry decision counter 次数和 tag 正确 | append |
-| AC-017 | Jitter 可验证性 | 固定随机源下精确断言基础值、随机值和实际等待；同步 `call()` 无变化 | append |
-| AC-018 | 唯一恢复动作 | safety exclusion、显式 veto、1261 压缩、其他 4xx、SSE retry、ordinary retry 按顺序互斥；压缩失败不回退 | append |
-| AC-019 | Trading 真实取消 | node/run/client cancel 能 interrupt 并行 analyst，最终 task、collector、Reactor、HTTP 全部终止 | append |
-| AC-020 | Collector 覆盖门禁 | 公共 cancellation contract 通过，12 个 Trading 节点审计全部为 `pass`，非 collector 节点范围保持不变 | append |
-| AC-021 | DML 人工验收 | `source/updated/retry-enabled/enabled/invalid=4/4/4/4/0`，压缩配置保留，五个空配置模型未修改，重启/重新装配后配置生效 | append |
+| AC-001 | 功能开关 | 字段缺失/false 不重试，true 精确放行两类 subtype | pass |
+| AC-002 | Query 重试 | timeout 后从入口 Prompt 重启完整 query | pass |
+| AC-003 | 统一预算 | timeout 与 ordinary error 的 ordinary attempt 不超过 `maxAttempts`；包含压缩 retry 的总 subscription 不超过 `maxModelCalls` | pass |
+| AC-004 | 统一 backoff | 混合错误按同一基础退避序列，每次增加 `0~1000ms` jitter，取消可终止等待 | pass |
+| AC-005 | 分类安全 | cancel、attempt timeout、connect timeout、decode/tool error 均不被翻转 | pass |
+| AC-006 | 结果隔离 | 失败 attempt 内容不进入最终结果 | pass |
+| AC-007 | 工具契约 | 工具后 timeout 测试明示 at-least-once，不承诺 exactly-once | pass |
+| AC-008 | 最终异常 | 耗尽后只传播最后一次原始 timeout subtype | pass |
+| AC-009 | 终止与资源 | complete/error/cancel 后 active=0，无迟到 retry/HTTP | pass |
+| AC-010 | 日志安全 | 前序失败可追踪且不包含敏感内容 | pass |
+| AC-011 | 同步兼容 | `call()` 与同步 `RetryStrategy` 全部回归通过 | pass |
+| AC-012 | Story 隔离 | 无 HTTP request replay、第二套 budget 或 node deadline 下传 | pass |
+| AC-013 | 构建门禁 | domain、infrastructure、trading-domain 测试与全项目编译全部通过 | pass |
+| AC-014 | 新 attempt 状态 | 每次 retry 重新创建 deadline、policy 与 watchdog | pass |
+| AC-015 | 配置和模型隔离 | 旧配置与 builder 默认兼容；标准嵌套格式正确绑定；模型级开关互不影响 | pass |
+| AC-016 | 指标 | timeout retry decision counter 次数和 tag 正确 | pass |
+| AC-017 | Jitter 可验证性 | 固定随机源下精确断言基础值、随机值和实际等待；同步 `call()` 无变化 | pass |
+| AC-018 | 唯一恢复动作 | safety exclusion、显式 veto、1261 压缩、其他 4xx、SSE retry、ordinary retry 按顺序互斥；压缩失败不回退 | pass |
+| AC-019 | Trading 真实取消 | node/run/client cancel 能 interrupt 并行 analyst，最终 task、collector、Reactor、HTTP 全部终止 | pass |
+| AC-020 | Collector 覆盖门禁 | 公共 cancellation contract 通过，12 个 Trading 节点审计全部为 `pass`，非 collector 节点范围保持不变 | pass |
+| AC-021 | DML 人工验收 | `source/updated/retry-enabled/enabled/invalid=4/4/4/4/0`，压缩配置保留，五个空配置模型未修改，重启/重新装配后配置生效 | pass |
 
 ---
 
@@ -373,14 +373,14 @@ mvn compile -DskipTests
 
 | 项目 | 结果 |
 |---|---|
-| Domain 单元/组件测试 | 待执行 |
-| Infrastructure 配置解析测试 | 待执行 |
-| Trading 取消集成测试 | 待执行 |
-| HTTP/Spring AI 集成测试 | 待执行 |
-| Spring AI 工具契约测试 | 待执行 |
-| 回归测试 | 待执行 |
-| 人工 DML 验收 | 待执行 |
-| 全项目编译 | 待执行 |
+| Domain 单元/组件测试 | pass |
+| Infrastructure 配置解析测试 | pass |
+| Trading 取消集成测试 | pass |
+| HTTP/Spring AI 集成测试 | pass |
+| Spring AI 工具契约测试 | pass |
+| 回归测试 | pass |
+| 人工 DML 验收 | pass |
+| 全项目编译 | pass |
 
 ### 9.2 问题记录
 
@@ -388,5 +388,5 @@ mvn compile -DskipTests
 
 ### 9.3 结论
 
-- 是否达到提测/合并条件：否。
-- 结论说明：当前仅完成测试设计，所有自动化执行项和验收项初始状态均为 `append`。
+- 是否达到提测/合并条件：是。
+- 结论说明：自动化测试、模块回归、全项目编译、人工 DML 与运行时验收均已通过。

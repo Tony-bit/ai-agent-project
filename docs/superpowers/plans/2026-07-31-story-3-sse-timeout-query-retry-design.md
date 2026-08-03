@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：实现与自动化回归已完成，等待人工 DML 与运行时验收。
+- 状态：实现、自动化回归、人工 DML 与运行时验收均已完成。
 - 日期：2026-07-31。
 - 前置 Story：`docs/superpowers/plans/2026-07-30-story-1-stream-http-attempt-retry.md`。
 - 前置 Story：`docs/superpowers/plans/2026-07-30-story-2-sse-chunk-timeout-design.md`。
@@ -430,27 +430,27 @@ llm_stream_timeout_retry_decisions_total
 
 ## 16. 验收标准
 
-| 编号 | 验收项 | 标准 |
-|---|---|---|
-| AC-001 | 功能开关 | 默认关闭；开启后只有两类 SSE timeout 获得 retry |
-| AC-002 | Query 粒度 | 每次 timeout retry 都从当前 `state.currentPrompt` 重启完整 query，保留已完成的压缩状态 |
-| AC-003 | 统一预算 | SSE timeout 与普通错误的 ordinary attempt 不超过 `maxAttempts`；包含压缩 retry 的总 subscription 不超过 `maxModelCalls` |
-| AC-004 | 统一 backoff | stream 普通错误与 timeout 复用基础退避并分别增加 `0~1000ms` jitter，混合错误不重置 |
-| AC-005 | 分类优先级 | cancel、attempt timeout 和其他 hard exclusion 不被 Story 3 翻转 |
-| AC-006 | 结果隔离 | 失败 timeout attempt 的任何内容都不进入最终结果 |
-| AC-007 | 工具语义 | 工具后第二轮 timeout 允许完整 query 重启，测试明示 at-least-once |
-| AC-008 | 最终异常 | 耗尽后传播最后一次原始 timeout subtype |
-| AC-009 | 取消传播 | active attempt 或 backoff 被取消后无下一订阅和迟到 HTTP |
-| AC-010 | 资源顺序 | 前一 attempt 终止清理后才启动下一 attempt |
-| AC-011 | 日志留痕 | 每次失败有结构化元数据，无 Prompt/正文/tool 参数 |
-| AC-012 | 同步兼容 | `call()`、同步 retry 与压缩语义不变 |
-| AC-013 | Story 隔离 | 无 HTTP request replay、第二套 retry owner 或 deadline 下传 |
-| AC-014 | 配置兼容 | 旧字段缺失和旧 builder 默认关闭；标准嵌套 JSON 正确绑定；同步 `call()` 不受新字段与 stream jitter 影响 |
-| AC-015 | 指标 | 每个 timeout decision 恰好增加一次低基数计数 |
-| AC-016 | 唯一恢复动作 | safety exclusion、显式 veto、1261 压缩、其他 4xx、SSE retry、ordinary retry 按顺序互斥；一个错误只执行一个动作 |
-| AC-017 | Trading 真实取消 | 并行 analyst 使用可中断 `Future`；node/run/client cancel 后 task、Reactor 与 HTTP 均终止 |
-| AC-018 | Collector 覆盖门禁 | 公共 cancellation contract 通过；并行 analyst 集成通过；12 个 Trading 节点清单继续使用公共 collector |
-| AC-019 | DML 人工验收 | 四个目标模型全部转换并开启，预检/更新/启用/结构计数符合约定，压缩配置保留，五个空配置模型未修改，重启/重新装配后生效 |
+| 编号 | 验收项 | 标准 | status |
+|---|---|---|---|
+| AC-001 | 功能开关 | 默认关闭；开启后只有两类 SSE timeout 获得 retry | pass |
+| AC-002 | Query 粒度 | 每次 timeout retry 都从当前 `state.currentPrompt` 重启完整 query，保留已完成的压缩状态 | pass |
+| AC-003 | 统一预算 | SSE timeout 与普通错误的 ordinary attempt 不超过 `maxAttempts`；包含压缩 retry 的总 subscription 不超过 `maxModelCalls` | pass |
+| AC-004 | 统一 backoff | stream 普通错误与 timeout 复用基础退避并分别增加 `0~1000ms` jitter，混合错误不重置 | pass |
+| AC-005 | 分类优先级 | cancel、attempt timeout 和其他 hard exclusion 不被 Story 3 翻转 | pass |
+| AC-006 | 结果隔离 | 失败 timeout attempt 的任何内容都不进入最终结果 | pass |
+| AC-007 | 工具语义 | 工具后第二轮 timeout 允许完整 query 重启，测试明示 at-least-once | pass |
+| AC-008 | 最终异常 | 耗尽后传播最后一次原始 timeout subtype | pass |
+| AC-009 | 取消传播 | active attempt 或 backoff 被取消后无下一订阅和迟到 HTTP | pass |
+| AC-010 | 资源顺序 | 前一 attempt 终止清理后才启动下一 attempt | pass |
+| AC-011 | 日志留痕 | 每次失败有结构化元数据，无 Prompt/正文/tool 参数 | pass |
+| AC-012 | 同步兼容 | `call()`、同步 retry 与压缩语义不变 | pass |
+| AC-013 | Story 隔离 | 无 HTTP request replay、第二套 retry owner 或 deadline 下传 | pass |
+| AC-014 | 配置兼容 | 旧字段缺失和旧 builder 默认关闭；标准嵌套 JSON 正确绑定；同步 `call()` 不受新字段与 stream jitter 影响 | pass |
+| AC-015 | 指标 | 每个 timeout decision 恰好增加一次低基数计数 | pass |
+| AC-016 | 唯一恢复动作 | safety exclusion、显式 veto、1261 压缩、其他 4xx、SSE retry、ordinary retry 按顺序互斥；一个错误只执行一个动作 | pass |
+| AC-017 | Trading 真实取消 | 并行 analyst 使用可中断 `Future`；node/run/client cancel 后 task、Reactor 与 HTTP 均终止 | pass |
+| AC-018 | Collector 覆盖门禁 | 公共 cancellation contract 通过；并行 analyst 集成通过；12 个 Trading 节点清单继续使用公共 collector | pass |
+| AC-019 | DML 人工验收 | 四个目标模型全部转换并开启，预检/更新/启用/结构计数符合约定，压缩配置保留，五个空配置模型未修改，重启/重新装配后生效 | pass |
 
 ## 17. 风险记录
 
@@ -1124,7 +1124,7 @@ git commit -m "test: guard cancellable trading collector coverage"
 
 | 任务 | status |
 |---|---|
-| 任务 9：人工执行 DML 并完成运行时验收 | append |
+| 任务 9：人工执行 DML 并完成运行时验收 | pass |
 
 **文件：**
 
