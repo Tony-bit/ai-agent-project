@@ -94,9 +94,42 @@ StockSlot
 
 ## 工具边界
 
-Intent Routing 请求只允许使用完成路由所需的 `read_skill` 和 `search_stock_by_name`。即使 3201
-ChatClient 在全局注册了其他 Trading Tools，本次路由调用也不得调用 `get_stock_info`、行情、新闻、
-技术指标或基本面工具。这样可以防止意图识别再次演变为完整股票分析。
+Trading Tools 使用构建期白名单管理，配置模型为 `Map<String, List<String>>`：key 是
+`clientId`，value 是该 Client 允许装配的 Trading Tool 名称。该白名单只管理 Trading
+Skills/Spring Trading ToolCallbacks，不影响 MCP、会话记忆、`search_episodic_memory` 或其他通用
+能力。
+
+```yaml
+spring:
+  ai:
+    trading:
+      tools:
+        allowed-by-client:
+          "3201":
+            - read_skill
+            - search_stock_by_name
+          "6002":
+            - get_stock_info
+            - get_historical_bars
+            - get_fundamental_data
+            - get_technical_indicators
+            - get_sentiment
+            - get_stock_news
+```
+
+装配规则：
+
+- Map 中没有 Client 时，默认不装配任何 Trading Tool。
+- Client 显式配置空列表时，禁止其使用全部 Trading Tool。
+- 配置绑定后转换为不可变 `Set` 去重，再与可用 Trading ToolCallbacks 求交集。
+- 配置包含不存在的 Trading Tool 名称时启动失败，避免拼写错误静默降级。
+- `6001` 不出现在 Map 中。
+- `3201` 最终只装配 `read_skill` 和 `search_stock_by_name`。
+- `6002-6013` 必须逐项迁移当前实际工具集合，保证分析节点能力不变。
+- 启动日志输出每个 Client 最终装配的 Trading Tool 集合。
+
+白名单在构建 `ChatClient` 时完成物理隔离，不依赖 Prompt。3201 不得获得 `get_stock_info`、行情、
+新闻、技术指标或基本面工具，从装配层防止意图识别演变为完整股票分析。
 
 `get_stock_info` Tool 返回的是给 LLM 使用的文本，不是正式 `TradingContext.stockInfo` 来源。
 正式 `StockInfoVO` 仍由 `TradingStarter.populateStockInfo()` 获取和写入。
@@ -160,5 +193,8 @@ API 保留。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。
+- 3201 的最终 Trading Tool 集合严格等于 `read_skill + search_stock_by_name`。
+- 未配置 Client 和空列表 Client 均不装配 Trading Tool；未知工具名导致启动失败。
+- 6002-6013 的最终 Trading Tool 集合与改造前一致。
 - `TradingStarter.populateStockInfo()` 仍调用一次 Provider 并写入 `TradingContext.stockInfo`。
 - GENERAL_CHAT、PE、巡检、现有 analysisDepth、直接 Trading API 和 6002-6013 回归通过。

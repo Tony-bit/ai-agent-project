@@ -83,7 +83,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 |------|----------|
 | 3201 Prompt | 合并完整股票名称精确解析规则，禁止生成 ticker 和执行完整分析 |
 | 3201 Schema | 增加 `stockName`、`stockMention` 并更新 Validator、Few-Shot 和评测契约 |
-| 工具边界 | 路由请求仅允许 `read_skill` 与 `search_stock_by_name` |
+| 工具边界 | 新增 `Map<String, List<String>> allowedToolsByClient`，只对白名单内 Client 装配指定 Trading Tools |
 | Java 下游 | 新增无状态 `TradingRequestNode`，校验槽位并构造 `StockAnalysisRequestVO` |
 | 路由 | `RoutingResultHandler` 从 `tradingIntentRoutingNode` 改为 `tradingRequestNode` |
 | 6001 | 删除节点、Prompt、Service、ChatMemory、配置、数据库关系和专属测试 |
@@ -106,6 +106,11 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-010 | 工具隔离 | 3201 路由期间不调用 `get_stock_info` 或分析类工具 |
 | AC-011 | 其他路由 | GENERAL_CHAT、PE、巡检和 analysisDepth 行为不变 |
 | AC-012 | 外部兼容 | 直接 Trading API 和 6002-6013 行为不变 |
+| AC-013 | 默认拒绝 | Map 中缺少 Client 或配置空列表时不装配任何 Trading Tool |
+| AC-014 | 配置校验 | 配置不存在的 Trading Tool 名称时应用启动失败 |
+| AC-015 | 3201 工具集合 | 3201 最终 Trading Tool 集合严格等于 `read_skill` 和 `search_stock_by_name` |
+| AC-016 | 分析节点兼容 | 6002-6013 的 Trading Tool 集合与改造前一致 |
+| AC-017 | 非 Trading 能力 | MCP、会话记忆和通用工具装配不受白名单影响 |
 
 ## 9. 测试场景
 
@@ -114,6 +119,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - LLM 返回候选外 ticker、名称不一致或非法代码。
 - 药明康德完成后，经过现有 analysisDepth 澄清再分析兆易创新。
 - 6001 Bean、Client 配置、Skills 白名单和 ChatMemory Key 不再存在。
+- 验证缺失 Client、空列表、重复工具名和未知工具名配置。
+- 验证 3201 无法调用行情、新闻、技术指标、基本面和 `get_stock_info`。
+- 验证 6002-6013 工具集合兼容，MCP 与通用工具集合不变。
 - Trading 初始化仍获取并复用 `StockInfoVO`。
 - 非股票路由和直接入口完整回归。
 
@@ -122,7 +130,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Task | 内容 | 状态 |
 |------|------|------|
 | Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
-| Task 2 | 为 3201 路由调用限制 Tool allowlist | pending |
+| Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
 | Task 3 | 实现 `TradingRequestNode` 和请求构造映射 | pending |
 | Task 4 | 切换 `RoutingResultHandler` 下游 Bean | pending |
 | Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
