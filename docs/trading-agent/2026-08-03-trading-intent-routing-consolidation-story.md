@@ -39,7 +39,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 不实现股票分析多任务执行；包含 `STOCK_ANALYSIS` 的多任务整轮拒绝，后续 Story 再兼容。
 - 不改普通多任务、直接 Trading API 或其他 Agent 路由。
 - 不兼容实验性 `SPLIT` 路由的股票分析；本 Story 仅支持并验收 `UNIFIED` 模式。
-- 不实现请求去重、幂等键或历史 Trading 结论复用；重复请求始终重新分析。
+- 不实现请求去重或幂等键；重复请求创建新 Trading run，但保留现有通用会话与共享数据复用。
 
 ## 5. 验收流程
 
@@ -107,7 +107,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
 | 路由模式 | 仅改造并验收 `UNIFIED`；`SPLIT` 保留为非生产对比实验 |
-| 重复执行 | 每个前端请求创建独立 run；相同股票和 Query 也不复用历史结论 |
+| 重复执行 | 每个前端请求创建独立 Trading run；通用会话历史和共享原始数据缓存继续复用 |
 
 ## 8. 验收标准
 
@@ -151,7 +151,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-036 | 旧槽位兼容 | 旧请求携带 `exchange` 时可正常反序列化，但该值不参与执行 |
 | AC-037 | 展示字段兼容 | `StockInfoVO.exchange` 和 `StockSearchResultVO.exchange` 行为不变 |
 | AC-038 | 重复分析 | 相同 session、Query 和股票连续请求两次时完整执行两次并产生不同 runId |
-| AC-039 | 无结论复用 | 第二次请求不读取或返回第一次 Trading run 的最终结论 |
+| AC-039 | Trading 隔离 | 新 run 不注入上一 run 的 Trading ChatMemory、中间结果或最终决策 |
+| AC-040 | 会话复用 | 3201 和 GENERAL_CHAT 继续读取同一 session 的主会话历史 |
+| AC-041 | 数据缓存兼容 | 现有与 run 无关的股票原始数据缓存 Key 和复用行为不变 |
 
 ## 9. 测试场景
 
@@ -171,6 +173,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 药明康德完成后，经过现有 analysisDepth 澄清再分析兆易创新。
 - 同一 session 连续两次提交完全相同的药明康德分析请求，两次 pipeline 均执行且 runId 不同。
 - 前端重复提交被视为两个独立请求，不增加请求 ID、幂等锁或历史结论缓存。
+- 第二次 Trading run 不读取第一次 run 的角色 ChatMemory、中间报告和最终决策。
+- Trading 完成后发起“刚才为什么建议持有”等通用追问，3201/GENERAL_CHAT 可从主会话历史理解上文。
+- 两次 run 对相同股票数据的读取仍可命中现有共享原始数据缓存，不把 runId 加入该缓存 Key。
 - 股票分析与通用问答、PE 或巡检组成多任务时整轮拒绝，所有子任务均未执行。
 - 两个及以上股票分析组成多任务时整轮拒绝，不创建任何 runId。
 - 不包含股票分析的现有多任务正常执行和汇总。
