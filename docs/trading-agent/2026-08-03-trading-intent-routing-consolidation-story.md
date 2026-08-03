@@ -39,6 +39,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 不实现股票分析多任务执行；包含 `STOCK_ANALYSIS` 的多任务整轮拒绝，后续 Story 再兼容。
 - 不改普通多任务、直接 Trading API 或其他 Agent 路由。
 - 不兼容实验性 `SPLIT` 路由的股票分析；本 Story 仅支持并验收 `UNIFIED` 模式。
+- 不实现请求去重、幂等键或历史 Trading 结论复用；重复请求始终重新分析。
 
 ## 5. 验收流程
 
@@ -106,6 +107,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
 | 路由模式 | 仅改造并验收 `UNIFIED`；`SPLIT` 保留为非生产对比实验 |
+| 重复执行 | 每个前端请求创建独立 run；相同股票和 Query 也不复用历史结论 |
 
 ## 8. 验收标准
 
@@ -148,6 +150,8 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-035 | 唯一代码来源 | `stockCode` 冲突时忽略 `StockSlot.exchange`，最终以权威 `targetId` 为准 |
 | AC-036 | 旧槽位兼容 | 旧请求携带 `exchange` 时可正常反序列化，但该值不参与执行 |
 | AC-037 | 展示字段兼容 | `StockInfoVO.exchange` 和 `StockSearchResultVO.exchange` 行为不变 |
+| AC-038 | 重复分析 | 相同 session、Query 和股票连续请求两次时完整执行两次并产生不同 runId |
+| AC-039 | 无结论复用 | 第二次请求不读取或返回第一次 Trading run 的最终结论 |
 
 ## 9. 测试场景
 
@@ -165,6 +169,8 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - Provider 或数据完整性错误只发送一个已完成的 `error` 事件，不追加 `clarification` 或 `complete`。
 - 成功预检后 `TradingStarter` 使用传入的同一 `TargetContext`，不重复调用身份 Provider。
 - 药明康德完成后，经过现有 analysisDepth 澄清再分析兆易创新。
+- 同一 session 连续两次提交完全相同的药明康德分析请求，两次 pipeline 均执行且 runId 不同。
+- 前端重复提交被视为两个独立请求，不增加请求 ID、幂等锁或历史结论缓存。
 - 股票分析与通用问答、PE 或巡检组成多任务时整轮拒绝，所有子任务均未执行。
 - 两个及以上股票分析组成多任务时整轮拒绝，不创建任何 runId。
 - 不包含股票分析的现有多任务正常执行和汇总。

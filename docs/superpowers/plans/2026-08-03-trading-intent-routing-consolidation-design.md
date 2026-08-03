@@ -38,6 +38,7 @@
 - 不修改现有 `analysisDepth` 澄清规则。
 - 不执行包含 `STOCK_ANALYSIS` 的多任务；后续 Story 再实现股票分析子任务的统一校验和执行。
 - 不兼容实验性 `SPLIT` 路由的股票分析；本 Story 只以生产使用的 `UNIFIED` 路由为实施与验收范围。
+- 不实现请求幂等键、前端重复提交去重或历史分析结论复用。
 - 不改变独立 `/trading/analysis` API。
 
 上述能力由后续“A股股票名称补全”Story 单独处理。
@@ -337,6 +338,10 @@ WHERE client_id = '6001';
 - 主会话历史继续按 `sessionId` 提供给 3201。
 - AutoAgent 每次通过权威校验后创建新 runId 和 `TargetContext`，再进入 `TradingStarter`；不复用上一
   Trading run。
+- 每个到达 AutoAgent 的前端请求都视为一次独立执行；即使 `sessionId`、Query 和股票完全相同，
+  也重新执行分析并生成不同 runId。系统不根据股票代码、时间窗口或历史结论进行短路。
+- 同一请求产生独立 `DynamicContext`；同一 `DynamicContext` 内部节点异常重入属于框架缺陷，不在本
+  Story 中增加业务幂等状态机。
 - `TradingStarter.populateStockInfo()` 和 `TradingContext.stockInfo` 保持现状。
 - 不包含 `STOCK_ANALYSIS` 的多任务链路保持现状。
 - `multiTask=true` 且任一子任务为 `STOCK_ANALYSIS` 时，`RoutingResultHandler` 在执行任何子任务前
@@ -365,6 +370,8 @@ WHERE client_id = '6001';
 - 权威查询空结果产生澄清事件；Provider 异常和非法权威数据产生错误事件，三者都不调用
   `TradingStarter`、不执行 pipeline。
 - AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。
+- 连续提交两个完全相同的股票分析请求时，两次均完整执行并产生不同 runId；第二次不复用第一次
+  结论。
 - 直接 Trading API 仍由原入口创建 `TargetContext`，行为保持不变。
 - `UNIFIED` 模式覆盖全部 Story 验收；不将 `SPLIT` 股票分析纳入回归门禁。
 - `V2030` 在既有数据库和从零执行全部迁移的数据库上均只删除 Trading Client 6001；
