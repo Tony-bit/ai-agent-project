@@ -52,10 +52,10 @@ Query + session history
        -> require a unique result
        -> fill StockSlot with stockName and canonical stockCode
   -> RoutingResultHandler
-       -> multiTask 包含 STOCK_ANALYSIS：拒绝整轮请求并提示单独发起股票分析
+       -> multiTask 包含 STOCK_ANALYSIS：登记 routingTerminalResponse 后返回
        -> STOCK_ANALYSIS: resolve tradingRequestNode
   -> TradingRequestNode (plain Java, no LLM, no ChatMemory)
-       -> validate slot completeness and ticker format
+       -> 校验失败：登记 routingTerminalResponse 后返回
        -> map current-query analysis slots
        -> build StockAnalysisRequestVO
        -> call TradingStarter
@@ -63,6 +63,8 @@ Query + session history
        -> create TargetContext and runId
        -> populateStockInfo via IStockDataProvider.getStockInfo()
        -> execute Trading pipeline
+  -> 控制流返回 IntentRouteNode
+       -> routingTerminalResponse 存在：统一发送 clarification + complete 业务事件
 ```
 
 ## 3201 股票槽位契约
@@ -156,7 +158,33 @@ LLM，不读取主会话历史，也不维护 ChatMemory。
 - 代码输入场景允许请求 `stockName` 为空，名称以权威记录为准。
 - 校验通过后才创建 `runId` 和 `TargetContext`；失败则按 Trading 初始化失败处理。
 
-校验失败时通过现有意图澄清 SSE 返回前端，并写入 Root 可持久化的最终回复字段；本轮停止。
+`TradingRequestNode` 槽位校验失败时通过现有意图澄清 SSE 返回前端，并写入 Root 可持久化的最终
+回复字段；本轮停止。
+
+## 路由终止响应与 SSE 所有权
+
+`TradingRequestNode` 和 `RoutingResultHandler` 不直接发送或关闭 SSE。需要在 Trading 启动前终止
+本轮时，生产方执行以下动作：
+
+1. 将用户可见文本写入 `DynamicContext.routingTerminalResponse`。
+2. 将同一文本写入现有 `DynamicContext.clarificationPrompt`，供 `RootNode` 持久化为本轮助手回复。
+3. 返回该文本并停止进入后续执行节点。
+
+控制流返回 `IntentRoutingNode` 后，由它检查 `routingTerminalResponse`，并复用现有澄清协议依次发送：
+
+```text
+type=summary, subType=clarification, content=<routingTerminalResponse>
+type=complete
+```
+
+SSE 所有权约束：
+
+- `IntentRoutingNode` 只发送业务事件，不调用 `ResponseBodyEmitter.complete()`。
+- `AutoAgentExecuteStrategy` 是 AutoAgent 请求中唯一负责物理关闭 emitter 的所有者。
+- 每轮最多发送一次路由终止响应和一次 `complete` 业务事件。
+- `TradingStarter` 已开始初始化后的 Provider 或权威身份异常继续使用现有 `trading/error`，不转换为
+  路由澄清。
+- SSE 发送失败时不重复发送；控制流正常返回，由外层执行清理和关闭。
 
 ## 6001 删除范围
 
@@ -205,6 +233,10 @@ API 保留。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
 - `RoutingResultHandler` 拒绝任何包含 `STOCK_ANALYSIS` 的多任务，且不调用
   `MultiTaskExecutionNode`、`TradingRequestNode` 或 `TradingStarter`。
+- `TradingRequestNode` 校验失败和股票多任务门禁都登记 `routingTerminalResponse`，最终由
+  `IntentRoutingNode` 各发送一次 `clarification` 和 `complete` 业务事件。
+- 路由终止响应写入 `clarificationPrompt` 并由 `RootNode` 持久化；`AutoAgentExecuteStrategy` 只关闭
+  一次 emitter。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。
 - 3201 的最终 Trading Tool 集合严格等于 `read_skill + search_stock_by_name`。

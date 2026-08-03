@@ -58,6 +58,8 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 用户：分析药明康德的投资价值，同时总结今天的科技新闻
   -> 3201 输出 multiTask=true，任务列表包含 STOCK_ANALYSIS
   -> RoutingResultHandler 拒绝整轮任务
+  -> 登记 routingTerminalResponse 和 clarificationPrompt
+  -> IntentRoutingNode 发送 clarification + complete 业务事件
   -> 返回“股票分析暂不支持与其他任务同时执行，请单独发起股票分析”
   -> 不执行任何子任务，不创建 runId
 ```
@@ -90,6 +92,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Java 下游 | 新增无状态 `TradingRequestNode`，校验槽位并将 `stockName` 写入 `StockAnalysisRequestVO` |
 | 路由 | `RoutingResultHandler` 从 `tradingIntentRoutingNode` 改为 `tradingRequestNode` |
 | 多任务门禁 | 多任务包含 `STOCK_ANALYSIS` 时整轮拒绝；普通多任务保持原行为 |
+| SSE 所有权 | 下游登记终止响应，`IntentRoutingNode` 发送业务事件，`AutoAgentExecuteStrategy` 关闭 emitter |
 | 6001 | 删除节点、Prompt、Service、ChatMemory、配置、数据库关系和专属测试 |
 | Trading | `TargetContextFactory` 增加权威名称校验；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
@@ -117,6 +120,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-017 | 非 Trading 能力 | MCP、会话记忆和通用工具装配不受白名单影响 |
 | AC-018 | 多任务门禁 | 包含 `STOCK_ANALYSIS` 的多任务不执行任何子任务，也不创建 Trading run |
 | AC-019 | 普通多任务 | 不包含 `STOCK_ANALYSIS` 的多任务行为保持不变 |
+| AC-020 | 终止响应 | 槽位失败和多任务门禁均登记 `routingTerminalResponse` 与 `clarificationPrompt` |
+| AC-021 | SSE 单一所有者 | `IntentRoutingNode` 各发送一次澄清和完成事件，外层只关闭一次 emitter |
+| AC-022 | 会话持久化 | 路由终止文本作为本轮助手回复持久化，可供下一轮会话读取 |
 
 ## 9. 测试场景
 
@@ -128,6 +134,10 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 股票分析与通用问答、PE 或巡检组成多任务时整轮拒绝，所有子任务均未执行。
 - 两个及以上股票分析组成多任务时整轮拒绝，不创建任何 runId。
 - 不包含股票分析的现有多任务正常执行和汇总。
+- 非法或空股票槽位发送一次 `summary/clarification` 和一次 `complete`，不调用 `TradingStarter`。
+- 股票多任务门禁发送一次相同协议的终止事件，不执行任何子任务。
+- SSE 发送失败或客户端断开时不重发，外层清理流程正常结束。
+- 路由终止响应写入会话记录，下一轮能够从历史读取。
 - 6001 Bean、Client 配置、Skills 白名单和 ChatMemory Key 不再存在。
 - 验证缺失 Client、空列表、重复工具名和未知工具名配置。
 - 验证 3201 无法调用行情、新闻、技术指标、基本面和 `get_stock_info`。
@@ -142,7 +152,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
 | Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
 | Task 3 | 实现 `TradingRequestNode`、请求构造映射及 `TargetContextFactory` 名称校验 | pending |
-| Task 4 | 切换 `RoutingResultHandler` 下游 Bean，并增加股票分析多任务门禁 | pending |
+| Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pending |
 | Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
 | Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |
 | Task 7 | 验证 GENERAL_CHAT、PE、巡检、直接 Trading API 和分析节点回归 | pending |
