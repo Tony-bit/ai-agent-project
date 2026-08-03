@@ -38,6 +38,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 不改 `getStockInfo()` 调用位置。
 - 不实现股票分析多任务执行；包含 `STOCK_ANALYSIS` 的多任务整轮拒绝，后续 Story 再兼容。
 - 不改普通多任务、直接 Trading API 或其他 Agent 路由。
+- 不兼容实验性 `SPLIT` 路由的股票分析；本 Story 仅支持并验收 `UNIFIED` 模式。
 
 ## 5. 验收流程
 
@@ -100,6 +101,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | 身份预检 | `TradingRequestNode` 调用 `TargetContextFactory`，失败时不进入 Trading |
 | Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
+| 路由模式 | 仅改造并验收 `UNIFIED`；`SPLIT` 保留为非生产对比实验 |
 
 ## 8. 验收标准
 
@@ -138,6 +140,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-031 | 精确删除 | 仅删除 Client 6001 的 Flow、类型化关系和 Client 主记录 |
 | AC-032 | Prompt 兼容 | `prompt_id=6001` 及 `client 3001 -> prompt 6001` 关系保持不变 |
 | AC-033 | 共享资源 | 6001 引用过的 model、advisor、prompt、tool 和历史记录不被删除 |
+| AC-034 | 路由模式 | `UNIFIED` 通过全部验收；`SPLIT` 股票分析不作为兼容或发布门禁 |
 
 ## 9. 测试场景
 
@@ -173,6 +176,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 验证 6002-6013 工具集合兼容，MCP 与通用工具集合不变。
 - Trading 初始化仍获取并复用 `StockInfoVO`。
 - 非股票路由和直接入口完整回归。
+- 所有股票分析验收在 `intent.routing.mode=UNIFIED` 下执行，不增加 `SPLIT` 专属股票回归用例。
 
 ## 10. 实施任务
 

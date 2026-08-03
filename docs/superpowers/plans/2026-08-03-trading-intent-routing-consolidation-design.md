@@ -37,6 +37,7 @@
 - 不改变 `StockInfoVO` 获取与缓存策略。
 - 不修改现有 `analysisDepth` 澄清规则。
 - 不执行包含 `STOCK_ANALYSIS` 的多任务；后续 Story 再实现股票分析子任务的统一校验和执行。
+- 不兼容实验性 `SPLIT` 路由的股票分析；本 Story 只以生产使用的 `UNIFIED` 路由为实施与验收范围。
 - 不改变独立 `/trading/analysis` API。
 
 上述能力由后续“A股股票名称补全”Story 单独处理。
@@ -304,6 +305,9 @@ WHERE client_id = '6001';
 
 ## 兼容行为
 
+- `intent.routing.mode=UNIFIED` 是本 Story 唯一受支持的股票分析入口。
+- `SPLIT` 仅用于对比实验：保留现有实验代码，但不更新其专属分解/切槽 Prompt、Schema 和评测集，
+  也不承诺其 `STOCK_ANALYSIS` 在本 Story 后可执行。实验环境不得用于验收本 Story。
 - `GENERAL_CHAT`、PE、巡检和其他意图的 3201 路由行为不变。
 - 现有 `analysisDepth` 澄清先于可执行 `STOCK_ANALYSIS`；用户回答后继续使用合并后的原始股票名。
 - 主会话历史继续按 `sessionId` 提供给 3201。
@@ -336,6 +340,7 @@ WHERE client_id = '6001';
   `TradingStarter`、不执行 pipeline。
 - AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。
 - 直接 Trading API 仍由原入口创建 `TargetContext`，行为保持不变。
+- `UNIFIED` 模式覆盖全部 Story 验收；不将 `SPLIT` 股票分析纳入回归门禁。
 - `V2030` 在既有数据库和从零执行全部迁移的数据库上均只删除 Trading Client 6001；
   `prompt_id=6001` 及其 3001 绑定保持不变。
 - `AnalysisTypeMapper` 保持原 6001 对 `ALL`、单个类型和逗号组合的映射行为；未知值降级为当前
