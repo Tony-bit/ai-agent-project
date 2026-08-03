@@ -35,7 +35,7 @@
 - 不建设股票信息数据库快照或新的定时刷新任务。
 - 不改变 `StockInfoVO` 获取与缓存策略。
 - 不修改现有 `analysisDepth` 澄清规则。
-- 不处理多股票或多任务执行链路。
+- 不执行包含 `STOCK_ANALYSIS` 的多任务；后续 Story 再实现股票分析子任务的统一校验和执行。
 - 不改变独立 `/trading/analysis` API。
 
 上述能力由后续“A股股票名称补全”Story 单独处理。
@@ -52,6 +52,7 @@ Query + session history
        -> require a unique result
        -> fill StockSlot with stockName and canonical stockCode
   -> RoutingResultHandler
+       -> multiTask 包含 STOCK_ANALYSIS：拒绝整轮请求并提示单独发起股票分析
        -> STOCK_ANALYSIS: resolve tradingRequestNode
   -> TradingRequestNode (plain Java, no LLM, no ChatMemory)
        -> validate slot completeness and ticker format
@@ -180,7 +181,9 @@ API 保留。
 - 主会话历史继续按 `sessionId` 提供给 3201。
 - 每次进入 `TradingStarter` 都按现有逻辑创建新 runId；不复用上一 Trading run。
 - `TradingStarter.populateStockInfo()` 和 `TradingContext.stockInfo` 保持现状。
-- 多任务链路保持现状，不纳入本次改造。
+- 不包含 `STOCK_ANALYSIS` 的多任务链路保持现状。
+- `multiTask=true` 且任一子任务为 `STOCK_ANALYSIS` 时，`RoutingResultHandler` 在执行任何子任务前
+  拒绝整轮请求，提示用户单独发起股票分析；不进入 `MultiTaskExecutionNode`，也不创建 Trading run。
 
 ## 错误处理
 
@@ -188,6 +191,8 @@ API 保留。
 - 工具无结果、多个结果或调用失败：不填充可执行 ticker，不进入 Trading。
 - `TradingRequestNode` 校验失败：返回澄清提示，不调用 `TradingStarter`。
 - `TargetContextFactory` 发现请求代码或名称与权威身份不一致：初始化失败，不执行 Trading pipeline。
+- 多任务包含 `STOCK_ANALYSIS`：返回“股票分析暂不支持与其他任务同时执行，请单独发起股票分析”，
+  不执行该任务列表中的任何子任务。
 - `TradingStarter.getStockInfo()` 失败：沿用当前初始化失败处理；这是数据获取错误，不回到意图路由。
 
 ## 测试策略
@@ -198,6 +203,8 @@ API 保留。
 - `TradingRequestNode` 拒绝非法 ticker 和空槽位。
 - `TargetContextFactory` 同时校验 ticker 与名称；直接代码输入允许名称为空。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
+- `RoutingResultHandler` 拒绝任何包含 `STOCK_ANALYSIS` 的多任务，且不调用
+  `MultiTaskExecutionNode`、`TradingRequestNode` 或 `TradingStarter`。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。
 - 3201 的最终 Trading Tool 集合严格等于 `read_skill + search_stock_by_name`。
