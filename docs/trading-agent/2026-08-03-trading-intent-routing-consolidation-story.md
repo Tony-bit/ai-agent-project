@@ -94,7 +94,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | 路由 | `RoutingResultHandler` 从 `tradingIntentRoutingNode` 改为 `tradingRequestNode` |
 | 多任务门禁 | 多任务包含 `STOCK_ANALYSIS` 时整轮拒绝；普通多任务保持原行为 |
 | SSE 所有权 | 下游登记终止响应，`IntentRoutingNode` 发送业务事件，`AutoAgentExecuteStrategy` 关闭 emitter |
-| 6001 | 删除节点、Prompt、Service、ChatMemory、配置、数据库关系和专属测试 |
+| 6001 | 删除节点、Java Prompt、Service、ChatMemory、Client 配置、数据库关系和专属测试；保留数据库 `prompt_id=6001` |
+| 数据库 DDL | 无结构变更；不新增一次性字段、索引或数据表 |
+| 数据库 DML | 新增 `V2030` 类型化删除 Client 6001，保留同值 Prompt 和共享配置 |
 | 身份预检 | `TradingRequestNode` 调用 `TargetContextFactory`，失败时不进入 Trading |
 | Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
@@ -132,6 +134,10 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-027 | 失败分类 | 未找到返回澄清；Provider 和数据完整性失败返回错误，且保留原始 cause |
 | AC-028 | 单次查询 | AutoAgent 成功路径只查询一次权威身份并传递同一 `TargetContext` |
 | AC-029 | 直接入口兼容 | 直接 Trading API 仍通过原入口在 `TradingStarter` 内创建 `TargetContext` |
+| AC-030 | Flyway 兼容 | 不修改已发布迁移；新旧数据库执行到 `V2030` 后状态一致 |
+| AC-031 | 精确删除 | 仅删除 Client 6001 的 Flow、类型化关系和 Client 主记录 |
+| AC-032 | Prompt 兼容 | `prompt_id=6001` 及 `client 3001 -> prompt 6001` 关系保持不变 |
+| AC-033 | 共享资源 | 6001 引用过的 model、advisor、prompt、tool 和历史记录不被删除 |
 
 ## 9. 测试场景
 
@@ -157,6 +163,10 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 合法逗号组合、大小写和首尾空格正确归一化；混合非法项时保留合法子集。
 - 全部非法的分析类型降级为默认全部分析师并记录警告。
 - 直接 Trading API 显式指定分析师和不指定分析师的行为均保持不变。
+- 在包含 Trading Client 6001 和提示词 6001 的既有库执行 `V2030`，只清理 Client 关系。
+- 从空库依次执行全部 Flyway 迁移，最终不存在 Trading Client 6001，但提示词优化功能仍可用。
+- 重复执行等价 DML 不报错、不误删其它记录；3201 和 6002-6013 配置数量保持不变。
+- 迁移 SQL 静态测试禁止出现 `DELETE FROM ai_client_system_prompt` 和无类型的 ID 删除谓词。
 - 6001 Bean、Client 配置、Skills 白名单和 ChatMemory Key 不再存在。
 - 验证缺失 Client、空列表、重复工具名和未知工具名配置。
 - 验证 3201 无法调用行情、新闻、技术指标、基本面和 `get_stock_info`。
@@ -172,7 +182,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
 | Task 3 | 提取类型映射，实现 `TradingRequestNode` 身份预检、异常分类及请求构造 | pending |
 | Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pending |
-| Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
+| Task 5 | 删除 6001 代码与配置，新增 `V2030` 精确 DML 迁移及数据库兼容测试 | pending |
 | Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |
 | Task 7 | 验证 GENERAL_CHAT、PE、巡检、直接 Trading API 和分析节点回归 | pending |
 

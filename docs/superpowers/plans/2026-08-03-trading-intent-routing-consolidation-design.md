@@ -258,6 +258,50 @@ API 保留。
 
 同一版本不保留 6001 运行时 fallback，回退依赖 Git 和发布系统。
 
+### 数据库 DDL 与 DML
+
+本 Story 不需要新增字段、索引、约束或数据表，DDL 为零变更。`ai_client_config` 是通过
+`source_type/source_id` 和 `target_type/target_id` 表达的多态关系，现有索引已满足本次一次性精确
+删除；不得为了删除一个 Client 修改通用表结构。
+
+新增前向 Flyway 迁移 `V2030__remove_trading_intent_client_6001.sql`。不得修改已经发布的 `V2027`、
+`V2028`、`V2029`，避免既有环境出现 Flyway checksum 不一致；全新环境依次执行到 `V2030` 后与
+升级环境得到相同最终状态。
+
+迁移 DML 使用类型化谓词并按引用在前、主记录在后的顺序执行：
+
+```sql
+DELETE FROM ai_agent_flow_config
+WHERE client_id = '6001';
+
+DELETE FROM ai_client_config
+WHERE (source_type = 'client' AND source_id = '6001')
+   OR (target_type = 'client' AND target_id = '6001');
+
+DELETE FROM ai_client
+WHERE client_id = '6001';
+```
+
+以下数据明确保留：
+
+- `ai_client_system_prompt.prompt_id='6001'`，该记录属于既有“提示词优化”功能，不属于 Trading
+  6001 Client。
+- `ai_client_config(source_type='client', source_id='3001', target_type='prompt',
+  target_id='6001')`。
+- 被 6001 引用过的共享 model、advisor、prompt、MCP/tool 实体。
+- 历史会话、审计和可观测性记录。
+
+禁止使用不带实体类型的通用谓词，例如 `source_id='6001' OR target_id='6001'`，也禁止删除
+`ai_client_system_prompt.prompt_id='6001'`。迁移保持幂等，目标行已经不存在时执行成功且不产生副作用。
+
+迁移测试必须读取实际 SQL 并断言：
+
+- 只删除 `ai_agent_flow_config.client_id='6001'`、类型为 `client` 的 `ai_client_config` 关系以及
+  `ai_client.client_id='6001'`。
+- SQL 不包含针对 `ai_client_system_prompt` 的 `DELETE`。
+- 迁移前后 `prompt_id='6001'` 数量不变，`client 3001 -> prompt 6001` 关系仍存在。
+- 迁移后 6001 Client、Flow 和类型化 Client 关系均为 0，3201 与 6002-6013 配置数量不变。
+
 ## 兼容行为
 
 - `GENERAL_CHAT`、PE、巡检和其他意图的 3201 路由行为不变。
@@ -292,6 +336,8 @@ API 保留。
   `TradingStarter`、不执行 pipeline。
 - AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。
 - 直接 Trading API 仍由原入口创建 `TargetContext`，行为保持不变。
+- `V2030` 在既有数据库和从零执行全部迁移的数据库上均只删除 Trading Client 6001；
+  `prompt_id=6001` 及其 3001 绑定保持不变。
 - `AnalysisTypeMapper` 保持原 6001 对 `ALL`、单个类型和逗号组合的映射行为；未知值降级为当前
   默认全部分析师。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
