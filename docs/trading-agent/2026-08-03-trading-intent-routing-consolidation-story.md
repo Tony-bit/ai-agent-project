@@ -48,9 +48,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
   -> 唯一结果 603259
   -> StockSlot(stockName=药明康德, stockCode=603259)
   -> TradingRequestNode 校验并构造 StockAnalysisRequestVO
-  -> TradingStarter 调用 TargetContextFactory 校验权威 stockCode + stockName
+  -> TargetContextFactory 校验权威 stockCode + stockName
   -> 创建 TargetContext/runId
-  -> TradingStarter.populateStockInfo()
+  -> TradingStarter 接收已验证 TargetContext 并执行 populateStockInfo()
   -> Trading pipeline
 ```
 
@@ -58,7 +58,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 用户：分析药明康德的投资价值，同时总结今天的科技新闻
   -> 3201 输出 multiTask=true，任务列表包含 STOCK_ANALYSIS
   -> RoutingResultHandler 拒绝整轮任务
-  -> 登记 routingTerminalResponse 和 clarificationPrompt
+  -> 登记 routingTerminalResponse、routingTerminalKind=CLARIFICATION 和 clarificationPrompt
   -> IntentRoutingNode 发送 clarification + complete 业务事件
   -> 返回“股票分析暂不支持与其他任务同时执行，请单独发起股票分析”
   -> 不执行任何子任务，不创建 runId
@@ -95,7 +95,8 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | 多任务门禁 | 多任务包含 `STOCK_ANALYSIS` 时整轮拒绝；普通多任务保持原行为 |
 | SSE 所有权 | 下游登记终止响应，`IntentRoutingNode` 发送业务事件，`AutoAgentExecuteStrategy` 关闭 emitter |
 | 6001 | 删除节点、Prompt、Service、ChatMemory、配置、数据库关系和专属测试 |
-| Trading | `TargetContextFactory` 增加权威名称校验；保持 `populateStockInfo()` 与 pipeline 行为 |
+| 身份预检 | `TradingRequestNode` 调用 `TargetContextFactory`，失败时不进入 Trading |
+| Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
 
 ## 8. 验收标准
@@ -121,12 +122,16 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-017 | 非 Trading 能力 | MCP、会话记忆和通用工具装配不受白名单影响 |
 | AC-018 | 多任务门禁 | 包含 `STOCK_ANALYSIS` 的多任务不执行任何子任务，也不创建 Trading run |
 | AC-019 | 普通多任务 | 不包含 `STOCK_ANALYSIS` 的多任务行为保持不变 |
-| AC-020 | 终止响应 | 槽位失败和多任务门禁均登记 `routingTerminalResponse` 与 `clarificationPrompt` |
-| AC-021 | SSE 单一所有者 | `IntentRoutingNode` 各发送一次澄清和完成事件，外层只关闭一次 emitter |
+| AC-020 | 终止响应 | 下游登记 `routingTerminalResponse` 和 `routingTerminalKind` |
+| AC-021 | SSE 单一所有者 | `IntentRoutingNode` 按 kind 发送一套终止协议，外层只关闭一次 emitter |
 | AC-022 | 会话持久化 | 路由终止文本作为本轮助手回复持久化，可供下一轮会话读取 |
 | AC-023 | 类型映射迁移 | `ALL`、四个单类型及逗号组合与原 6001 映射结果一致 |
 | AC-024 | 类型默认值 | 空值或全部非法的类型使用 Trading 当前默认全部分析师 |
 | AC-025 | 类型契约 | 3201 只输出标准类型码，直接 Trading API 行为不变 |
+| AC-026 | 身份预检 | 股票不存在、Provider 失败或身份异常时均不调用 `TradingStarter` |
+| AC-027 | 失败分类 | 未找到返回澄清；Provider 和数据完整性失败返回错误，且保留原始 cause |
+| AC-028 | 单次查询 | AutoAgent 成功路径只查询一次权威身份并传递同一 `TargetContext` |
+| AC-029 | 直接入口兼容 | 直接 Trading API 仍通过原入口在 `TradingStarter` 内创建 `TargetContext` |
 
 ## 9. 测试场景
 
@@ -134,6 +139,11 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 零结果、多结果、工具异常。
 - LLM 返回候选外 ticker、名称与权威记录不一致或非法代码。
 - 直接代码输入未携带名称时，使用权威身份成功创建 `TargetContext`。
+- 权威身份查询返回空列表时发送澄清，不创建 runId，不调用 `TradingStarter`。
+- 权威身份 Provider 超时、鉴权和网络异常时发送错误，不创建 runId，并保留异常 cause。
+- 权威身份返回多条、非法代码、空名称或请求身份不一致时发送错误并触发告警。
+- Provider 或数据完整性错误只发送一个已完成的 `error` 事件，不追加 `clarification` 或 `complete`。
+- 成功预检后 `TradingStarter` 使用传入的同一 `TargetContext`，不重复调用身份 Provider。
 - 药明康德完成后，经过现有 analysisDepth 澄清再分析兆易创新。
 - 股票分析与通用问答、PE 或巡检组成多任务时整轮拒绝，所有子任务均未执行。
 - 两个及以上股票分析组成多任务时整轮拒绝，不创建任何 runId。
@@ -160,7 +170,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 |------|------|------|
 | Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
 | Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
-| Task 3 | 提取 `AnalysisTypeMapper`，实现 `TradingRequestNode` 请求映射及权威名称校验 | pending |
+| Task 3 | 提取类型映射，实现 `TradingRequestNode` 身份预检、异常分类及请求构造 | pending |
 | Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pending |
 | Task 5 | 删除 6001 代码、配置、数据库关系和测试资产 | pending |
 | Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |

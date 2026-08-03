@@ -24,7 +24,8 @@
 3. 3201 沿用现有 Skills/Tool 能力，将 A 股名称解析为 ticker，并填充股票槽位。
 4. 使用固定 Java `TradingRequestNode` 校验槽位、构造 `StockAnalysisRequestVO` 并调用
    `TradingStarter`。
-5. 保持 `TradingStarter` 当前创建 `StockInfoVO`、`TargetContext` 和 Trading run 的行为。
+5. AutoAgent 路径在进入 `TradingStarter` 前创建权威 `TargetContext`；保持
+   `TradingStarter.populateStockInfo()` 和 Trading pipeline 行为。
 6. 修复连续两次股票分析时 6001 ChatMemory 污染和非 JSON 输出问题。
 
 ## 非目标
@@ -58,13 +59,16 @@ Query + session history
        -> 校验失败：登记 routingTerminalResponse 后返回
        -> AnalysisTypeMapper 映射当前请求的分析师集合
        -> build StockAnalysisRequestVO
-       -> call TradingStarter
+       -> TargetContextFactory 校验权威 stockCode + stockName
+       -> 股票不存在：登记 CLARIFICATION 后返回
+       -> Provider/数据完整性失败：登记 ERROR 后返回
+       -> call TradingStarter with validated TargetContext
   -> TradingStarter (existing behavior)
-       -> create TargetContext and runId
        -> populateStockInfo via IStockDataProvider.getStockInfo()
        -> execute Trading pipeline
   -> 控制流返回 IntentRouteNode
-       -> routingTerminalResponse 存在：统一发送 clarification + complete 业务事件
+       -> CLARIFICATION：发送 clarification + complete 业务事件
+       -> ERROR：发送 error 业务事件
 ```
 
 ## 3201 股票槽位契约
@@ -82,8 +86,8 @@ StockSlot
 
 规则如下：
 
-- 用户明确输入 6 位 A 股代码时，`stockCode` 保存规范化代码；不要求 `stockName` 非空，由 Trading
-  初始化阶段进行权威身份查询。
+- 用户明确输入 6 位 A 股代码时，`stockCode` 保存规范化代码；不要求 `stockName` 非空，由
+  `TradingRequestNode` 的权威身份校验补齐。
 - 用户输入股票名称时，3201 必须通过现有 Skills/`search_stock_by_name` 查询。
 - 工具返回唯一结果时填写结果中的 `stockCode` 和 `stockName`。本 Story 不增加简称识别逻辑，
   也不额外比较用户原文与权威名称；正式的模糊匹配行为由后续 Story 定义。
@@ -148,18 +152,36 @@ LLM，不读取主会话历史，也不维护 ChatMemory。
 3. 使用 `AnalysisTypeMapper` 将 `stockQueryType` 映射为当前请求的 `selectedAnalysts`。
 4. 构造 `StockAnalysisRequestVO`，透传 `stockName`，并设置现有默认辩论轮次、风控轮次和
    `sessionId`。
-5. 调用 `TradingStarter.start()`。
+5. 调用 `TargetContextFactory` 查询并校验权威股票身份。
+6. 校验成功后调用接收已验证 `TargetContext` 的 `TradingStarter` 启动入口。
 
-`TradingStarter` 创建 `TargetContext` 时，`TargetContextFactory` 继续使用
-`IStockDataProvider.findStockIdentities()` 查询权威身份，并增加名称校验：
+`TargetContextFactory` 继续使用 `IStockDataProvider.findStockIdentities()` 查询权威身份，并增加名称
+校验：
 
 - 始终校验请求 ticker 与权威 `targetId` 一致。
 - 名称输入场景校验请求 `stockName` 与权威 `stockName` 一致。
 - 代码输入场景允许请求 `stockName` 为空，名称以权威记录为准。
-- 校验通过后才创建 `runId` 和 `TargetContext`；失败则按 Trading 初始化失败处理。
+- 校验通过后才创建 `runId` 和 `TargetContext`；失败时 `TradingRequestNode` 不调用
+  `TradingStarter`。
 
 `TradingRequestNode` 槽位校验失败时通过现有意图澄清 SSE 返回前端，并写入 Root 可持久化的最终
 回复字段；本轮停止。
+
+AutoAgent 路径调用新的 `TradingStarter` 启动重载，将已验证的 `TargetContext` 作为显式参数传入，
+不得在 `TradingStarter` 内重复查询股票身份。该重载必须校验请求 ticker 与
+`TargetContext.targetId` 一致，避免调用方传入不匹配对象。直接 `/trading/analysis` API 保留现有
+入口，由 `TradingStarter` 内部创建 `TargetContext`，外部行为不变。
+
+权威身份失败分为三类领域异常：
+
+| 异常 | 含义 | AutoAgent 响应 |
+|---|---|---|
+| `StockIdentityNotFoundException` | 权威查询返回 0 条 | `CLARIFICATION`：请提供完整名称或 6 位代码 |
+| `StockIdentityProviderException` | 超时、网络、鉴权或上游异常 | `ERROR`：股票数据服务暂时不可用，请稍后重试 |
+| `StockIdentityValidationException` | 多条、非法记录或身份不一致 | `ERROR`：股票身份校验失败，本次分析已停止 |
+
+Provider 原始异常作为 cause 保留并写入日志与观测数据；不得依赖异常消息字符串分类，也不在本
+Story 中增加自动重试。
 
 ## 路由终止响应与 SSE 所有权
 
@@ -167,23 +189,29 @@ LLM，不读取主会话历史，也不维护 ChatMemory。
 本轮时，生产方执行以下动作：
 
 1. 将用户可见文本写入 `DynamicContext.routingTerminalResponse`。
-2. 将同一文本写入现有 `DynamicContext.clarificationPrompt`，供 `RootNode` 持久化为本轮助手回复。
-3. 返回该文本并停止进入后续执行节点。
+2. 将 `CLARIFICATION` 或 `ERROR` 写入 `DynamicContext.routingTerminalKind`。
+3. `CLARIFICATION` 同时写入现有 `DynamicContext.clarificationPrompt`；`ERROR` 不伪装成信息缺失。
+4. 返回该文本并停止进入后续执行节点。
 
-控制流返回 `IntentRoutingNode` 后，由它检查 `routingTerminalResponse`，并复用现有澄清协议依次发送：
+`RootNode` 优先读取 `routingTerminalResponse` 作为本轮助手回复进行持久化。控制流返回
+`IntentRoutingNode` 后，由它根据 `routingTerminalKind` 发送：
 
 ```text
 type=summary, subType=clarification, content=<routingTerminalResponse>
 type=complete
+
+或：
+
+type=error, content=<routingTerminalResponse>
 ```
 
 SSE 所有权约束：
 
 - `IntentRoutingNode` 只发送业务事件，不调用 `ResponseBodyEmitter.complete()`。
 - `AutoAgentExecuteStrategy` 是 AutoAgent 请求中唯一负责物理关闭 emitter 的所有者。
-- 每轮最多发送一次路由终止响应和一次 `complete` 业务事件。
-- `TradingStarter` 已开始初始化后的 Provider 或权威身份异常继续使用现有 `trading/error`，不转换为
-  路由澄清。
+- 每轮只允许发送一种终止协议；`ERROR` 事件自身为完成事件，不再追加 `complete`。
+- 权威身份查询失败发生在 `TradingStarter` 之前，不发送 `trading/error`，也不创建 Trading run。
+- `TradingStarter.populateStockInfo()` 等启动后的数据异常继续使用现有 `trading/error`。
 - SSE 发送失败时不重复发送；控制流正常返回，由外层执行清理和关闭。
 
 ## 分析类型映射
@@ -235,7 +263,8 @@ API 保留。
 - `GENERAL_CHAT`、PE、巡检和其他意图的 3201 路由行为不变。
 - 现有 `analysisDepth` 澄清先于可执行 `STOCK_ANALYSIS`；用户回答后继续使用合并后的原始股票名。
 - 主会话历史继续按 `sessionId` 提供给 3201。
-- 每次进入 `TradingStarter` 都按现有逻辑创建新 runId；不复用上一 Trading run。
+- AutoAgent 每次通过权威校验后创建新 runId 和 `TargetContext`，再进入 `TradingStarter`；不复用上一
+  Trading run。
 - `TradingStarter.populateStockInfo()` 和 `TradingContext.stockInfo` 保持现状。
 - 不包含 `STOCK_ANALYSIS` 的多任务链路保持现状。
 - `multiTask=true` 且任一子任务为 `STOCK_ANALYSIS` 时，`RoutingResultHandler` 在执行任何子任务前
@@ -246,10 +275,11 @@ API 保留。
 - 3201 非 JSON 或 Schema 校验失败：沿用统一路由现有重试和降级，不进入 Trading。
 - 工具无结果、多个结果或调用失败：不填充可执行 ticker，不进入 Trading。
 - `TradingRequestNode` 校验失败：返回澄清提示，不调用 `TradingStarter`。
-- `TargetContextFactory` 发现请求代码或名称与权威身份不一致：初始化失败，不执行 Trading pipeline。
+- `TargetContextFactory` 返回未找到、Provider 失败或身份校验失败：登记对应路由终止响应，不调用
+  `TradingStarter`。
 - 多任务包含 `STOCK_ANALYSIS`：返回“股票分析暂不支持与其他任务同时执行，请单独发起股票分析”，
   不执行该任务列表中的任何子任务。
-- `TradingStarter.getStockInfo()` 失败：沿用当前初始化失败处理；这是数据获取错误，不回到意图路由。
+- `TradingStarter.getStockInfo()` 失败：沿用当前 Trading 错误处理；身份此前已确认，不回到意图路由。
 
 ## 测试策略
 
@@ -258,14 +288,18 @@ API 保留。
 - 搜索无结果、多结果和工具异常不得生成 ticker。
 - `TradingRequestNode` 拒绝非法 ticker 和空槽位。
 - `TargetContextFactory` 同时校验 ticker 与名称；直接代码输入允许名称为空。
+- 权威查询空结果产生澄清事件；Provider 异常和非法权威数据产生错误事件，三者都不调用
+  `TradingStarter`、不执行 pipeline。
+- AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。
+- 直接 Trading API 仍由原入口创建 `TargetContext`，行为保持不变。
 - `AnalysisTypeMapper` 保持原 6001 对 `ALL`、单个类型和逗号组合的映射行为；未知值降级为当前
   默认全部分析师。
 - `RoutingResultHandler` 对单任务 `STOCK_ANALYSIS` 只路由到 `tradingRequestNode`。
 - `RoutingResultHandler` 拒绝任何包含 `STOCK_ANALYSIS` 的多任务，且不调用
   `MultiTaskExecutionNode`、`TradingRequestNode` 或 `TradingStarter`。
-- `TradingRequestNode` 校验失败和股票多任务门禁都登记 `routingTerminalResponse`，最终由
-  `IntentRoutingNode` 各发送一次 `clarification` 和 `complete` 业务事件。
-- 路由终止响应写入 `clarificationPrompt` 并由 `RootNode` 持久化；`AutoAgentExecuteStrategy` 只关闭
+- `TradingRequestNode` 校验失败和股票多任务门禁都登记终止响应；`IntentRoutingNode` 根据 kind
+  发送一次 `clarification + complete` 或一个已完成的 `error` 事件，不混用两套协议。
+- `RootNode` 从 `routingTerminalResponse` 持久化澄清或错误文本；`AutoAgentExecuteStrategy` 只关闭
   一次 emitter。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。
