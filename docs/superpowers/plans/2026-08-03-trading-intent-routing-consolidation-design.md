@@ -82,7 +82,6 @@ StockSlot
   stockName: 药明康德
   stockQueryType: ALL
   timeRange: null
-  exchange: SH
 ```
 
 规则如下：
@@ -95,9 +94,34 @@ StockSlot
 - 0 个结果、多个结果或 ticker 格式非法时，本轮返回“请提供完整 A 股名称或 6 位代码”，不创建
   runId，也不保存跨请求 Pending。
 - LLM 不得凭记忆生成 ticker；最终 ticker 必须来自用户明确代码或工具结果。
+- `StockSlot.exchange` 不再由 3201 输出，也不参与股票身份构造和校验。
 
 3201 的结构化输出 Schema、Prompt、Few-Shot 和 Validator 同步增加新字段。旧 `stockCode` 输入
 继续兼容，避免破坏现有评测和调用方。
+
+### 股票代码规范化
+
+`stockCode` 是路由阶段唯一的候选代码来源，接受六位 A 股代码或标准 `ts_code`：
+
+```text
+603259
+603259.SH
+000001.SZ
+920000.BJ
+```
+
+`TradingRequestNode` 对输入执行 `trim` 和大写归一化，只允许六位数字以及可选的
+`.SH/.SZ/.BJ` 后缀。`TargetContextFactory` 完成权威查询后，使用返回的
+`TargetContext.targetId` 作为唯一规范标识，并将 `StockAnalysisRequestVO.ticker` 改写为该值；后续
+Trading 节点不得再从 `StockSlot` 推导标的。
+
+现有 Java `StockSlot.exchange` 字段为兼容旧 JSON 暂时保留并标记废弃，任何值均被忽略；即使它与
+`stockCode` 冲突，也以 `stockCode` 和最终权威 `targetId` 为准。3201 的新 Schema、Prompt 和
+Few-Shot 删除 `exchange` 字段。代码自身携带后缀且与权威 `targetId` 不一致时，仍属于身份校验
+失败。
+
+该变更只废弃路由槽位中的 `exchange`。`StockSearchResultVO.exchange` 和 `StockInfoVO.exchange`
+继续保留，用于工具结果、行情信息、报告展示与导出，不受影响。
 
 ## 工具边界
 
@@ -336,6 +360,8 @@ WHERE client_id = '6001';
 - 搜索无结果、多结果和工具异常不得生成 ticker。
 - `TradingRequestNode` 拒绝非法 ticker 和空槽位。
 - `TargetContextFactory` 同时校验 ticker 与名称；直接代码输入允许名称为空。
+- 六位代码、带 `SH/SZ/BJ` 后缀代码及大小写/空格归一化后得到唯一权威 `targetId`。
+- `StockSlot.exchange` 缺失或与代码冲突均不影响执行；非法 ticker 和代码自身错误后缀被拒绝。
 - 权威查询空结果产生澄清事件；Provider 异常和非法权威数据产生错误事件，三者都不调用
   `TradingStarter`、不执行 pipeline。
 - AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。

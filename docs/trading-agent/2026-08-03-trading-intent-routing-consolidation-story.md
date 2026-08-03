@@ -74,8 +74,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
   "stockCode": "603259",
   "stockName": "药明康德",
   "stockQueryType": "ALL",
-  "timeRange": null,
-  "exchange": "SH"
+  "timeRange": null
 }
 ```
 
@@ -83,12 +82,17 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 `StockAnalysisRequestVO`，`TargetContextFactory` 对请求中的 ticker 和 `stockName` 执行权威校验。
 代码输入允许 `stockName` 为空，只要求通过 A 股代码格式和后续权威 ticker 校验。
 
+路由身份只使用 `stockCode`。3201 不再输出 `exchange`；Java `StockSlot.exchange` 为兼容旧请求暂时
+保留并标记废弃，但 `TradingRequestNode` 始终忽略该字段。预检成功后将请求 ticker 改写为权威
+`TargetContext.targetId`。`StockInfoVO.exchange` 等行情展示字段继续保留。
+
 ## 7. 代码改造
 
 | 范围 | 改造内容 |
 |------|----------|
 | 3201 Prompt | 合并股票名称解析规则，禁止凭记忆生成 ticker 和执行完整分析 |
 | 3201 Schema | 增加 `stockName` 并更新 Validator、Few-Shot 和评测契约 |
+| 代码规范化 | `stockCode` 是唯一候选代码；废弃并忽略路由槽位 `exchange` |
 | 工具边界 | 新增 `Map<String, List<String>> allowedToolsByClient`，只对白名单内 Client 装配指定 Trading Tools |
 | 类型映射 | 从 6001 提取无状态 `AnalysisTypeMapper`，保留现有分析类型映射语义 |
 | Java 下游 | `TradingRequestNode` 校验槽位并写入 `stockName` 和映射后的 `selectedAnalysts` |
@@ -141,6 +145,9 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-032 | Prompt 兼容 | `prompt_id=6001` 及 `client 3001 -> prompt 6001` 关系保持不变 |
 | AC-033 | 共享资源 | 6001 引用过的 model、advisor、prompt、tool 和历史记录不被删除 |
 | AC-034 | 路由模式 | `UNIFIED` 通过全部验收；`SPLIT` 股票分析不作为兼容或发布门禁 |
+| AC-035 | 唯一代码来源 | `stockCode` 冲突时忽略 `StockSlot.exchange`，最终以权威 `targetId` 为准 |
+| AC-036 | 旧槽位兼容 | 旧请求携带 `exchange` 时可正常反序列化，但该值不参与执行 |
+| AC-037 | 展示字段兼容 | `StockInfoVO.exchange` 和 `StockSearchResultVO.exchange` 行为不变 |
 
 ## 9. 测试场景
 
@@ -148,6 +155,10 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 零结果、多结果、工具异常。
 - LLM 返回候选外 ticker、名称与权威记录不一致或非法代码。
 - 直接代码输入未携带名称时，使用权威身份成功创建 `TargetContext`。
+- 六位代码、标准 `ts_code`、小写后缀及首尾空格正确规范化。
+- `exchange` 缺失、合法或与 `stockCode` 冲突时均以 `stockCode` 为准；结果 ticker 为权威
+  `TargetContext.targetId`。
+- 五位/七位代码、非数字代码、`HK/US` 后缀及代码自身错误交易所后缀被拒绝。
 - 权威身份查询返回空列表时发送澄清，不创建 runId，不调用 `TradingStarter`。
 - 权威身份 Provider 超时、鉴权和网络异常时发送错误，不创建 runId，并保留异常 cause。
 - 权威身份返回多条、非法代码、空名称或请求身份不一致时发送错误并触发告警。
