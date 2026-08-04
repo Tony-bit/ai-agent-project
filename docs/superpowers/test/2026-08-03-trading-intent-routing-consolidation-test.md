@@ -2,9 +2,13 @@
 
 ## 1. 测试背景
 
+> 联合实施说明：本文对 3201 名称 Skill/Tool 的断言只适用于 Story 1 独立基线。Story 2 生效后，
+> 由 `docs/superpowers/test/2026-07-16-stock-name-completion-test.md` 中“3201 不装配名称工具”的
+> 用例覆盖该断言，其余 Story 1 回归用例继续执行。
+
 ### 1.1 对应 Story 与设计
 
-- Story：`docs/trading-agent/2026-08-03-trading-intent-routing-consolidation-story.md`
+- Story：`docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-story.md`
 - 设计：`docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-design.md`
 
 ### 1.2 测试目标
@@ -12,7 +16,7 @@
 - 验证 `clientId=6001` 被安全删除，单任务股票分析只经过 3201 一次意图识别。
 - 验证 `TradingRequestNode` 在进入 Trading 前完成请求构造、权威身份校验和失败分类。
 - 验证 Trading Tool 白名单、分析类型映射、SSE 所有权及多任务门禁符合 Story 契约。
-- 验证连续 Trading run 相互隔离，同时主会话历史和共享原始数据缓存继续复用。
+- 验证连续 Trading run 相互隔离、主会话历史继续复用，且原始数据缓存 Key 契约不增加 runId。
 - 验证 `V2030` 只删除 Trading Client 6001，不破坏 `prompt_id=6001` 及其它既有功能。
 
 ### 1.3 测试范围
@@ -75,7 +79,7 @@
 | Trading pipeline | 是 | Spy/Stub | 统计执行次数并捕获 `TargetContext` |
 | SSE sink/emitter | 是 | 内存 Sink/Mockito | 断言事件类型、顺序、次数和关闭所有者 |
 | 会话历史存储 | 是 | 内存仓储/Mockito | 断言持久化文本和下一轮读取 |
-| 股票原始数据缓存 | 是 | Spy/内存缓存 | 断言 Key 不包含 runId，允许跨 run 命中 |
+| 股票原始数据缓存 | 是 | Key 工厂/配置测试 | 断言 Key 不包含 runId；不要求证明当前 Provider 已接入并跨 run 命中 |
 | MySQL/Flyway | 自动化中是 | SQL 静态校验与内存数据模型 | 不用 H2 模拟 MySQL 方言 |
 
 ---
@@ -138,7 +142,7 @@
 | 编号 | 场景名称 | 前置条件 | 输入 | 预期结果 | status |
 |------|------|------|------|------|------|
 | TC-301 | 6001 不再装配 | 完整 Spring 测试上下文 | 应用启动 | 6001 Bean、Client 配置和 ChatMemory Key 均不存在 | pass |
-| TC-302 | 3201 工具集合 | 白名单生效 | 3201 | Trading Tool 集合严格等于 `read_skill`、`search_stock_by_name` | pass |
+| TC-302 | 3201 工具集合（Story 1 独立基线） | 仅交付 Story 1 且白名单生效 | 3201 | Trading Tool 集合严格等于 `read_skill`、`search_stock_by_name`；Story 2 生效后由其同名回归用例替代 | pass |
 | TC-303 | 分析节点工具兼容 | 白名单生效 | 6002-6013 | 每个 Client 的 Trading Tool 集合与改造前一致 | pass |
 | TC-304 | 非 Trading 工具兼容 | 白名单生效 | MCP、记忆和通用工具 | 装配集合不受 Trading 白名单影响 | pass |
 | TC-305 | GENERAL_CHAT 回归 | `UNIFIED` 模式 | 普通聊天 | 路由和历史上下文行为不变 | pass |
@@ -147,7 +151,7 @@
 | TC-308 | 直接 Trading API 回归 | Controller 使用原入口 | 显式/默认分析师请求 | API 输入输出和默认值保持不变 | pass |
 | TC-309 | StockInfo 来源回归 | Trading 已启动 | 有效目标 | `populateStockInfo()` 调用一次并写入 `TradingContext` | pass |
 | TC-310 | Trading ChatMemory 隔离 | 同一 session 两个 run | 相同或不同股票 | Memory Key 包含各自 runId 和 targetId，不交叉读取 | pass |
-| TC-311 | 原始数据缓存兼容 | 同股票同参数两个 run | 获取原始数据 | 缓存 Key 不含 runId，仍具备跨 run 复用能力 | pass |
+| TC-311 | 原始数据缓存契约兼容 | 同股票同参数两个 run | 检查 Key 工厂与配置 | 缓存 Key 不含 runId；不把 Provider 实际缓存命中作为本 Story 验收条件 | pass |
 | TC-312 | 交易所展示字段兼容 | Provider 返回交易所 | 生成报告/导出 | `StockInfoVO.exchange` 和搜索结果展示不变 | pass |
 | TC-313 | V2030 精确删除 | SQL 资源可读 | 静态扫描 | 只含类型化 Client 删除，不删除系统 Prompt | pass |
 | TC-314 | Prompt 6001 保留 | 测试数据含 ID 碰撞 | 应用 V2030 数据模型 | Prompt 数量和 3001 绑定不变，共享资源不变 | pass |

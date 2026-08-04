@@ -4,7 +4,7 @@
 
 - 日期：2026-08-03
 - 状态：设计已确认，待实施计划
-- 对应 Story：`docs/trading-agent/2026-08-03-trading-intent-routing-consolidation-story.md`
+- 对应 Story：`docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-story.md`
 
 ## 背景
 
@@ -16,6 +16,10 @@
 
 `StockInfoVO` 的正式来源不是任何 ChatClient。现有流程由 `TradingStarter.populateStockInfo()`
 调用 `IStockDataProvider.getStockInfo()` 构造并写入 Trading 上下文。本设计保持该职责不变。
+
+本文中的 3201 Skills/Tool 名称解析是 Story 1 可独立交付的过渡基线。联合实施 Story 2 后，3201
+只提取原始名称或明确代码，Java `StockRequestResolver` 查询本地名称目录；Story 2 对下文涉及
+3201 名称解析来源、槽位补齐责任和工具集合的要求具有覆盖效力。
 
 ## 目标
 
@@ -156,7 +160,8 @@ spring:
 - 配置绑定后转换为不可变 `Set` 去重，再与可用 Trading ToolCallbacks 求交集。
 - 配置包含不存在的 Trading Tool 名称时启动失败，避免拼写错误静默降级。
 - `6001` 不出现在 Map 中。
-- `3201` 最终只装配 `read_skill` 和 `search_stock_by_name`。
+- Story 1 独立交付时，`3201` 只装配 `read_skill` 和 `search_stock_by_name`；Story 2 生效后的最终态
+  不为 3201 装配名称 Skill/Tool。
 - `6002-6013` 必须逐项迁移当前实际工具集合，保证分析节点能力不变。
 - 启动日志输出每个 Client 最终装配的 Trading Tool 集合。
 
@@ -345,7 +350,8 @@ WHERE client_id = '6001';
 - `sessionId` 级通用会话历史继续复用，3201 可以结合历史完成意图识别、追问恢复和普通对话。
 - 新 Trading run 只隔离 Trading 节点 ChatMemory、运行中间结果、最终决策和标的上下文；不得把上一
   run 的 Trading 角色消息或结果注入新 run 的 pipeline。
-- 现有与 run 无关的共享原始数据缓存继续按股票和查询参数复用；本 Story 不改变其 Key 和过期策略。
+- 本 Story 不改变原始数据缓存的 Key 和过期策略，也不向 Key 增加 runId。当前 Provider 是否实际接入
+  `TradingDataCache` 不属于本 Story 范围，不把跨 run 缓存命中作为既有事实或验收前提。
 - Root 持久化的上一轮 Trading 最终回复仍属于主会话历史，可供后续 3201 或 `GENERAL_CHAT` 理解用户
   的追问，但不作为新 Trading run 的输入结论直接复用。
 - `TradingStarter.populateStockInfo()` 和 `TradingContext.stockInfo` 保持现状。
@@ -377,7 +383,7 @@ WHERE client_id = '6001';
   `TradingStarter`、不执行 pipeline。
 - AutoAgent 成功路径只查询一次权威身份，并将同一个 `TargetContext` 传给 `TradingStarter`。
 - 连续提交两个完全相同的股票分析请求时，两次均执行 Trading pipeline 并产生不同 runId；主会话
-  历史和现有共享原始数据缓存仍可复用，但 Trading 节点上下文彼此隔离。
+  历史继续复用，原始数据缓存 Key 契约保持不变，但 Trading 节点上下文彼此隔离。
 - 直接 Trading API 仍由原入口创建 `TargetContext`，行为保持不变。
 - `UNIFIED` 模式覆盖全部 Story 验收；不将 `SPLIT` 股票分析纳入回归门禁。
 - `V2030` 在既有数据库和从零执行全部迁移的数据库上均只删除 Trading Client 6001；
@@ -393,7 +399,8 @@ WHERE client_id = '6001';
   一次 emitter。
 - 连续完成药明康德后分析兆易创新，全链路不调用 6001，不读取 6001 ChatMemory，并创建新 runId。
 - 3201 路由期间不得调用 `get_stock_info` 或其他分析工具。
-- 3201 的最终 Trading Tool 集合严格等于 `read_skill + search_stock_by_name`。
+- Story 1 独立基线下，3201 的 Trading Tool 集合严格等于 `read_skill + search_stock_by_name`；
+  联合 Story 2 的最终验收改为不装配名称 Skill/Tool。
 - 未配置 Client 和空列表 Client 均不装配 Trading Tool；未知工具名导致启动失败。
 - 6002-6013 的最终 Trading Tool 集合与改造前一致。
 - `TradingStarter.populateStockInfo()` 仍调用一次 Provider 并写入 `TradingContext.stockInfo`。

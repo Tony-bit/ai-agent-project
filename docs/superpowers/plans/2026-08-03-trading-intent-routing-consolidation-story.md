@@ -8,6 +8,10 @@
 | 关联设计 | `docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-design.md` |
 | 关联测试 | `docs/superpowers/test/2026-08-03-trading-intent-routing-consolidation-test.md` |
 
+> 联合实施说明：本文记录 Story 1 可独立交付时的名称 Tool 过渡方案。Story 2 生效后，3201 只提取
+> 原始股票槽位，由 `IntentRoutingNode` 内的 Java `StockRequestResolver` 查询本地名称目录；Story 2
+> 对本文的 3201 名称解析来源和工具集合要求具有覆盖效力，其余 Story 1 边界继续有效。
+
 ## 1. 用户故事
 
 作为 AutoAgent 用户，我希望股票分析只执行一次意图识别，避免旧股票分析上下文污染下一次请求，
@@ -108,7 +112,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | Trading | 新增接收已验证 `TargetContext` 的入口；保持 `populateStockInfo()` 与 pipeline 行为 |
 | SSE | 槽位非法时返回现有澄清事件并结束本轮 |
 | 路由模式 | 仅改造并验收 `UNIFIED`；`SPLIT` 保留为非生产对比实验 |
-| 重复执行 | 每个前端请求创建独立 Trading run；通用会话历史和共享原始数据缓存继续复用 |
+| 重复执行 | 每个前端请求创建独立 Trading run；通用会话历史继续复用；现有原始数据缓存 Key/TTL 契约不增加 runId |
 
 ## 8. 验收标准
 
@@ -128,7 +132,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-012 | 外部兼容 | 直接 Trading API 和 6002-6013 行为不变 |
 | AC-013 | 默认拒绝 | Map 中缺少 Client 或配置空列表时不装配任何 Trading Tool |
 | AC-014 | 配置校验 | 配置不存在的 Trading Tool 名称时应用启动失败 |
-| AC-015 | 3201 工具集合 | 3201 最终 Trading Tool 集合严格等于 `read_skill` 和 `search_stock_by_name` |
+| AC-015 | 3201 工具集合（Story 1 独立基线） | 独立交付 Story 1 时严格等于 `read_skill` 和 `search_stock_by_name`；联合 Story 2 的最终态由 Story 2 覆盖为不装配名称 Skill/Tool |
 | AC-016 | 分析节点兼容 | 6002-6013 的 Trading Tool 集合与改造前一致 |
 | AC-017 | 非 Trading 能力 | MCP、会话记忆和通用工具装配不受白名单影响 |
 | AC-018 | 多任务门禁 | 包含 `STOCK_ANALYSIS` 的多任务不执行任何子任务，也不创建 Trading run |
@@ -154,7 +158,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 | AC-038 | 重复分析 | 相同 session、Query 和股票连续请求两次时完整执行两次并产生不同 runId |
 | AC-039 | Trading 隔离 | 新 run 不注入上一 run 的 Trading ChatMemory、中间结果或最终决策 |
 | AC-040 | 会话复用 | 3201 和 GENERAL_CHAT 继续读取同一 session 的主会话历史 |
-| AC-041 | 数据缓存兼容 | 现有与 run 无关的股票原始数据缓存 Key 和复用行为不变 |
+| AC-041 | 数据缓存兼容 | 现有与 run 无关的股票原始数据缓存 Key/TTL 契约不增加 runId；不把 Provider 已接入或跨 run 实际命中作为本 Story 的前提 |
 
 ## 9. 测试场景
 
@@ -176,7 +180,7 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 - 前端重复提交被视为两个独立请求，不增加请求 ID、幂等锁或历史结论缓存。
 - 第二次 Trading run 不读取第一次 run 的角色 ChatMemory、中间报告和最终决策。
 - Trading 完成后发起“刚才为什么建议持有”等通用追问，3201/GENERAL_CHAT 可从主会话历史理解上文。
-- 两次 run 对相同股票数据的读取仍可命中现有共享原始数据缓存，不把 runId 加入该缓存 Key。
+- 两次 run 不把 runId 加入现有股票原始数据缓存 Key；本 Story 只验证 Key/TTL 契约不变，不要求证明 Provider 已接入或跨 run 实际命中。
 - 股票分析与通用问答、PE 或巡检组成多任务时整轮拒绝，所有子任务均未执行。
 - 两个及以上股票分析组成多任务时整轮拒绝，不创建任何 runId。
 - 不包含股票分析的现有多任务正常执行和汇总。
@@ -216,4 +220,4 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 ## 11. 后续 Story
 
 不完整股票名称、模糊匹配、多候选、二次澄清和股票信息快照缓存统一进入
-`docs/trading-agent/2026-07-16-stock-name-completion-story.md`，不在本 Story 中顺带实现。
+`docs/superpowers/plans/2026-07-16-stock-name-completion-design.md`，不在本 Story 中顺带实现。
