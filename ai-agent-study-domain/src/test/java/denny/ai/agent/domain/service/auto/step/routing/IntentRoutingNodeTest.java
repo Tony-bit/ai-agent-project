@@ -29,6 +29,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.lang.reflect.Field;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -71,7 +74,7 @@ public class IntentRoutingNodeTest {
     private MultiTaskExecutionNode multiTaskExecutionNode;
 
     @Mock
-    private StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> tradingIntentRoutingNode;
+    private StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> tradingRequestNode;
 
     @Mock
     private ApplicationContext applicationContext;
@@ -181,6 +184,49 @@ public class IntentRoutingNodeTest {
     }
 
     @Test
+    public void shouldSendOneCompletedErrorWhenDownstreamRegistersErrorTerminal() throws Exception {
+        dynamicContext.setValue("emitter", emitter);
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
+                .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingRequestNode"));
+        when(applicationContext.getBean("tradingRequestNode")).thenReturn(tradingRequestNode);
+        doAnswer(invocation -> {
+            dynamicContext.setValue("routingTerminalKind", "ERROR");
+            dynamicContext.setValue("routingTerminalResponse", "股票数据服务暂时不可用，请稍后重试");
+            return "股票数据服务暂时不可用，请稍后重试";
+        }).when(tradingRequestNode).apply(any(), eq(dynamicContext));
+
+        String response = intentRoutingNode.doApply(request, dynamicContext);
+
+        assertEquals("股票数据服务暂时不可用，请稍后重试", response);
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(emitter, times(1)).send(eventCaptor.capture());
+        AutoAgentExecuteResultEntity error = parseSseFrame(eventCaptor.getValue());
+        assertEquals("error", error.getType());
+        assertTrue(error.getCompleted());
+    }
+
+    @Test
+    public void shouldNotRetryWhenClarificationSseDeliveryFails() throws Exception {
+        dynamicContext.setValue("emitter", emitter);
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
+                .thenReturn(MultiIntentRoutingResult.builder()
+                        .multiTask(false)
+                        .needsClarification(true)
+                        .missingInfo(List.of("stockCode"))
+                        .clarificationPrompt("请提供股票代码")
+                        .taskList(List.of())
+                        .build());
+        doThrow(new IOException("client disconnected")).when(emitter).send(any(Object.class));
+
+        String response = intentRoutingNode.doApply(request, dynamicContext);
+
+        assertEquals("请提供股票代码", response);
+        verify(emitter, times(1)).send(any(Object.class));
+    }
+
+    @Test
     public void testSingleTaskPERetrievalRouting() throws Exception {
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.PE_RETRIEVAL, "step1AnalyzerNode"));
@@ -230,13 +276,13 @@ public class IntentRoutingNodeTest {
     public void should_route_to_trading_node_when_intent_is_stock_analysis() throws Exception {
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
-        when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingIntentRoutingNode);
+        when(applicationContext.getBean("tradingRequestNode")).thenReturn(tradingRequestNode);
 
         intentRoutingNode.doApply(request, dynamicContext);
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
                 intentRoutingNode.get(request, dynamicContext);
 
-        assertEquals(tradingIntentRoutingNode, handler);
+        assertEquals(tradingRequestNode, handler);
     }
 
     @Test
@@ -268,7 +314,7 @@ public class IntentRoutingNodeTest {
     public void should_fallback_to_general_chat_when_trading_node_is_missing() throws Exception {
         when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(), any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
                 .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingStarter"));
-        when(applicationContext.getBean("tradingIntentRoutingNode")).thenThrow(new RuntimeException("missing bean"));
+        when(applicationContext.getBean("tradingRequestNode")).thenThrow(new RuntimeException("missing bean"));
 
         intentRoutingNode.doApply(request, dynamicContext);
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> handler =
@@ -323,12 +369,12 @@ public class IntentRoutingNodeTest {
                         .clarificationPrompt("请提供股票代码")
                         .taskList(List.of())
                         .build());
-        when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingIntentRoutingNode);
+        when(applicationContext.getBean("tradingRequestNode")).thenReturn(tradingRequestNode);
 
         intentRoutingNode.doApply(request, dynamicContext);
 
         ArgumentCaptor<ExecuteCommandEntity> requestCaptor = ArgumentCaptor.forClass(ExecuteCommandEntity.class);
-        verify(tradingIntentRoutingNode).apply(requestCaptor.capture(), eq(dynamicContext));
+        verify(tradingRequestNode).apply(requestCaptor.capture(), eq(dynamicContext));
         assertEquals("给我分析一下中国平安；进行完整投资分析", requestCaptor.getValue().getMessage());
         assertEquals("我要进行完整投资分析", request.getMessage());
         assertEquals(IntentTypeEnum.STOCK_ANALYSIS,

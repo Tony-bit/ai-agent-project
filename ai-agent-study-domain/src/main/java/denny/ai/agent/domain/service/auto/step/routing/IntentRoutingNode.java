@@ -85,9 +85,7 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
                 ? copyWithMessage(request, effectiveQuery)
                 : request;
         String response = handler().handle(effectiveRequest, context, result);
-        if (Boolean.TRUE.equals(result.getNeedsClarification())) {
-            sendClarificationAndComplete(context, request.getSessionId(), response);
-        }
+        sendRoutingTerminalIfPresent(context, request.getSessionId());
         return response;
     }
 
@@ -172,6 +170,24 @@ public class IntentRoutingNode extends AbstractExecuteSupport {
         } else {
             log.warn("Clarification SSE delivery failed: sessionId={}, clarificationSent={}",
                     sessionId, clarificationSent);
+        }
+    }
+
+    private void sendRoutingTerminalIfPresent(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context,
+            String sessionId) {
+        String kind = context.getValue(RoutingResultHandler.ROUTING_TERMINAL_KIND_KEY);
+        String response = context.getValue(RoutingResultHandler.ROUTING_TERMINAL_RESPONSE_KEY);
+        if (RoutingResultHandler.TERMINAL_KIND_CLARIFICATION.equals(kind)) {
+            sendClarificationAndComplete(context, sessionId, response);
+            return;
+        }
+        if (RoutingResultHandler.TERMINAL_KIND_ERROR.equals(kind)) {
+            boolean sent = sendSseResult(context,
+                    AutoAgentExecuteResultEntity.createErrorResult(response, sessionId));
+            if (!sent) {
+                log.warn("Routing error SSE delivery failed without retry: sessionId={}", sessionId);
+            }
         }
     }
 }

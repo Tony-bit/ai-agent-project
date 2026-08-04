@@ -73,13 +73,42 @@ public class TradingStarter {
                       DynamicContext dynamicContext,
                       SseEventSender sseSender) {
         TargetContext targetContext;
-        TradingPromptSnapshot promptSnapshot;
         try {
             targetContext = createTargetContext(request);
-            promptSnapshot = promptSnapshotFactory.create(targetContext);
         } catch (RuntimeException error) {
             log.error("交易标的初始化失败: ticker={}, error={}",
                     request != null ? request.getTicker() : null, error.getMessage(), error);
+            sendInitializationError(dynamicContext, sseSender);
+            completeOwnedSseSession(dynamicContext);
+            return;
+        }
+
+        startResolved(request, targetContext, dynamicContext, sseSender);
+    }
+
+    /**
+     * 使用调用方已经完成权威校验的标的启动 Trading。
+     */
+    public void start(StockAnalysisRequestVO request,
+                      TargetContext targetContext,
+                      DynamicContext dynamicContext,
+                      SseEventSender sseSender) {
+        validateResolvedTarget(request, targetContext);
+        startResolved(request, targetContext, dynamicContext, sseSender);
+    }
+
+    private void startResolved(StockAnalysisRequestVO request,
+                               TargetContext targetContext,
+                               DynamicContext dynamicContext,
+                               SseEventSender sseSender) {
+        TradingPromptSnapshot promptSnapshot;
+        try {
+            promptSnapshot = promptSnapshotFactory.create(targetContext);
+        } catch (RuntimeException error) {
+            log.error("交易 Prompt 初始化失败: ticker={}, targetId={}, error={}",
+                    request != null ? request.getTicker() : null,
+                    targetContext != null ? targetContext.targetId() : null,
+                    error.getMessage(), error);
             sendInitializationError(dynamicContext, sseSender);
             completeOwnedSseSession(dynamicContext);
             return;
@@ -121,6 +150,19 @@ public class TradingStarter {
         } finally {
             TradingDriver.clear();
             completeOwnedSseSession(dynamicContext);
+        }
+    }
+
+    private void validateResolvedTarget(StockAnalysisRequestVO request, TargetContext targetContext) {
+        if (request == null) {
+            throw new IllegalArgumentException("股票分析请求为空");
+        }
+        if (targetContext == null) {
+            throw new IllegalArgumentException("权威标的上下文为空");
+        }
+        String ticker = request.getTicker();
+        if (ticker == null || !targetContext.targetId().equals(ticker.trim().toUpperCase())) {
+            throw new IllegalArgumentException("请求 ticker 与权威 targetId 不一致");
         }
     }
 

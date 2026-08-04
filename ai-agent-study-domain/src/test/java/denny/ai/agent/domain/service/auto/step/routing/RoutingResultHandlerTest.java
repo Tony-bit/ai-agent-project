@@ -87,6 +87,9 @@ public class RoutingResultHandlerTest {
 
         assertEquals("provide stock code", handler.handle(request, context, result));
         assertEquals(List.of("stockCode"), context.getValue("missingInfo"));
+        assertEquals("CLARIFICATION", context.getValue(RoutingResultHandler.ROUTING_TERMINAL_KIND_KEY));
+        assertEquals("provide stock code",
+                context.getValue(RoutingResultHandler.ROUTING_TERMINAL_RESPONSE_KEY));
     }
 
     @Test
@@ -136,7 +139,7 @@ public class RoutingResultHandlerTest {
 
     @Test
     public void routesStockAnalysisToGeneralChatWhenTradingBeanIsMissing() throws Exception {
-        when(applicationContext.getBean("tradingIntentRoutingNode"))
+        when(applicationContext.getBean("tradingRequestNode"))
                 .thenThrow(new RuntimeException("missing bean"));
         MultiIntentRoutingResult result = result(false,
                 List.of(task("sub-1", 1, 1, IntentTypeEnum.STOCK_ANALYSIS)));
@@ -162,23 +165,23 @@ public class RoutingResultHandlerTest {
         assertEquals(ConfidenceEnum.LOW, diagnosticResult.getConfidence());
         assertEquals(generalChatNode, handler.select(context));
         verify(generalChatNode).apply(any(), any());
-        verify(applicationContext, never()).getBean("tradingIntentRoutingNode");
+        verify(applicationContext, never()).getBean("tradingRequestNode");
     }
 
     @Test
     public void keepsMediumConfidenceStockAnalysisOnTradingPath() throws Exception {
-        when(applicationContext.getBean("tradingIntentRoutingNode")).thenReturn(tradingNode);
+        when(applicationContext.getBean("tradingRequestNode")).thenReturn(tradingNode);
         MultiIntentRoutingResult result = result(false, List.of(
                 task("sub-1", 1, 1, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.MEDIUM)));
 
         handler.handle(request, context, result);
 
-        verify(applicationContext).getBean("tradingIntentRoutingNode");
+        verify(applicationContext).getBean("tradingRequestNode");
         verify(tradingNode).apply(request, context);
     }
 
     @Test
-    public void sanitizesOnlyLowConfidenceStockSubtasksBeforeMultiTaskExecution() throws Exception {
+    public void rejectsEntireMultiTaskWhenAnyStockAnalysisIsPresent() throws Exception {
         SubTask lowStock = task("sub-1", 1, 3, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.LOW);
         lowStock.setExecutorNode("tradingStarter");
         SubTask mediumStock = task("sub-2", 2, 3, IntentTypeEnum.STOCK_ANALYSIS, ConfidenceEnum.MEDIUM);
@@ -188,14 +191,11 @@ public class RoutingResultHandlerTest {
 
         handler.handle(request, context, result(true, List.of(lowStock, mediumStock, general)));
 
-        List<SubTask> storedTasks = context.getValue(MultiTaskExecutionNode.TASK_LIST_KEY);
-        assertEquals("generalChatNode", storedTasks.get(0).getExecutorNode());
-        assertEquals(IntentTypeEnum.STOCK_ANALYSIS, storedTasks.get(0).getIntent());
-        assertEquals(ConfidenceEnum.LOW, storedTasks.get(0).getConfidence());
-        assertEquals("tradingStarter", storedTasks.get(1).getExecutorNode());
-        assertEquals("generalChatNode", storedTasks.get(2).getExecutorNode());
-        verify(multiTaskExecutionNode).apply(any(), any());
-        verify(applicationContext, never()).getBean("tradingIntentRoutingNode");
+        assertEquals("CLARIFICATION", context.getValue(RoutingResultHandler.ROUTING_TERMINAL_KIND_KEY));
+        assertEquals("股票分析暂不支持与其他任务同时执行，请单独发起股票分析",
+                context.getValue(RoutingResultHandler.ROUTING_TERMINAL_RESPONSE_KEY));
+        verify(multiTaskExecutionNode, never()).apply(any(), any());
+        verify(applicationContext, never()).getBean("tradingRequestNode");
     }
 
     private MultiIntentRoutingResult result(boolean multiTask, List<SubTask> tasks) {

@@ -27,6 +27,11 @@ public class StockAnalysisRequestVO {
     private String ticker;
 
     /**
+     * 路由阶段解析出的股票名称。代码输入场景允许为空。
+     */
+    private String stockName;
+
+    /**
      * 分析日期，格式 yyyy-MM-dd，默认当天
      */
     @Builder.Default

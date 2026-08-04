@@ -219,4 +219,16 @@ public class IntentRoutingPromptTest {
             assertTrue(prompt.contains("user: 贵州茅台最近怎么样"));
         }
     }
+
+    @Test
+    public void should_define_authoritative_stock_slot_contract_in_unified_prompt() {
+        String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(
+                "对药明康德进行完整投资分析", List.of(), List.of());
+
+        assertTrue(prompt.contains("search_stock_by_name"));
+        assertTrue(prompt.contains("stockName"));
+        assertTrue(prompt.contains("ALL|FUNDAMENTAL|TECHNICAL|SENTIMENT|NEWS"));
+        assertTrue(prompt.contains("不得凭记忆生成"));
+        assertFalse(prompt.contains("stockQueryType, timeRange, exchange"));
+    }
 }

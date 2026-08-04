@@ -142,6 +142,51 @@ public class RoutingStructuredOutputValidatorTest {
     }
 
     @Test
+    public void shouldAcceptAuthoritativeStockSlotsInUnifiedOutput() {
+        validator.unified().validate(response("""
+                {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                 "reasoning":"stock","taskList":[
+                   {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析药明康德",
+                    "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
+                    "slots":{"intentSpecificSlots":{"stockCode":"603259.SH","stockName":"药明康德",
+                    "stockQueryType":"FUNDAMENTAL,NEWS","timeRange":null}}}
+                 ]}
+                """));
+    }
+
+    @Test
+    public void shouldRejectDeprecatedExchangeInUnifiedStockSlots() {
+        ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
+                validator.unified().validate(response("""
+                        {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                         "reasoning":"stock","taskList":[
+                           {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析药明康德",
+                            "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
+                            "slots":{"intentSpecificSlots":{"stockCode":"603259","stockName":"药明康德",
+                            "stockQueryType":"ALL","exchange":"SH"}}}
+                         ]}
+                        """)));
+
+        assertEquals(ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR, thrown.getFailureType());
+    }
+
+    @Test
+    public void shouldRejectUnsupportedStockQueryTypeInUnifiedOutput() {
+        ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
+                validator.unified().validate(response("""
+                        {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
+                         "reasoning":"stock","taskList":[
+                           {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析药明康德",
+                            "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
+                            "slots":{"intentSpecificSlots":{"stockCode":"603259","stockName":"药明康德",
+                            "stockQueryType":"走势分析"}}}
+                         ]}
+                        """)));
+
+        assertEquals(ResponseValidationFailureType.SCHEMA_VALIDATION_ERROR, thrown.getFailureType());
+    }
+
+    @Test
     public void shouldRejectBusinessRuleViolationInDecompositionOutput() {
         ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
                 validator.queryDecomposition().validate(response("""

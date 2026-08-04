@@ -31,9 +31,15 @@ public class RoutingResultHandler {
     public static final String INTENT_SPECIFIC_SLOTS_KEY = "intentSpecificSlots";
     public static final String STOCK_SLOT_KEY = "stockSlot";
     public static final String METRICS_KEY = "intentRoutingMetrics";
+    public static final String ROUTING_TERMINAL_RESPONSE_KEY = "routingTerminalResponse";
+    public static final String ROUTING_TERMINAL_KIND_KEY = "routingTerminalKind";
+    public static final String TERMINAL_KIND_CLARIFICATION = "CLARIFICATION";
+    public static final String TERMINAL_KIND_ERROR = "ERROR";
     static final String EXECUTOR_OVERRIDE_KEY = "intentRoutingExecutorOverride";
 
-    private static final String TRADING_NODE_BEAN_NAME = "tradingIntentRoutingNode";
+    private static final String TRADING_NODE_BEAN_NAME = "tradingRequestNode";
+    private static final String STOCK_MULTI_TASK_MESSAGE =
+            "股票分析暂不支持与其他任务同时执行，请单独发起股票分析";
 
     private final Step1AnalyzerNode step1AnalyzerNode;
     private final IntelligentInspection intelligentInspection;
@@ -63,11 +69,14 @@ public class RoutingResultHandler {
             context.setValue(METRICS_KEY, result.getMetrics());
         }
         publishRoutingConfidenceMetadata(context, result);
+        if (Boolean.TRUE.equals(result.getMultiTask()) && containsStockAnalysis(result.getTaskList())) {
+            log.warn("Stock analysis multi-task gate rejected request: sessionId={}", request.getSessionId());
+            return recordTerminal(context, TERMINAL_KIND_CLARIFICATION, STOCK_MULTI_TASK_MESSAGE);
+        }
         applyLowConfidenceStockSafetyGate(result, context);
         if (Boolean.TRUE.equals(result.getNeedsClarification())) {
-            context.setValue("clarificationPrompt", result.getClarificationPrompt());
             context.setValue("missingInfo", result.getMissingInfo());
-            return result.getClarificationPrompt();
+            return recordTerminal(context, TERMINAL_KIND_CLARIFICATION, result.getClarificationPrompt());
         }
         if (Boolean.TRUE.equals(result.getMultiTask())) {
             context.setValue(MultiTaskExecutionNode.TASK_LIST_KEY, result.getTaskList());
@@ -184,6 +193,23 @@ public class RoutingResultHandler {
         return task != null
                 && task.getIntent() == IntentTypeEnum.STOCK_ANALYSIS
                 && task.getConfidence() == ConfidenceEnum.LOW;
+    }
+
+    private boolean containsStockAnalysis(List<SubTask> tasks) {
+        return tasks != null && tasks.stream()
+                .anyMatch(task -> task != null && task.getIntent() == IntentTypeEnum.STOCK_ANALYSIS);
+    }
+
+    private String recordTerminal(
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext context,
+            String kind,
+            String response) {
+        context.setValue(ROUTING_TERMINAL_KIND_KEY, kind);
+        context.setValue(ROUTING_TERMINAL_RESPONSE_KEY, response);
+        if (TERMINAL_KIND_CLARIFICATION.equals(kind)) {
+            context.setValue("clarificationPrompt", response);
+        }
+        return response;
     }
 
     @SuppressWarnings("unchecked")

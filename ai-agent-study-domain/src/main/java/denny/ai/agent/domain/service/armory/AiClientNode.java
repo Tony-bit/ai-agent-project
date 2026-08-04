@@ -29,6 +29,9 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,8 +46,8 @@ public class AiClientNode extends AbstractArmorySupport {
 
     private static final String TRADING_SKILLS_ENABLED_CLIENT_IDS =
             "spring.ai.trading.skills.enabled-client-ids";
-    private static final String TRADING_TOOLS_ENABLED_CLIENT_IDS =
-            "spring.ai.trading.tools.enabled-client-ids";
+    private static final String TRADING_TOOLS_ALLOWED_BY_CLIENT =
+            "spring.ai.trading.tools.allowed-by-client";
     private static final String TRADING_SKILL_READ_TOOL_BEAN = "readTradingSkillToolCallback";
     private static final Set<String> TRADING_TOOL_NAMES = Set.of(
             "get_stock_info",
@@ -54,6 +57,13 @@ public class AiClientNode extends AbstractArmorySupport {
             "get_sentiment",
             "get_stock_news",
             "search_stock_by_name");
+    private static final Set<String> MANAGED_TRADING_TOOL_NAMES;
+
+    static {
+        Set<String> names = new LinkedHashSet<>(TRADING_TOOL_NAMES);
+        names.add("read_skill");
+        MANAGED_TRADING_TOOL_NAMES = Collections.unmodifiableSet(names);
+    }
 
     @Resource
     private ApplicationContext applicationContext;
@@ -67,6 +77,7 @@ public class AiClientNode extends AbstractArmorySupport {
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DynamicContext dynamicContext) throws Exception {
         log.info("Ai Agent 构建节点，客户端{}", JSON.toJSONString(requestParameter));
+        validateTradingToolAllowlist();
 
         List<AiClientVO> aiClientList = dynamicContext.getValue(dataName());
         if (null == aiClientList || aiClientList.isEmpty()) {
@@ -186,10 +197,6 @@ public class AiClientNode extends AbstractArmorySupport {
         return getConfiguredClientIds(TRADING_SKILLS_ENABLED_CLIENT_IDS);
     }
 
-    List<String> getTradingToolsEnabledClientIds() {
-        return getConfiguredClientIds(TRADING_TOOLS_ENABLED_CLIENT_IDS);
-    }
-
     boolean isTradingSkillsEnabled(String clientId, List<Advisor> advisors) {
         boolean advisorEnabled = advisors != null && advisors.stream()
                 .anyMatch(SpringAiSkillAdvisor.class::isInstance);
@@ -210,6 +217,39 @@ public class AiClientNode extends AbstractArmorySupport {
                 .stream()
                 .filter(clientId -> clientId != null && !clientId.isBlank())
                 .toList();
+    }
+
+    Map<String, Set<String>> getAllowedTradingToolsByClient() {
+        if (environment == null) {
+            return Map.of();
+        }
+        Map<String, String[]> configured = Binder.get(environment)
+                .bind(TRADING_TOOLS_ALLOWED_BY_CLIENT, Bindable.mapOf(String.class, String[].class))
+                .orElse(Map.of());
+        Map<String, Set<String>> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, String[]> entry : configured.entrySet()) {
+            Set<String> names = new LinkedHashSet<>();
+            if (entry.getValue() != null) {
+                for (String name : entry.getValue()) {
+                    if (name != null && !name.isBlank()) {
+                        names.add(name.trim());
+                    }
+                }
+            }
+            normalized.put(entry.getKey(), Collections.unmodifiableSet(names));
+        }
+        return Collections.unmodifiableMap(normalized);
+    }
+
+    void validateTradingToolAllowlist() {
+        for (Map.Entry<String, Set<String>> entry : getAllowedTradingToolsByClient().entrySet()) {
+            Set<String> unknown = new LinkedHashSet<>(entry.getValue());
+            unknown.removeAll(MANAGED_TRADING_TOOL_NAMES);
+            if (!unknown.isEmpty()) {
+                throw new IllegalStateException("Unknown Trading Tool names for clientId="
+                        + entry.getKey() + ": " + unknown);
+            }
+        }
     }
 
     private void registerSpringBeansToolCallbacks(Set<String> mcpToolNames,
@@ -246,21 +286,23 @@ public class AiClientNode extends AbstractArmorySupport {
                                              boolean tradingSkillsEnabled) {
         String toolName = callback.getToolDefinition().name();
         return !TRADING_TOOL_NAMES.contains(toolName)
-                || tradingSkillsEnabled
-                || getTradingToolsEnabledClientIds().contains(clientId);
+                || getAllowedTradingToolsByClient().getOrDefault(clientId, Set.of()).contains(toolName);
     }
 
     private void appendTradingSkillToolCallbacks(String clientId, boolean tradingSkillsEnabled) {
-        if (!tradingSkillsEnabled) {
+        Set<String> allowedTools = getAllowedTradingToolsByClient().getOrDefault(clientId, Set.of());
+        if (!allowedTools.contains("read_skill")) {
             return;
         }
         if (!applicationContext.containsBean(TRADING_SKILL_READ_TOOL_BEAN)) {
-            return;
+            throw new IllegalStateException("Trading Tool read_skill is allowed but bean is unavailable");
         }
 
         // 将现有工具转换为 lightweight 包装
         List<ToolCallback> wrappedCallbacks = toolCallbackRegistry.getAllToolCallbacks().length > 0
                 ? java.util.Arrays.stream(toolCallbackRegistry.getAllToolCallbacks())
+                        .filter(callback -> !TRADING_TOOL_NAMES.contains(callback.getToolDefinition().name())
+                                || allowedTools.contains(callback.getToolDefinition().name()))
                         .map(callback -> TRADING_TOOL_NAMES.contains(
                                 callback.getToolDefinition().name())
                                 ? toLightweightTradingToolCallback(callback)

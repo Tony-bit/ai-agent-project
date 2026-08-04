@@ -23,6 +23,11 @@ public class StockSlot {
     private String stockCode;
 
     /**
+     * 股票正式名称。名称输入场景由股票搜索工具的唯一结果填充。
+     */
+    private String stockName;
+
+    /**
      * 查询类型：走势分析/基本面分析/技术面分析/情绪分析/综合分析
      */
     private String stockQueryType;
@@ -33,7 +38,8 @@ public class StockSlot {
     private String timeRange;
 
     /**
-     * 交易所：SZ（深圳）、SH（上海）、HK（港股）、US（美股）
+     * 仅用于兼容旧路由 JSON，不参与股票身份构造或校验。
      */
+    @Deprecated
     private String exchange;
 }

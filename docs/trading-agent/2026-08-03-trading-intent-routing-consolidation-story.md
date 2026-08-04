@@ -3,7 +3,7 @@
 | 字段 | 内容 |
 |------|------|
 | 创建日期 | 2026-08-03 |
-| 状态 | pending |
+| 状态 | pass |
 | 优先级 | P0 |
 | 关联设计 | `docs/superpowers/plans/2026-08-03-trading-intent-routing-consolidation-design.md` |
 | 关联测试 | `docs/superpowers/test/2026-08-03-trading-intent-routing-consolidation-test.md` |
@@ -205,13 +205,13 @@ Markdown 当 JSON 解析并抛出 `illegal input, char -`，随后错误降级�
 
 | Task | 内容 | 状态 |
 |------|------|------|
-| Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pending |
-| Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pending |
-| Task 3 | 提取类型映射，实现 `TradingRequestNode` 身份预检、异常分类及请求构造 | pending |
-| Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pending |
-| Task 5 | 删除 6001 代码与配置，新增 `V2030` 精确 DML 迁移及数据库兼容测试 | pending |
-| Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pending |
-| Task 7 | 验证 GENERAL_CHAT、PE、巡检、直接 Trading API 和分析节点回归 | pending |
+| Task 1 | 更新 3201 Prompt、Schema、槽位模型和 Validator | pass |
+| Task 2 | 实现仅管理 Trading Tools 的 `allowedToolsByClient` 构建期白名单及配置校验 | pass |
+| Task 3 | 提取类型映射，实现 `TradingRequestNode` 身份预检、异常分类及请求构造 | pass |
+| Task 4 | 切换下游 Bean，增加股票多任务门禁及统一路由终止响应 | pass |
+| Task 5 | 删除 6001 代码与配置，新增 `V2030` 精确 DML 迁移及数据库兼容测试 | pass |
+| Task 6 | 补齐单元、集成和连续两次 Trading 回归测试 | pass |
+| Task 7 | 验证 GENERAL_CHAT、PE、巡检、直接 Trading API 和分析节点回归 | pass |
 
 ## 11. 后续 Story
 

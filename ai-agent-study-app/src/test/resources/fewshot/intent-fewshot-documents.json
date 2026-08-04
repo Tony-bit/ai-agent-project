@@ -455,7 +455,7 @@
         "metadata":  {
                          "id":  "46",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台现在是否值得买入\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台现在是否值得买入\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"600519\",\"stockName\":\"贵州茅台\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -465,7 +465,7 @@
         "metadata":  {
                          "id":  "47",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台和五粮液哪个更值得投资\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":true,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"包含两个股票分析任务，由下游门禁整轮拒绝\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":2,\"content\":\"分析贵州茅台\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"600519\",\"stockName\":\"贵州茅台\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}},{\"taskId\":\"sub-2\",\"taskIndex\":2,\"totalTasks\":2,\"content\":\"分析五粮液\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"000858\",\"stockName\":\"五粮液\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -475,7 +475,7 @@
         "metadata":  {
                          "id":  "48",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"我持有宁德时代，应该继续持有还是卖出\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"我持有宁德时代，应该继续持有还是卖出\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"300750\",\"stockName\":\"宁德时代\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -485,7 +485,7 @@
         "metadata":  {
                          "id":  "49",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"给出比亚迪的仓位建议\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"给出比亚迪的仓位建议\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"002594\",\"stockName\":\"比亚迪\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -495,7 +495,7 @@
         "metadata":  {
                          "id":  "50",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台的目标价和止损位怎么设\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"贵州茅台的目标价和止损位怎么设\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"600519\",\"stockName\":\"贵州茅台\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -504,8 +504,8 @@
         "text":  "对腾讯控股做一次完整投资分析",
         "metadata":  {
                          "id":  "51",
-                         "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"对腾讯控股做一次完整投资分析\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"stockCode\"],\"clarificationPrompt\":\"请提供完整 A 股名称或 6 位代码\",\"reasoning\":\"当前股票分析入口仅支持 A 股\",\"taskList\":[]}",
                          "status":  1
                      }
     },
@@ -515,7 +515,7 @@
         "metadata":  {
                          "id":  "52",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"结合财报判断宁德时代是否值得长期持有\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"结合财报判断宁德时代是否值得长期持有\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"300750\",\"stockName\":\"宁德时代\",\"stockQueryType\":\"FUNDAMENTAL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -524,8 +524,8 @@
         "text":  "现在是不是抄底新能源 ETF 的好时机",
         "metadata":  {
                          "id":  "53",
-                         "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"现在是不是抄底新能源 ETF 的好时机\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"stockCode\"],\"clarificationPrompt\":\"请提供具体标的的完整名称或 6 位代码\",\"reasoning\":\"新能源 ETF 未指向唯一标的\",\"taskList\":[]}",
                          "status":  1
                      }
     },
@@ -535,7 +535,7 @@
         "metadata":  {
                          "id":  "54",
                          "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我评估五粮液的投资价值和主要风险\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"完整名称已解析为唯一代码\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"帮我评估五粮液的投资价值和主要风险\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{\"intentSpecificSlots\":{\"stockCode\":\"000858\",\"stockName\":\"五粮液\",\"stockQueryType\":\"ALL\",\"timeRange\":null}}}]}",
                          "status":  1
                      }
     },
@@ -544,8 +544,8 @@
         "text":  "茅台现在能不能买，打算拿三年",
         "metadata":  {
                          "id":  "55",
-                         "intentCode":  "STOCK_ANALYSIS",
-                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":false,\"missingInfo\":[],\"clarificationPrompt\":\"\",\"reasoning\":\"明确投资决策\",\"taskList\":[{\"taskId\":\"sub-1\",\"taskIndex\":1,\"totalTasks\":1,\"content\":\"茅台现在能不能买，打算拿三年\",\"intent\":\"STOCK_ANALYSIS\",\"confidence\":\"HIGH\",\"dependsOn\":[],\"slots\":{}}]}",
+                         "intentCode":  "AMBIGUOUS",
+                         "exampleJson":  "{\"multiTask\":false,\"needsClarification\":true,\"missingInfo\":[\"stockCode\"],\"clarificationPrompt\":\"请提供完整 A 股名称或 6 位代码\",\"reasoning\":\"简称不作为唯一股票身份\",\"taskList\":[]}",
                          "status":  1
                      }
     },

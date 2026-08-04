@@ -429,6 +429,7 @@ public class IntentRoutingService extends AbstractExecuteSupport {
     private Map<String, Object> buildStockSlot(Map<String, Object> rawSlots) {
         StockSlot stockSlot = StockSlot.builder()
                 .stockCode((String) rawSlots.get("stockCode"))
+                .stockName((String) rawSlots.get("stockName"))
                 .stockQueryType((String) rawSlots.get("stockQueryType"))
                 .timeRange((String) rawSlots.get("timeRange"))
                 .exchange((String) rawSlots.get("exchange"))

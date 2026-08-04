@@ -178,6 +178,25 @@ public class AutoAgentExecuteStrategyTest {
         assertSame(cleanupFailure, handlerFailure.getSuppressed()[0]);
     }
 
+    @Test
+    public void outerStrategyCompletesEmitterExactlyOnceOnSuccess() throws Exception {
+        CountingEmitter emitter = new CountingEmitter();
+
+        autoAgentExecuteStrategy.execute(request(), emitter);
+
+        assertEquals(1, emitter.completeCount);
+    }
+
+    @Test
+    public void outerStrategyCompletesEmitterExactlyOnceOnFailure() throws Exception {
+        CountingEmitter emitter = new CountingEmitter();
+        when(strategyHandler.apply(any(), any())).thenThrow(new RuntimeException("handler failed"));
+
+        autoAgentExecuteStrategy.execute(request(), emitter);
+
+        assertEquals(1, emitter.completeCount);
+    }
+
     private ExecuteCommandEntity request() {
         return ExecuteCommandEntity.builder()
                 .message("define vector database")
@@ -190,5 +209,14 @@ public class AutoAgentExecuteStrategyTest {
         var field = AutoAgentExecuteStrategy.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(autoAgentExecuteStrategy, value);
+    }
+
+    private static class CountingEmitter extends ResponseBodyEmitter {
+        private int completeCount;
+
+        @Override
+        public synchronized void complete() {
+            completeCount++;
+        }
     }
 }

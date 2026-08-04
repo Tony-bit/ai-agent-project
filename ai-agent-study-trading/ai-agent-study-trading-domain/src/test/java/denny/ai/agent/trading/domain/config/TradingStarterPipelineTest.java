@@ -20,8 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.time.LocalDate;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 class TradingStarterPipelineTest {
 
@@ -47,6 +52,37 @@ class TradingStarterPipelineTest {
         assertEquals(firstTarget.runId(), snapshot.runId());
         assertSame(firstTarget, firstTrading.getTargetContext());
         assertNotEquals(firstTarget.runId(), secondTarget.runId());
+    }
+
+    @Test
+    void startWithValidatedTargetReusesSameObjectWithoutIdentityLookup() {
+        TradingStarter starter = createStarter(new CompletingPipeline(true));
+        TargetContextFactory targetContextFactory = mock(TargetContextFactory.class);
+        ReflectionTestUtils.setField(starter, "targetContextFactory", targetContextFactory);
+        TargetContext target = new TargetContext(UUID.randomUUID().toString(), "000001.SZ",
+                "平安银行", "银行", LocalDate.now());
+        StockAnalysisRequestVO request = createRequest();
+        request.setTicker("000001.SZ");
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext context =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+
+        starter.start(request, target, context, (type, event) -> true);
+
+        assertSame(target, context.getValue(TradingTargetContextKeys.TARGET_CONTEXT));
+        verify(targetContextFactory, never()).create(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(LocalDate.class));
+    }
+
+    @Test
+    void startWithValidatedTargetRejectsMismatchedTicker() {
+        TradingStarter starter = createStarter(new CompletingPipeline(true));
+        TargetContext target = new TargetContext(UUID.randomUUID().toString(), "000001.SZ",
+                "平安银行", "银行", LocalDate.now());
+        StockAnalysisRequestVO request = createRequest();
+        request.setTicker("600000.SH");
+
+        assertThrows(IllegalArgumentException.class, () -> starter.start(request, target,
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext(), (type, event) -> true));
     }
 
     @Test

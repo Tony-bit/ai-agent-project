@@ -133,8 +133,12 @@ public class RootNode extends AbstractExecuteSupport {
         String input = requestParameter.getMessage();
         String traceId = dynamicContext.getTraceId();
 
+        // 路由前置终止优先，确保澄清或错误文本进入主会话历史。
+        String output = dynamicContext.getValue("routingTerminalResponse");
         // PE 流：finalSummary（正常总结流）
-        String output = dynamicContext.getValue("finalSummary");
+        if (output == null) {
+            output = dynamicContext.getValue("finalSummary");
+        }
         // PE 流：intentRecognitionResult（意图识别流）
         if (output == null) {
             output = dynamicContext.getValue("intentRecognitionResult");

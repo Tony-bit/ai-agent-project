@@ -183,6 +183,7 @@ public class IntentRoutingServiceTest {
                         "baseSlot": {"topic": "贵州茅台", "sentiment": "neutral"},
                         "intentSpecificSlots": {
                           "stockCode": "600519",
+                          "stockName": "贵州茅台",
                           "stockQueryType": "TECHNICAL",
                           "timeRange": "近三个月",
                           "exchange": "SH"
@@ -215,6 +216,7 @@ public class IntentRoutingServiceTest {
         assertEquals(2, result.getTaskList().size());
         assertTrue(stockSlotObj instanceof StockSlot);
         assertEquals("600519", ((StockSlot) stockSlotObj).getStockCode());
+        assertEquals("贵州茅台", ((StockSlot) stockSlotObj).getStockName());
     }
 
     @Test

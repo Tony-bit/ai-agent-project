@@ -145,6 +145,10 @@ public class IntentRoutingPrompt {
         15. 若历史中上一轮针对 analysisDepth 询问固定二选一，当前回答“快速了解”时生成 FINANCIAL_GENERAL 任务；回答“完整投资分析”时生成 STOCK_ANALYSIS 任务。task content 必须结合历史恢复原金融对象，不能只输出当前选项；无法识别选项时安全生成 FINANCIAL_GENERAL 任务。
         16. 金融任务只缺少股票代码但已有可解析中文名或简称时，不因 stockCode 缺失而澄清，后续执行节点负责补齐。
         17. 用户使用“先...再...”表达先检索资料、再结合业务场景做建议/选型/方案设计时，必须拆为两个任务：PE_RETRIEVAL 任务在前，PE_REASONING 任务在后，第二个任务 dependsOn 第一个任务。
+        18. STOCK_ANALYSIS 中若用户明确提供 6 位 A 股代码或标准 ts_code（.SH/.SZ/.BJ），直接规范化并填写 stockCode，不调用名称搜索。
+        19. STOCK_ANALYSIS 中若用户提供 A 股完整名称，必须调用 search_stock_by_name；仅当工具返回唯一结果时，填写结果中的 stockCode 和 stockName。
+        20. 名称搜索返回 0 个、多个结果或工具失败时，返回 needsClarification=true、missingInfo=["stockCode"]、clarificationPrompt="请提供完整 A 股名称或 6 位代码"、taskList=[]。
+        21. 不得凭记忆生成或补全 ticker；stockCode 只能来自用户明确代码或 search_stock_by_name 的唯一结果。
 
         ## 金融边界对比示例
         - 查询贵州茅台当前股价和市盈率 -> FINANCIAL_GENERAL
@@ -163,7 +167,10 @@ public class IntentRoutingPrompt {
         - slots 中可包含：
           - baseSlot: {topic, sentiment}
           - intentSpecificSlots: 根据意图输出专属槽位
-        - FINANCIAL_GENERAL 与 STOCK_ANALYSIS 的 intentSpecificSlots 推荐包含：stockCode, stockQueryType, timeRange, exchange
+        - STOCK_ANALYSIS 的 intentSpecificSlots 必须包含 stockCode，可包含 stockName、stockQueryType、timeRange；不得输出 exchange。
+        - stockCode 只允许 6 位数字或带 .SH/.SZ/.BJ 后缀的标准 ts_code。
+        - stockQueryType 只允许 ALL|FUNDAMENTAL|TECHNICAL|SENTIMENT|NEWS 或这些枚举码的逗号组合；未指定时输出 ALL。
+        - 代码输入允许 stockName 为空；名称输入必须使用 search_stock_by_name 唯一结果中的 stockName。
         - needsClarification=false 时，missingInfo 必须输出 []，clarificationPrompt 输出 ""。
         - needsClarification=true 时，missingInfo 必须非空；分析深度不明确统一使用 "analysisDepth"，知识库缺少检索主题使用 "topic"，股票缺少可解析标的使用 "stockCode"。
 
@@ -194,7 +201,10 @@ public class IntentRoutingPrompt {
                   "sentiment": "neutral"
                 },
                 "intentSpecificSlots": {
-                  "key": "value"
+                  "stockCode": "603259.SH",
+                  "stockName": "药明康德",
+                  "stockQueryType": "ALL",
+                  "timeRange": null
                 }
               }
             }

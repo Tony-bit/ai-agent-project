@@ -33,6 +33,12 @@ public class RoutingStructuredOutputValidator {
             "GENERAL_CHAT"
     );
     private static final Set<String> ALLOWED_CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
+    private static final Set<String> STOCK_SLOT_FIELDS = Set.of(
+            "stockCode", "stockName", "stockQueryType", "timeRange"
+    );
+    private static final Set<String> STOCK_QUERY_TYPES = Set.of(
+            "ALL", "FUNDAMENTAL", "TECHNICAL", "SENTIMENT", "NEWS"
+    );
     private static final Set<String> UNIFIED_ROOT_FIELDS = Set.of(
             "multiTask", "needsClarification", "missingInfo", "clarificationPrompt", "reasoning", "taskList"
     );
@@ -103,6 +109,9 @@ public class RoutingStructuredOutputValidator {
             requireAllowedString(task, "confidence", ALLOWED_CONFIDENCE);
             ensureOptionalObject(task, "slots");
             ensureOptionalStringArray(task, "dependsOn");
+            if ("STOCK_ANALYSIS".equals(task.getString("intent"))) {
+                validateUnifiedStockSlots(task.getJSONObject("slots"));
+            }
         }
 
         UnifiedRoutingOutput output = toDto(json, UnifiedRoutingOutput.class);
@@ -225,6 +234,34 @@ public class RoutingStructuredOutputValidator {
             throw business("multiTask=false allows at most one task");
         }
         validateTaskGraph(tasks);
+    }
+
+    private void validateUnifiedStockSlots(JSONObject slots) {
+        if (slots == null) {
+            throw schema("STOCK_ANALYSIS slots are required");
+        }
+        JSONObject stockSlots = slots.getJSONObject("intentSpecificSlots");
+        if (stockSlots == null) {
+            throw schema("STOCK_ANALYSIS intentSpecificSlots are required");
+        }
+        rejectUnknownFields(stockSlots, STOCK_SLOT_FIELDS, "STOCK_ANALYSIS intentSpecificSlots");
+        requireString(stockSlots, "stockCode");
+        String stockCode = stockSlots.getString("stockCode").trim().toUpperCase(java.util.Locale.ROOT);
+        if (!stockCode.matches("^[0-9]{6}(\\.(SH|SZ|BJ))?$")) {
+            throw schema("stockCode must be a 6-digit A-share code or standard ts_code");
+        }
+        ensureOptionalString(stockSlots, "stockName");
+        ensureOptionalString(stockSlots, "timeRange");
+        ensureOptionalString(stockSlots, "stockQueryType");
+        String stockQueryType = stockSlots.getString("stockQueryType");
+        if (StringUtils.hasText(stockQueryType)) {
+            for (String item : stockQueryType.split(",")) {
+                String normalized = item.trim().toUpperCase(java.util.Locale.ROOT);
+                if (!STOCK_QUERY_TYPES.contains(normalized)) {
+                    throw schema("stockQueryType has unsupported value: " + item);
+                }
+            }
+        }
     }
 
     private List<SubTask> toSubTasks(UnifiedRoutingOutput output) {

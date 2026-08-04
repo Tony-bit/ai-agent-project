@@ -3,6 +3,9 @@ package denny.ai.agent.trading.domain.service;
 import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.vo.StockIdentityVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
+import denny.ai.agent.trading.domain.exception.StockIdentityNotFoundException;
+import denny.ai.agent.trading.domain.exception.StockIdentityProviderException;
+import denny.ai.agent.trading.domain.exception.StockIdentityValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -31,17 +34,29 @@ public class TargetContextFactory {
     }
 
     public TargetContext create(String candidateTicker, LocalDate asOfDate) {
+        return create(candidateTicker, null, asOfDate);
+    }
+
+    public TargetContext create(String candidateTicker, String requestedStockName, LocalDate asOfDate) {
         String normalizedTicker = normalizeCandidate(candidateTicker);
         Objects.requireNonNull(asOfDate, "asOfDate must not be null");
 
-        List<StockIdentityVO> identities = stockDataProvider.findStockIdentities(normalizedTicker);
-        if (identities == null || identities.size() != 1) {
-            int count = identities == null ? 0 : identities.size();
-            throw new IllegalStateException("stock identity must resolve to exactly one record: count=" + count);
+        List<StockIdentityVO> identities;
+        try {
+            identities = stockDataProvider.findStockIdentities(normalizedTicker);
+        } catch (RuntimeException error) {
+            throw new StockIdentityProviderException(normalizedTicker, error);
+        }
+        if (identities == null || identities.isEmpty()) {
+            throw new StockIdentityNotFoundException(normalizedTicker);
+        }
+        if (identities.size() != 1) {
+            throw new StockIdentityValidationException(
+                    "Stock identity must resolve to exactly one record: count=" + identities.size());
         }
 
         StockIdentityVO identity = identities.get(0);
-        validateIdentity(normalizedTicker, identity);
+        validateIdentity(normalizedTicker, requestedStockName, identity);
         return new TargetContext(runIdSupplier.get().toString(), identity.targetId(),
                 identity.stockName(), identity.industry(), asOfDate);
     }
@@ -57,22 +72,28 @@ public class TargetContextFactory {
         return normalized;
     }
 
-    private void validateIdentity(String candidateTicker, StockIdentityVO identity) {
+    private void validateIdentity(String candidateTicker, String requestedStockName, StockIdentityVO identity) {
         if (identity == null) {
-            throw new IllegalStateException("stock identity record must not be null");
+            throw new StockIdentityValidationException("Stock identity record must not be null");
         }
         String targetId = identity.targetId();
         if (targetId == null || !targetId.matches("^[0-9]{6}\\.(SH|SZ|BJ)$")) {
-            throw new IllegalStateException("stock identity returned an invalid targetId");
+            throw new StockIdentityValidationException("Stock identity returned an invalid targetId");
         }
         boolean matches = candidateTicker.length() == 6
                 ? targetId.startsWith(candidateTicker + ".")
                 : targetId.equals(candidateTicker);
         if (!matches) {
-            throw new IllegalStateException("route candidate does not match authoritative targetId");
+            throw new StockIdentityValidationException(
+                    "Route candidate does not match authoritative targetId");
         }
         if (identity.stockName() == null || identity.stockName().isBlank()) {
-            throw new IllegalStateException("stock identity returned a blank stockName");
+            throw new StockIdentityValidationException("Stock identity returned a blank stockName");
+        }
+        if (requestedStockName != null && !requestedStockName.isBlank()
+                && !requestedStockName.trim().equals(identity.stockName().trim())) {
+            throw new StockIdentityValidationException(
+                    "Route stockName does not match authoritative stockName");
         }
     }
 }

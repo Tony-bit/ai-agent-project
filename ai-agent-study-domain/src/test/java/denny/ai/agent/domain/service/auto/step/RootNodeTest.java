@@ -360,6 +360,27 @@ public class RootNodeTest {
     }
 
     @Test
+    public void shouldPreferRoutingTerminalResponseForConversationPersistence() throws Exception {
+        ExecuteCommandEntity request = ExecuteCommandEntity.builder()
+                .userId("test-user").sessionId("test-session").message("分析股票").build();
+        DefaultAutoAgentExecuteStrategyFactory.DynamicContext ctx =
+                new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+        when(repository.queryAllFlowConfigForIntentRouting()).thenReturn(new HashMap<>());
+        doAnswer(invocation -> {
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext routingContext = invocation.getArgument(1);
+            routingContext.setValue("routingTerminalResponse", "股票身份校验失败，本次分析已停止");
+            routingContext.setValue("clarificationPrompt", "旧澄清文本");
+            return "股票身份校验失败，本次分析已停止";
+        }).when(intentRoutingNode).apply(any(), any());
+
+        rootNode.doApply(request, ctx);
+
+        verify(chatMemoryPersistenceService).persistConversation(
+                eq("test-session"), eq("test-user"), isNull(), eq("RESPONSE_ASSISTANT"),
+                eq("分析股票"), eq("股票身份校验失败，本次分析已停止"), isNull(), anyLong(), isNull());
+    }
+
+    @Test
     public void testDoApply_injectsPersonaBeforeRouter() throws Exception {
         ExecuteCommandEntity request = ExecuteCommandEntity.builder()
                 .aiAgentId("123")
