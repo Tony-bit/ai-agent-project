@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import denny.ai.agent.domain.model.valobj.DecomposedTask;
 import denny.ai.agent.domain.model.valobj.SubTask;
+import denny.ai.agent.domain.model.valobj.stock.StockAnalysisMode;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
 import denny.ai.agent.domain.service.armory.factory.element.ChatResponseValidator;
@@ -34,10 +35,7 @@ public class RoutingStructuredOutputValidator {
     );
     private static final Set<String> ALLOWED_CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
     private static final Set<String> STOCK_SLOT_FIELDS = Set.of(
-            "stockCode", "stockName", "stockQueryType", "timeRange"
-    );
-    private static final Set<String> STOCK_QUERY_TYPES = Set.of(
-            "ALL", "FUNDAMENTAL", "TECHNICAL", "SENTIMENT", "NEWS"
+            "stockNameQuery", "stockCode", "analysisMode"
     );
     private static final Set<String> UNIFIED_ROOT_FIELDS = Set.of(
             "multiTask", "needsClarification", "missingInfo", "clarificationPrompt", "reasoning", "taskList"
@@ -245,21 +243,24 @@ public class RoutingStructuredOutputValidator {
             throw schema("STOCK_ANALYSIS intentSpecificSlots are required");
         }
         rejectUnknownFields(stockSlots, STOCK_SLOT_FIELDS, "STOCK_ANALYSIS intentSpecificSlots");
-        requireString(stockSlots, "stockCode");
-        String stockCode = stockSlots.getString("stockCode").trim().toUpperCase(java.util.Locale.ROOT);
-        if (!stockCode.matches("^[0-9]{6}(\\.(SH|SZ|BJ))?$")) {
-            throw schema("stockCode must be a 6-digit A-share code or standard ts_code");
+        ensureOptionalString(stockSlots, "stockNameQuery");
+        ensureOptionalString(stockSlots, "stockCode");
+        ensureOptionalString(stockSlots, "analysisMode");
+
+        String stockCode = stockSlots.getString("stockCode");
+        if (StringUtils.hasText(stockCode)) {
+            String normalizedCode = stockCode.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!normalizedCode.matches("^[0-9]{6}(\\.(SH|SZ|BJ))?$")) {
+                throw schema("stockCode must be a 6-digit A-share code or standard ts_code");
+            }
         }
-        ensureOptionalString(stockSlots, "stockName");
-        ensureOptionalString(stockSlots, "timeRange");
-        ensureOptionalString(stockSlots, "stockQueryType");
-        String stockQueryType = stockSlots.getString("stockQueryType");
-        if (StringUtils.hasText(stockQueryType)) {
-            for (String item : stockQueryType.split(",")) {
-                String normalized = item.trim().toUpperCase(java.util.Locale.ROOT);
-                if (!STOCK_QUERY_TYPES.contains(normalized)) {
-                    throw schema("stockQueryType has unsupported value: " + item);
-                }
+
+        String analysisMode = stockSlots.getString("analysisMode");
+        if (StringUtils.hasText(analysisMode)) {
+            try {
+                StockAnalysisMode.valueOf(analysisMode.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                throw schema("analysisMode has unsupported value: " + analysisMode);
             }
         }
     }

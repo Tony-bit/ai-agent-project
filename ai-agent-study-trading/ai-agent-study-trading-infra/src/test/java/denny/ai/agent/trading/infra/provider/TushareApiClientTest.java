@@ -1,22 +1,51 @@
 package denny.ai.agent.trading.infra.provider;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-/**
- * TushareApiClient 单元测试。
- */
 class TushareApiClientTest {
+
+    static class SampleDto {
+        @JsonProperty("ts_code")
+        private String tsCode;
+
+        @JsonProperty("close")
+        private String close;
+
+        public String getTsCode() {
+            return tsCode;
+        }
+
+        public void setTsCode(String tsCode) {
+            this.tsCode = tsCode;
+        }
+
+        public String getClose() {
+            return close;
+        }
+
+        public void setClose(String close) {
+            this.close = close;
+        }
+    }
 
     private RestTemplate mockRestTemplate;
 
@@ -98,7 +127,6 @@ class TushareApiClientTest {
 
     @Test
     void call_nullFields() {
-        // 响应中 data.fields=null，验证不会 NPE
         String responseJson = """
             {
               "code": 0,
@@ -119,7 +147,6 @@ class TushareApiClientTest {
 
     @Test
     void call_nullItems() {
-        // 响应中 data.items=null，验证不会 NPE
         String responseJson = """
             {
               "code": 0,
@@ -140,7 +167,6 @@ class TushareApiClientTest {
 
     @Test
     void call_dataNull() {
-        // 响应中 "data": null
         String responseJson = """
             {
               "code": 0,
@@ -158,7 +184,6 @@ class TushareApiClientTest {
 
     @Test
     void call_invalidJson() {
-        // 响应为非法 JSON 字符串，验证异常被捕获返回空列表
         TushareApiClient client = new TushareApiClient("test-token");
         List<Map<String, String>> result = callClientWithInvalidResponse(client, "invalid json {{{");
 
@@ -168,7 +193,6 @@ class TushareApiClientTest {
 
     @Test
     void call_itemHasNullElement() {
-        // items 中某行包含 null 元素，如 ["600000.SH", null, "10.5"]
         String responseJson = """
             {
               "code": 0,
@@ -190,7 +214,159 @@ class TushareApiClientTest {
         assertEquals("10.5", result.get(0).get("close"));
     }
 
-    // ========== Helper methods using reflection ==========
+    @Test
+    void callStrict_success() {
+        String responseJson = """
+            {
+              "code": 0,
+              "msg": "",
+              "data": {
+                "fields": ["ts_code", "trade_date", "close"],
+                "items": [
+                  ["600000.SH", "20240101", "10.5"]
+                ]
+              }
+            }
+            """;
+
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn(responseJson);
+
+        List<Map<String, String>> result = client.callStrict(
+                "daily", Map.of("ts_code", "600000.SH"), "ts_code,trade_date,close");
+
+        assertEquals(1, result.size());
+        assertEquals("600000.SH", result.get(0).get("ts_code"));
+    }
+
+    @Test
+    void callGenericStrict_success() {
+        String responseJson = """
+            {
+              "code": 0,
+              "msg": "",
+              "data": {
+                "fields": ["ts_code", "close"],
+                "items": [
+                  ["600000.SH", "10.5"]
+                ]
+              }
+            }
+            """;
+
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn(responseJson);
+
+        List<SampleDto> result = client.callGenericStrict(
+                SampleDto.class, "daily", Map.of("ts_code", "600000.SH"), "ts_code,close");
+
+        assertEquals(1, result.size());
+        assertEquals("600000.SH", result.get(0).getTsCode());
+        assertEquals("10.5", result.get(0).getClose());
+    }
+
+    @Test
+    void callStrict_apiErrorThrowsBusinessException() {
+        String responseJson = """
+            {
+              "code": 40101,
+              "msg": "invalid token",
+              "data": null
+            }
+            """;
+
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn(responseJson);
+
+        TushareApiException exception = assertThrows(TushareApiException.class, () ->
+                client.callStrict("stock_basic", Map.of("list_status", "L"), "ts_code,name"));
+
+        assertEquals("stock_basic", exception.getApiName());
+        assertEquals(40101, exception.getCode());
+        assertEquals("invalid token", exception.getApiMessage());
+    }
+
+    @Test
+    void callStrict_transportErrorThrowsTransportException() {
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenThrow(new ResourceAccessException("SSL handshake failed"));
+
+        TushareTransportException exception = assertThrows(TushareTransportException.class, () ->
+                client.callStrict("stock_basic", Map.of("list_status", "L"), "ts_code,name"));
+
+        assertEquals("stock_basic", exception.getApiName());
+        assertTrue(exception.getCause().getMessage().contains("SSL handshake failed"));
+    }
+
+    @Test
+    void callStrict_protocolErrorThrowsProtocolExceptionWhenJsonInvalid() {
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn("invalid json");
+
+        TushareProtocolException exception = assertThrows(TushareProtocolException.class, () ->
+                client.callStrict("stock_basic", Map.of("list_status", "L"), "ts_code,name"));
+
+        assertEquals("stock_basic", exception.getApiName());
+    }
+
+    @Test
+    void callStrict_protocolErrorThrowsProtocolExceptionWhenStructureMissing() {
+        String responseJson = """
+            {
+              "code": 0,
+              "msg": "",
+              "data": {
+                "fields": ["ts_code", "name"]
+              }
+            }
+            """;
+
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn(responseJson);
+
+        TushareProtocolException exception = assertThrows(TushareProtocolException.class, () ->
+                client.callStrict("stock_basic", Map.of("list_status", "L"), "ts_code,name"));
+
+        assertEquals("stock_basic", exception.getApiName());
+        assertTrue(exception.getMessage().contains("data.items is missing"));
+    }
+
+    @Test
+    void callStrict_emptyItemsReturnsEmptyList() {
+        String responseJson = """
+            {
+              "code": 0,
+              "msg": "",
+              "data": {
+                "fields": ["ts_code", "name"],
+                "items": []
+              }
+            }
+            """;
+
+        TushareApiClient client = new TushareApiClient("test-token");
+        injectMockRestTemplate(client);
+        when(mockRestTemplate.postForObject(eq("https://api.tushare.pro"), any(), eq(String.class)))
+                .thenReturn(responseJson);
+
+        List<Map<String, String>> result = client.callStrict(
+                "stock_basic", Map.of("list_status", "L"), "ts_code,name");
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
 
     private List<Map<String, String>> callClientWithMockAndResponse(TushareApiClient client, String responseJson) {
         injectMockRestTemplate(client);

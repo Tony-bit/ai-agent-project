@@ -183,10 +183,8 @@ public class IntentRoutingServiceTest {
                         "baseSlot": {"topic": "贵州茅台", "sentiment": "neutral"},
                         "intentSpecificSlots": {
                           "stockCode": "600519",
-                          "stockName": "贵州茅台",
-                          "stockQueryType": "TECHNICAL",
-                          "timeRange": "近三个月",
-                          "exchange": "SH"
+                          "stockNameQuery": "贵州茅台",
+                          "analysisMode": "FULL"
                         }
                       }
                     },
@@ -216,7 +214,8 @@ public class IntentRoutingServiceTest {
         assertEquals(2, result.getTaskList().size());
         assertTrue(stockSlotObj instanceof StockSlot);
         assertEquals("600519", ((StockSlot) stockSlotObj).getStockCode());
-        assertEquals("贵州茅台", ((StockSlot) stockSlotObj).getStockName());
+        assertEquals("贵州茅台", ((StockSlot) stockSlotObj).getStockNameQuery());
+        assertEquals("FULL", ((StockSlot) stockSlotObj).getAnalysisMode());
     }
 
     @Test
@@ -794,7 +793,7 @@ public class IntentRoutingServiceTest {
                  "reasoning":"stock","taskList":[
                    {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析贵州茅台",
                     "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
-                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","timeRange":"近三个月","exchange":"SH"}}}
+                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockNameQuery":"贵州茅台","analysisMode":"FULL"}}}
                  ]}
                 """));
 
@@ -818,7 +817,7 @@ public class IntentRoutingServiceTest {
                  "reasoning":"stock","taskList":[
                    {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析贵州茅台",
                     "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
-                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockQueryType":"TECHNICAL","timeRange":"近三个月","exchange":"SH"}}}
+                    "slots":{"intentSpecificSlots":{"stockCode":"600519","stockNameQuery":"贵州茅台","analysisMode":"FULL"}}}
                  ]}
                 """));
 

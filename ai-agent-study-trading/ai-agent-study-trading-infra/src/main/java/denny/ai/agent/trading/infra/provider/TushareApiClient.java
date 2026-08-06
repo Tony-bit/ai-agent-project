@@ -6,16 +6,20 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Tushare API HTTP 客户端。
- * <p>
- * 统一 POST 请求到 https://api.tushare.pro，封装请求响应处理。
- * <p>
- * 注意：此类由 {@link ProviderFactory} 通过 new 手动创建，不作为 Spring Bean 管理。
+ * Tushare API HTTP client.
+ *
+ * Keeps the legacy empty-list fallback for existing callers while exposing
+ * strict methods for callers that need explicit error classification.
  */
 @Slf4j
 public class TushareApiClient {
@@ -48,46 +52,57 @@ public class TushareApiClient {
     }
 
     /**
-     * 通用 Map 返回（保留，向下兼容）。
+     * Legacy map-based call with empty-list downgrade.
      *
-     * @deprecated 建议使用 {@link #callGeneric(Class, String, Map, String)}
+     * @deprecated Prefer {@link #callStrict(String, Map, String)} or
+     * {@link #callGenericStrict(Class, String, Map, String)}.
      */
     @Deprecated
     public List<Map<String, String>> call(String apiName, Map<String, Object> params, String fields) {
         try {
-            String response = doPost(apiName, params, fields);
-            return parseToMapList(response);
+            return callStrict(apiName, params, fields);
         } catch (Exception e) {
-            log.error("Tushare API 调用失败: api_name={}, error={}", apiName, e.getMessage());
+            log.error("Tushare API call failed: api_name={}, error={}", apiName, e.getMessage());
             return Collections.emptyList();
         }
     }
 
     /**
-     * 泛型调用，将响应映射到指定的 DTO。
-     * <p>
-     * 内部解析为 List&lt;Map&lt;String, String&gt;&gt;，然后通过 Jackson convertValue 映射到 DTO。
-     * DTO 类需标注 @JsonNaming(SnakeCaseStrategy.class) 以自动处理字段名映射。
-     *
-     * @param dtoClass DTO 子类类型，必须标注 @JsonNaming(SnakeCaseStrategy.class)
-     * @param <T>      DTO 类型
-     * @return DTO 列表
+     * Legacy generic call with empty-list downgrade.
      */
     public <T> List<T> callGeneric(Class<T> dtoClass, String apiName,
                                    Map<String, Object> params, String fields) {
         try {
-            String response = doPost(apiName, params, fields);
-            List<Map<String, String>> mapList = parseToMapList(response);
-            List<T> result = new ArrayList<>(mapList.size());
-            for (Map<String, String> row : mapList) {
-                T dto = objectMapper.convertValue(row, dtoClass);
-                result.add(dto);
-            }
-            return result;
+            return callGenericStrict(dtoClass, apiName, params, fields);
         } catch (Exception e) {
-            log.error("Tushare API 调用失败: api_name={}, error={}", apiName, e.getMessage());
+            log.error("Tushare API call failed: api_name={}, error={}", apiName, e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Strict map-based call.
+     */
+    public List<Map<String, String>> callStrict(String apiName, Map<String, Object> params, String fields) {
+        String response = doPost(apiName, params, fields);
+        return parseToMapListStrict(apiName, response);
+    }
+
+    /**
+     * Strict generic call.
+     */
+    public <T> List<T> callGenericStrict(Class<T> dtoClass, String apiName,
+                                         Map<String, Object> params, String fields) {
+        List<Map<String, String>> mapList = callStrict(apiName, params, fields);
+        List<T> result = new ArrayList<>(mapList.size());
+        for (Map<String, String> row : mapList) {
+            try {
+                result.add(objectMapper.convertValue(row, dtoClass));
+            } catch (IllegalArgumentException e) {
+                throw new TushareProtocolException(apiName, "DTO conversion failed: " + e.getMessage(), e);
+            }
+        }
+        return result;
     }
 
     private String doPost(String apiName, Map<String, Object> params, String fields) {
@@ -101,30 +116,49 @@ public class TushareApiClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        return getRestTemplate().postForObject(BASE_URL, entity, String.class);
+        try {
+            return getRestTemplate().postForObject(BASE_URL, entity, String.class);
+        } catch (RestClientException e) {
+            throw new TushareTransportException(apiName, e);
+        }
     }
 
-    private List<Map<String, String>> parseToMapList(String response) {
+    private List<Map<String, String>> parseToMapListStrict(String apiName, String response) {
         try {
-            TushareResponseDTO dto = objectMapper.readValue(response, TushareResponseDTO.class);
-
-            if (dto.getCode() != 0) {
-                log.warn("Tushare API 返回错误: code={}, msg={}", dto.getCode(), dto.getMsg());
-                return Collections.emptyList();
+            if (response == null || response.isBlank()) {
+                throw new TushareProtocolException(apiName, "response body is empty");
             }
-
-            if (dto.getData() == null || dto.getData().getFields() == null
-                    || dto.getData().getItems() == null || dto.getData().getItems().isEmpty()) {
-                return Collections.emptyList();
+            TushareResponseDTO dto = objectMapper.readValue(response, TushareResponseDTO.class);
+            if (dto.getCode() != 0) {
+                throw new TushareApiException(apiName, dto.getCode(), dto.getMsg());
+            }
+            if (dto.getData() == null) {
+                throw new TushareProtocolException(apiName, "data is missing");
             }
 
             List<String> fieldList = dto.getData().getFields();
             List<List<Object>> items = dto.getData().getItems();
+            if (fieldList == null) {
+                throw new TushareProtocolException(apiName, "data.fields is missing");
+            }
+            if (items == null) {
+                throw new TushareProtocolException(apiName, "data.items is missing");
+            }
+            if (items.isEmpty()) {
+                return Collections.emptyList();
+            }
 
             return items.stream()
                     .map(row -> {
+                        if (row == null) {
+                            throw new TushareProtocolException(apiName, "row is null");
+                        }
+                        if (row.size() != fieldList.size()) {
+                            throw new TushareProtocolException(apiName,
+                                    "row/field size mismatch: fields=" + fieldList.size() + ", row=" + row.size());
+                        }
                         Map<String, String> map = new HashMap<>();
-                        for (int i = 0; i < fieldList.size() && i < row.size(); i++) {
+                        for (int i = 0; i < fieldList.size(); i++) {
                             String key = fieldList.get(i);
                             Object value = row.get(i);
                             map.put(key, value != null ? value.toString() : null);
@@ -132,9 +166,10 @@ public class TushareApiClient {
                         return map;
                     })
                     .toList();
+        } catch (TushareApiException | TushareProtocolException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("解析 Tushare 响应失败: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new TushareProtocolException(apiName, "failed to parse response", e);
         }
     }
 }

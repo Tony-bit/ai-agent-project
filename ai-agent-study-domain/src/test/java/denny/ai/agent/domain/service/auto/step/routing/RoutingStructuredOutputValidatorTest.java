@@ -148,8 +148,8 @@ public class RoutingStructuredOutputValidatorTest {
                  "reasoning":"stock","taskList":[
                    {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析药明康德",
                     "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
-                    "slots":{"intentSpecificSlots":{"stockCode":"603259.SH","stockName":"药明康德",
-                    "stockQueryType":"FUNDAMENTAL,NEWS","timeRange":null}}}
+                    "slots":{"intentSpecificSlots":{"stockNameQuery":"药明康德",
+                    "analysisMode":"FULL"}}}
                  ]}
                 """));
     }
@@ -171,15 +171,15 @@ public class RoutingStructuredOutputValidatorTest {
     }
 
     @Test
-    public void shouldRejectUnsupportedStockQueryTypeInUnifiedOutput() {
+    public void shouldRejectUnsupportedAnalysisModeInUnifiedOutput() {
         ResponseValidationException thrown = assertThrows(ResponseValidationException.class, () ->
                 validator.unified().validate(response("""
                         {"multiTask":false,"needsClarification":false,"missingInfo":[],"clarificationPrompt":"",
                          "reasoning":"stock","taskList":[
                            {"taskId":"sub-1","taskIndex":1,"totalTasks":1,"content":"分析药明康德",
                             "intent":"STOCK_ANALYSIS","confidence":"HIGH","dependsOn":[],
-                            "slots":{"intentSpecificSlots":{"stockCode":"603259","stockName":"药明康德",
-                            "stockQueryType":"走势分析"}}}
+                            "slots":{"intentSpecificSlots":{"stockNameQuery":"药明康德",
+                            "analysisMode":"DEEP"}}}
                          ]}
                         """)));
 

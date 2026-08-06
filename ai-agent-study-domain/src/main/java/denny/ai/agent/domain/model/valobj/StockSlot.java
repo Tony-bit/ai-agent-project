@@ -6,10 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 股票分析切槽 VO（STOCK_ANALYSIS 意图专属）
+ * 股票分析槽位 VO。
  *
- * @author denny
- * 2026/5/11
+ * 保持与旧路由 JSON 的反序列化兼容，同时为股票名称补全故事提供新字段。
  */
 @Data
 @Builder
@@ -18,22 +17,32 @@ import lombok.NoArgsConstructor;
 public class StockSlot {
 
     /**
-     * 股票代码或名称（如：平安银行、000001）
+     * 用户原始输入中提取出的连续股票名称片段。
+     */
+    private String stockNameQuery;
+
+    /**
+     * 六位股票代码。
      */
     private String stockCode;
 
     /**
-     * 股票正式名称。名称输入场景由股票搜索工具的唯一结果填充。
+     * Java 解析后的规范股票名称。
      */
     private String stockName;
 
     /**
-     * 查询类型：走势分析/基本面分析/技术面分析/情绪分析/综合分析
+     * 股票分析模式：UNRESOLVED / QUICK / FULL。
+     */
+    private String analysisMode;
+
+    /**
+     * 兼容旧 Trading 查询类型。
      */
     private String stockQueryType;
 
     /**
-     * 时间范围：如近一年、近三个月、今日等
+     * 兼容旧时间范围字段。
      */
     private String timeRange;
 

@@ -113,6 +113,10 @@ public class AnalysisDepthFollowUpResolver {
         );
     }
 
+    Choice resolveChoice(String currentMessage) {
+        return parseChoice(currentMessage);
+    }
+
     private Choice parseChoice(String currentMessage) {
         String normalized = normalizeChoice(currentMessage);
         if (FULL_CHOICES.contains(normalized)) {

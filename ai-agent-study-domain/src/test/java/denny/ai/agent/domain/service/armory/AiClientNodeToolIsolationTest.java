@@ -33,9 +33,6 @@ public class AiClientNodeToolIsolationTest {
     public void setUp() {
         node = new AiClientNode();
         MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.ai.trading.tools.allowed-by-client.3201[0]", "read_skill")
-                .withProperty("spring.ai.trading.tools.allowed-by-client.3201[1]", "search_stock_by_name")
-                .withProperty("spring.ai.trading.tools.allowed-by-client.3201[2]", "search_stock_by_name")
                 .withProperty("spring.ai.trading.tools.allowed-by-client.6002[0]", "get_stock_info");
         ReflectionTestUtils.setField(node, "environment", environment);
     }
@@ -73,18 +70,14 @@ public class AiClientNodeToolIsolationTest {
     }
 
     @Test
-    public void allowlisted_read_skill_should_keep_general_tools_and_register_read_skill() {
+    public void routing_client_3201_should_not_register_read_skill_or_name_tools() {
         ToolCallbackRegistry registry = new ToolCallbackRegistry();
-        ToolCallback tradingTool = tool("get_historical_bars");
+        ToolCallback tradingTool = tool("search_stock_by_name");
         ToolCallback generalTool = tool("search_episodic_memory");
-        ToolCallback readSkill = tool("read_skill");
         registry.register(tradingTool, "test");
         registry.register(generalTool, "test");
 
         ApplicationContext applicationContext = mock(ApplicationContext.class);
-        when(applicationContext.containsBean("readTradingSkillToolCallback")).thenReturn(true);
-        when(applicationContext.getBean("readTradingSkillToolCallback", ToolCallback.class))
-                .thenReturn(readSkill);
         ReflectionTestUtils.setField(node, "toolCallbackRegistry", registry);
         ReflectionTestUtils.setField(node, "applicationContext", applicationContext);
 
@@ -92,7 +85,8 @@ public class AiClientNodeToolIsolationTest {
                 node, "appendTradingSkillToolCallbacks", "3201", true);
 
         Set<String> names = registry.getAllToolNames();
-        assertEquals(Set.of("search_episodic_memory", "read_skill"), names);
+        assertEquals(Set.of("search_episodic_memory", "search_stock_by_name"), names);
+        verify(applicationContext, never()).containsBean("readTradingSkillToolCallback");
     }
 
     @Test
@@ -112,11 +106,9 @@ public class AiClientNodeToolIsolationTest {
         Map<String, Set<String>> allowlist = ReflectionTestUtils.invokeMethod(
                 node, "getAllowedTradingToolsByClient");
 
-        assertEquals(Set.of("read_skill", "search_stock_by_name"), allowlist.get("3201"));
+        assertFalse(allowlist.containsKey("3201"));
         assertThrows(UnsupportedOperationException.class,
-                () -> allowlist.get("3201").add("get_stock_info"));
-        assertThrows(UnsupportedOperationException.class,
-                () -> allowlist.put("6003", Set.of("get_stock_info")));
+                () -> allowlist.put("3201", Set.of("get_stock_info")));
     }
 
     @Test

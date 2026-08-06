@@ -42,7 +42,7 @@ class TradingToolAllowlistConfigurationTest {
                         Bindable.mapOf(String.class, String[].class))
                 .orElseThrow(() -> new IllegalStateException("Trading Tool allowlist is missing"));
 
-        assertEquals(Set.of("read_skill", "search_stock_by_name"), asSet(configured.get("3201")));
+        assertFalse(configured.containsKey("3201"));
         assertFalse(configured.containsKey("6001"));
         assertFalse(Arrays.asList(environment.getProperty(
                 "spring.ai.agent.auto-config.client-ids", "").split(","))

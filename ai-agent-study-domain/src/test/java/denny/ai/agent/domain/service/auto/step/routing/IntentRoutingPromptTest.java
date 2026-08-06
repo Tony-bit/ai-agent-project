@@ -225,9 +225,11 @@ public class IntentRoutingPromptTest {
         String prompt = IntentRoutingPrompt.buildUnifiedRoutingPrompt(
                 "对药明康德进行完整投资分析", List.of(), List.of());
 
+        assertTrue(prompt.contains("stockNameQuery"));
+        assertTrue(prompt.contains("analysisMode"));
+        assertTrue(prompt.contains("UNRESOLVED、QUICK、FULL"));
+        assertTrue(prompt.contains("read_skill"));
         assertTrue(prompt.contains("search_stock_by_name"));
-        assertTrue(prompt.contains("stockName"));
-        assertTrue(prompt.contains("ALL|FUNDAMENTAL|TECHNICAL|SENTIMENT|NEWS"));
         assertTrue(prompt.contains("不得凭记忆生成"));
         assertFalse(prompt.contains("stockQueryType, timeRange, exchange"));
     }

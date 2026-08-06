@@ -16,6 +16,10 @@
     <description>Trading Infrastructure Module - Data Providers, Cache</description>
 
     <dependencies>
+        <dependency>
+            <groupId>denny.ai.agent</groupId>
+            <artifactId>ai-agent-study-domain</artifactId>
+        </dependency>
         <!-- 依赖 trading-api -->
         <dependency>
             <groupId>denny.ai.agent</groupId>

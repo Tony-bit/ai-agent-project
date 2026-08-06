@@ -12,12 +12,16 @@ import denny.ai.agent.domain.model.valobj.SubTask;
 import denny.ai.agent.domain.model.valobj.enums.AiClientTypeEnumVO;
 import denny.ai.agent.domain.model.valobj.enums.ConfidenceEnum;
 import denny.ai.agent.domain.model.valobj.enums.IntentTypeEnum;
+import denny.ai.agent.domain.model.valobj.stock.StockAnalysisMode;
+import denny.ai.agent.domain.model.valobj.stock.StockRequestRouteDecisionType;
+import denny.ai.agent.domain.model.valobj.stock.StockRequestRoutingDecision;
 import denny.ai.agent.domain.model.entity.RoutingConversationContext;
 import denny.ai.agent.domain.service.auto.step.chat.GeneralChatNode;
 import denny.ai.agent.domain.service.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import denny.ai.agent.domain.service.auto.step.pe.Step1AnalyzerNode;
 import denny.ai.agent.domain.service.auto.step.react.IntelligentInspection;
 import denny.ai.agent.domain.service.chatmemory.ConversationContextProvider;
+import denny.ai.agent.domain.service.stock.StockResolutionPendingRepository;
 import denny.ai.agent.domain.service.runtime.RuntimeContextKeys;
 import org.junit.Before;
 import org.junit.Test;
@@ -57,6 +61,10 @@ public class IntentRoutingNodeTest {
 
     @Mock
     private IntentRoutingService intentRoutingService;
+    @Mock
+    private StockRequestResolver stockRequestResolver;
+    @Mock
+    private StockResolutionPendingRepository stockResolutionPendingRepository;
 
     @Mock
     private ConversationContextProvider conversationContextProvider;
@@ -92,6 +100,8 @@ public class IntentRoutingNodeTest {
     public void setUp() throws Exception {
         intentRoutingNode = new IntentRoutingNode();
         setField(intentRoutingNode, "intentRoutingService", intentRoutingService);
+        setField(intentRoutingNode, "stockRequestResolver", stockRequestResolver);
+        setField(intentRoutingNode, "stockResolutionPendingRepository", stockResolutionPendingRepository);
         setField(intentRoutingNode, "analysisDepthFollowUpResolver", new AnalysisDepthFollowUpResolver());
         setField(intentRoutingNode, "conversationContextProvider", conversationContextProvider);
         setField(intentRoutingNode, "step1AnalyzerNode", step1AnalyzerNode);
@@ -118,6 +128,10 @@ public class IntentRoutingNodeTest {
                 .build();
         lenient().when(conversationContextProvider.getRoutingContext(anyString()))
                 .thenReturn(RoutingConversationContext.builder().historyMessages(List.of()).build());
+        lenient().when(stockRequestResolver.resolve(anyString(), anyString(), any(), any()))
+                .thenReturn(null);
+        lenient().when(stockResolutionPendingRepository.deleteClaimed(anyString(), anyString(), anyString()))
+                .thenReturn(true);
     }
 
     @Test
@@ -181,6 +195,58 @@ public class IntentRoutingNodeTest {
         assertEquals("请提供股票代码", clarification.getContent());
         assertEquals("complete", complete.getType());
         assertTrue(complete.getCompleted());
+    }
+
+    @Test
+    public void shouldSendResolverClarificationThroughExistingTerminalProtocol() throws Exception {
+        dynamicContext.setValue("emitter", emitter);
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
+                .thenReturn(buildSingleTaskResult(IntentTypeEnum.GENERAL_CHAT, "generalChatNode"));
+        when(stockRequestResolver.resolve(eq("test-session-123"), eq("测试消息"), eq(IntentTypeEnum.GENERAL_CHAT), any()))
+                .thenReturn(StockRequestRoutingDecision.builder()
+                        .decisionType(StockRequestRouteDecisionType.CLARIFY_TARGET)
+                        .analysisMode(StockAnalysisMode.FULL)
+                        .clarificationPrompt("请选择股票")
+                        .build());
+
+        String response = intentRoutingNode.doApply(request, dynamicContext);
+
+        assertEquals("请选择股票", response);
+        verify(generalChatNode, never()).apply(any(), any());
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(emitter, times(2)).send(eventCaptor.capture());
+        List<Object> frames = eventCaptor.getAllValues();
+        AutoAgentExecuteResultEntity clarification = parseSseFrame(frames.get(0));
+        AutoAgentExecuteResultEntity complete = parseSseFrame(frames.get(1));
+        assertEquals("clarification", clarification.getSubType());
+        assertEquals("请选择股票", clarification.getContent());
+        assertEquals("complete", complete.getType());
+    }
+
+    @Test
+    public void shouldForwardResolverQuickExecutionQueryToGeneralChatNode() throws Exception {
+        when(intentRoutingService.routeUnified(anyString(), org.mockito.ArgumentMatchers.anyList(),
+                any(AiAgentClientFlowConfigVO.class), eq("test-session-123")))
+                .thenReturn(buildSingleTaskResult(IntentTypeEnum.STOCK_ANALYSIS, "tradingRequestNode"));
+        when(stockRequestResolver.resolve(eq("test-session-123"), eq("测试消息"), eq(IntentTypeEnum.STOCK_ANALYSIS), any()))
+                .thenReturn(StockRequestRoutingDecision.builder()
+                        .decisionType(StockRequestRouteDecisionType.ROUTE_GENERAL_CHAT)
+                        .analysisMode(StockAnalysisMode.QUICK)
+                        .executionQuery("EXECUTION_QUERY")
+                        .pendingVersion("v-1")
+                        .claimId("claim-1")
+                        .build());
+        when(generalChatNode.apply(any(), eq(dynamicContext))).thenReturn("quick-response");
+
+        String response = intentRoutingNode.doApply(request, dynamicContext);
+
+        assertEquals("quick-response", response);
+        ArgumentCaptor<ExecuteCommandEntity> requestCaptor = ArgumentCaptor.forClass(ExecuteCommandEntity.class);
+        verify(generalChatNode).apply(requestCaptor.capture(), eq(dynamicContext));
+        assertEquals("EXECUTION_QUERY", requestCaptor.getValue().getMessage());
+        assertEquals(IntentTypeEnum.FINANCIAL_GENERAL, dynamicContext.getValue(IntentRoutingNode.RECOGNIZED_INTENT_KEY));
+        verify(stockResolutionPendingRepository).deleteClaimed("test-session-123", "v-1", "claim-1");
     }
 
     @Test
