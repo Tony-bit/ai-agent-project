@@ -11,6 +11,8 @@
 - 从 `daily_basic` 获取与最新价格同一交易日的估值快照。
 - 用无歧义的名称表达绝对估值倍数，不把 PE、PB 表述为百分位。
 - 补齐静态 PE、滚动 PE、PB、总市值和流通市值。
+- 基本面分析默认使用 `peTtm` 作为 PE 口径；`pe` 只作为明确标注的静态 PE 补充展示。
+- 当 `peTtm` 缺失时报告“PE_TTM 不可用”，禁止使用单季、累计季度或报告期不明的 EPS 自行补算 PE。
 - 保持 Tushare 原始市值单位“万元”，避免映射层隐式换算。
 - 从 `fina_indicator` 请求中移除不属于该接口的估值字段。
 - 对空数据、接口错误和协议错误保留不同的错误语义。
@@ -63,6 +65,8 @@ Provider 将 `daily_basic` 的 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 映�
 
 估值部分改为查询最新可用的 `daily_basic`，并映射 `pe`、`peTtm`、`pb`、`totalMv`、`circMv`。情绪推导中原来读取 `getPeRatio()` 的逻辑改为读取 `getPe()`，其评分规则本次不调整。
 
+基本面分析提示词必须明确估值口径：默认引用 `peTtm` 并称为“滚动市盈率”或“PE_TTM”；只有在需要补充年度口径时才引用 `pe`，且必须称为“静态市盈率”。当 `peTtm` 为空时，模型只能说明该指标不可用，不得用 `currentPrice / eps` 补算，因为最新 `fina_indicator.eps` 可能是单季或年内累计口径。
+
 ## 组件边界
 
 ### `TushareDailyBasicDTO`
@@ -100,6 +104,8 @@ Mock 数据当前包含疑似百分位语义的 PE/PB 数字。本次迁移会�
 - 空估值数据：验证股票信息仍可返回，估值字段为空且不会伪造零值。
 - 严格错误路径：验证权限错误、协议错误不会被转换成空结果。
 - 基本面路径：验证财务指标来自 `fina_indicator`，估值来自 `daily_basic`。
+- 羚锐制药回归：构造 `currentPrice=22.24`、`eps=0.435`、`peTtm=16.6`，验证基本面提示词把 16.6 标为 PE_TTM，且不会要求或暗示按 EPS 生成 51 倍静态 PE。
+- PE_TTM 缺失回归：构造 `peTtm=null` 且季度 EPS 有值，验证提示词明确禁止从 EPS 推算 PE，并要求输出“PE_TTM 不可用”。
 - 调用方迁移：更新格式化工具、情绪推导、Mock 和现有断言，确保不再引用旧 getter 或 Builder 字段。
 - 模块回归：运行 trading API、domain 和 infra 模块的相关单元测试。
 
@@ -108,5 +114,6 @@ Mock 数据当前包含疑似百分位语义的 PE/PB 数字。本次迁移会�
 - 对 `002371.SZ` 查询时，`StockInfoVO` 能获得同一交易日的 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 和 `valuationTradeDate`。
 - 项目源码中不再存在估值语义的 `peRatio`、`pbRatio`、`marketCap` 使用。
 - `fina_indicator` 请求不再包含 PE、PB 和市值字段。
+- 基本面分析默认展示并引用 `peTtm`；`peTtm` 缺失时不会再从季度 EPS 生成估值倍数。
 - 所有市值输出明确标注单位为万元。
 - 相关模块测试通过，且不修改用户已有的无关配置变更。
