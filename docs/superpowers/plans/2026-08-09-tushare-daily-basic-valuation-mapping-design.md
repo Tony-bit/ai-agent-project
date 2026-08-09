@@ -23,6 +23,7 @@
 - 本次不新增 `pePercentile`、`pbPercentile` 或估值历史窗口。
 - 本次不改变 Tushare 的原始单位，也不自动转换为元或亿元。
 - 本次不引入新的缓存层或批量取数机制。
+- 本次不删除旧估值字段；待所有跨角色、工具和外部 JSON 消费者完成迁移后，再在独立变更中移除。
 
 ## 字段契约
 
@@ -47,7 +48,13 @@
 - `totalMv`
 - `circMv`
 
-删除旧字段 `peRatio`、`pbRatio`、`marketCap`。这是一次明确的内部契约迁移，不保留语义重复的兼容字段。所有 Java 调用方、Builder、格式化输出、Mock 和测试同步迁移。
+保留旧字段 `peRatio`、`pbRatio`、`marketCap` 作为兼容字段并标记为废弃。本次采用增量迁移，避免共享 `StockInfoVO`、`FundamentalDataVO` 的分析角色、ToolCallback 和 JSON 消费者同时中断：
+
+- `peRatio` 在兼容期映射为 `peTtm`，旧调用方获得与默认展示口径一致的滚动市盈率。
+- `pbRatio` 在兼容期映射为 `pb`。
+- `marketCap` 保留原字段但不把“万元”静默写入旧的单位不明确契约；新代码使用带明确单位的 `totalMv`。
+- 新旧 PE/PB getter 采用双向兼容读取：新字段有值时优先返回新字段；新字段为空时允许回退旧字段，以兼容仍通过旧 Builder、JSON 或自定义 `IStockDataProvider` 写值的生产者。
+- 新代码、提示词和格式化输出以新字段为主，并通过统一兼容读取方法处理旧生产者；旧 Builder 和 JSON 字段继续可写。
 
 `StockInfoVO` 额外增加 `valuationTradeDate`，用于暴露估值快照日期。该字段采用现有对外日期风格 `yyyy-MM-dd`，由 DTO 的 `tradeDate` 转换得到。
 
@@ -92,7 +99,9 @@ Provider 将 `daily_basic` 的 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 映�
 
 ## 输出与兼容性
 
-序列化后的估值字段改为 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 和 `valuationTradeDate`。依赖旧 JSON 字段 `peRatio`、`pbRatio`、`marketCap` 的消费者需要同步升级；本项目内的提示词输入、工具格式化和测试在同一变更中完成迁移。
+序列化结果新增 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 和 `valuationTradeDate`，同时在兼容窗口内保留旧 JSON 字段 `peRatio`、`pbRatio`、`marketCap`。其中 `peRatio` 与 `peTtm` 值一致，`pbRatio` 与 `pb` 值一致；`marketCap` 不承接单位不同的 `totalMv`。
+
+本项目内的提示词输入、工具格式化和确定性计算迁移到新字段。对 LLM 的输入允许包含兼容字段，但必须明确 `peTtm` 是默认且权威的 PE 口径，避免模型把 `peRatio` 与 `peTtm` 理解成两份独立数据。后续删除旧字段必须作为独立的契约升级处理，不属于本次 bugfix。
 
 Mock 数据当前包含疑似百分位语义的 PE/PB 数字。本次迁移会把 Mock 调整为合理的绝对估值示例，并明确其单位，防止测试继续固化旧歧义。
 
@@ -106,13 +115,14 @@ Mock 数据当前包含疑似百分位语义的 PE/PB 数字。本次迁移会�
 - 基本面路径：验证财务指标来自 `fina_indicator`，估值来自 `daily_basic`。
 - 羚锐制药回归：构造 `currentPrice=22.24`、`eps=0.435`、`peTtm=16.6`，验证基本面提示词把 16.6 标为 PE_TTM，且不会要求或暗示按 EPS 生成 51 倍静态 PE。
 - PE_TTM 缺失回归：构造 `peTtm=null` 且季度 EPS 有值，验证提示词明确禁止从 EPS 推算 PE，并要求输出“PE_TTM 不可用”。
-- 调用方迁移：更新格式化工具、情绪推导、Mock 和现有断言，确保不再引用旧 getter 或 Builder 字段。
+- 兼容字段回归：验证 `peRatio == peTtm`、`pbRatio == pb`；仅设置旧 Builder/JSON 字段时新 getter 仍能读值；仅设置新字段时旧 getter 仍能读值；`marketCap` 不会接收单位为万元的 `totalMv`。
+- 调用方迁移：更新格式化工具、情绪推导、Mock 和现有断言，使新代码优先读取新字段；仅兼容性测试允许直接使用旧字段。
 - 模块回归：运行 trading API、domain 和 infra 模块的相关单元测试。
 
 ## 验收标准
 
 - 对 `002371.SZ` 查询时，`StockInfoVO` 能获得同一交易日的 `pe`、`peTtm`、`pb`、`totalMv`、`circMv` 和 `valuationTradeDate`。
-- 项目源码中不再存在估值语义的 `peRatio`、`pbRatio`、`marketCap` 使用。
+- 新业务代码不再依赖 `peRatio`、`pbRatio`、`marketCap`；旧字段只保留为已废弃的兼容契约。
 - `fina_indicator` 请求不再包含 PE、PB 和市值字段。
 - 基本面分析默认展示并引用 `peTtm`；`peTtm` 缺失时不会再从季度 EPS 生成估值倍数。
 - 所有市值输出明确标注单位为万元。
