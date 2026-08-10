@@ -23,14 +23,14 @@
 
 | 任务 | status |
 |------|------|
-| 任务 1：建立新旧估值字段兼容契约 | append |
+| 任务 1：建立新旧估值字段兼容契约 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-api/src/main/java/denny/ai/agent/trading/api/vo/StockInfoVO.java`
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-api/src/main/java/denny/ai/agent/trading/api/vo/FundamentalDataVO.java`
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-api/src/test/java/denny/ai/agent/trading/api/vo/ValuationCompatibilityContractTest.java`
 
-- [ ] **步骤 1：编写失败的兼容契约测试**
+- [x] **步骤 1：编写失败的兼容契约测试**
 
 ```java
 class ValuationCompatibilityContractTest {
@@ -59,7 +59,7 @@ class ValuationCompatibilityContractTest {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-api -am -Dtest=ValuationCompatibilityContractTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -67,7 +67,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-api -am -Dtest=
 
 预期：编译失败，提示 `peTtm(double)`、`pb(double)` 或新 getter 不存在。
 
-- [ ] **步骤 3：增加新字段和兼容 getter**
+- [x] **步骤 3：增加新字段和兼容 getter**
 
 两个 VO 均增加：
 
@@ -100,7 +100,7 @@ public Double getPbRatio() {
 
 保留 `peRatio`、`pbRatio`、`marketCap` 及其 Builder 写入口；`marketCap` 不回退到 `totalMv`，避免单位静默改变。
 
-- [ ] **步骤 4：验证 JSON 兼容并使测试通过**
+- [x] **步骤 4：验证 JSON 兼容并使测试通过**
 
 补充 Jackson 断言：
 
@@ -121,7 +121,7 @@ void jsonKeepsLegacyFieldsWithoutChangingMarketCapUnit() throws Exception {
 
 重跑步骤 2，预期 `PASS`。
 
-- [ ] **步骤 5：提交兼容契约**
+- [x] **步骤 5：提交兼容契约**
 
 ```powershell
 git add -- ai-agent-study-trading/ai-agent-study-trading-api/src/main/java/denny/ai/agent/trading/api/vo/StockInfoVO.java ai-agent-study-trading/ai-agent-study-trading-api/src/main/java/denny/ai/agent/trading/api/vo/FundamentalDataVO.java ai-agent-study-trading/ai-agent-study-trading-api/src/test/java/denny/ai/agent/trading/api/vo/ValuationCompatibilityContractTest.java
