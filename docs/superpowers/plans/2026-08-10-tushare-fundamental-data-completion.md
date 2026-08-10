@@ -286,12 +286,12 @@ git commit -m "test: verify Tushare fundamental fields online"
 
 | 任务 | status |
 |------|------|
-| 任务 5：最终核验与计划回填 | append |
+| 任务 5：最终核验与计划回填 | pass |
 
 **文件：**
 - 修改：`docs/superpowers/plans/2026-08-10-tushare-fundamental-data-completion.md`
 
-- [ ] **步骤 1：检查 worktree 边界**
+- [x] **步骤 1：检查 worktree 边界**
 
 ```powershell
 git status --short
@@ -301,11 +301,11 @@ git log --oneline -6
 
 预期：没有其他 agent 的文件，代码和测试均已提交。
 
-- [ ] **步骤 2：回填五个任务状态和复选框**
+- [x] **步骤 2：回填五个任务状态和复选框**
 
 仅在对应测试成功后把 `append` 改为 `pass` 并勾选步骤。
 
-- [ ] **步骤 3：提交执行记录并确认干净**
+- [x] **步骤 3：提交执行记录并确认干净**
 
 ```powershell
 git add docs/superpowers/plans/2026-08-10-tushare-fundamental-data-completion.md
