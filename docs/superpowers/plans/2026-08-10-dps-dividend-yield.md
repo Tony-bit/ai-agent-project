@@ -278,12 +278,12 @@ git commit -m "test: verify DPS and dividend yield online"
 
 | 任务 | status |
 |------|------|
-| 任务 4：全量验证与计划回填 | append |
+| 任务 4：全量验证与计划回填 | pass |
 
 **文件：**
 - 修改：`docs/superpowers/plans/2026-08-10-dps-dividend-yield.md`
 
-- [ ] **步骤 1：运行相关模块默认测试**
+- [x] **步骤 1：运行相关模块默认测试**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra,ai-agent-study-trading/ai-agent-study-trading-domain -am -Dsurefire.failIfNoSpecifiedTests=false test
@@ -291,7 +291,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra,ai-agent-study-tradi
 
 预期：BUILD SUCCESS，所有默认测试通过。
 
-- [ ] **步骤 2：运行项目编译与差异检查**
+- [x] **步骤 2：运行项目编译与差异检查**
 
 ```powershell
 mvn clean compile -q
@@ -301,11 +301,11 @@ git status --short --branch
 
 预期：编译退出码为 0，`git diff --check` 无输出，仅计划状态回填尚未提交。
 
-- [ ] **步骤 3：回填任务状态和验证结果**
+- [x] **步骤 3：回填任务状态和验证结果**
 
 把四个任务表的 `status` 从 `append` 改为 `pass`，把已执行步骤的 `- [ ]` 改为 `- [x]`，并在文末记录 provider 测试、domain 测试、在线集成测试及编译的实际结果。
 
-- [ ] **步骤 4：提交计划回填**
+- [x] **步骤 4：提交计划回填**
 
 ```powershell
 git add docs/superpowers/plans/2026-08-10-dps-dividend-yield.md
@@ -314,3 +314,12 @@ git status --short --branch
 ```
 
 预期：工作树干净，分支只包含本需求的设计、实现、测试和验证提交。
+
+## 实际验证结果
+
+- `TushareStockDataProviderTest`：35 个测试通过，0 失败，0 跳过。
+- `FundamentalAnalystValuationPolicyTest`：3 个测试通过，0 失败，0 跳过。
+- `TushareFundamentalDataIntegrationTest`：1 个真实 API 测试通过，0 失败，0 跳过。
+- trading domain 默认回归：150 个测试通过，0 失败，0 跳过。
+- trading infra 默认回归：105 个测试通过，0 失败，0 跳过。
+- `mvn clean compile -q`：退出码 0。
