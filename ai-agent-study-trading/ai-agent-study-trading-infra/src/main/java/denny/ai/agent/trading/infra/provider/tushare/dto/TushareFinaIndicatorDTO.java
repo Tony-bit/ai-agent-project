@@ -28,10 +28,6 @@ public class TushareFinaIndicatorDTO extends TushareBaseDTO {
     private Double currentRatio;
     private Double quickRatio;
     private Double cashRatio;
-    private Double pe;
-    private Double pbRatio;
-    private Double psRatio;
-    private Double peg;
     private BigDecimal eps;
     private BigDecimal revenue;      // 单位：万元
     private BigDecimal totalRevenue;

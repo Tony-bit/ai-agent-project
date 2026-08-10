@@ -132,7 +132,7 @@ git commit -m "fix: add compatible PE TTM valuation contract"
 
 | 任务 | status |
 |------|------|
-| 任务 2：从 daily_basic 获取估值快照 | append |
+| 任务 2：从 daily_basic 获取估值快照 | pass |
 
 **文件：**
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/tushare/dto/TushareDailyBasicDTO.java`
@@ -141,7 +141,7 @@ git commit -m "fix: add compatible PE TTM valuation contract"
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/TushareStockDataProvider.java`
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareStockDataProviderTest.java`
 
-- [ ] **步骤 1：编写 DTO 映射失败测试**
+- [x] **步骤 1：编写 DTO 映射失败测试**
 
 ```java
 @Test
@@ -157,7 +157,7 @@ void mapsDailyBasicValuationFields() throws Exception {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证 DTO 不存在**
+- [x] **步骤 2：运行测试验证 DTO 不存在**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtest=TushareDailyBasicDTOTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -165,7 +165,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtes
 
 预期：编译失败，提示 `TushareDailyBasicDTO` 不存在。
 
-- [ ] **步骤 3：创建只负责反序列化的 DTO**
+- [x] **步骤 3：创建只负责反序列化的 DTO**
 
 ```java
 @Data
@@ -188,7 +188,7 @@ public class TushareDailyBasicDTO extends TushareBaseDTO {
 
 重跑步骤 2，预期 `PASS`。
 
-- [ ] **步骤 4：编写 Provider 失败测试**
+- [x] **步骤 4：编写 Provider 失败测试**
 
 在 `TushareStockDataProviderTest` 增加：
 
@@ -269,7 +269,7 @@ public <T> List<T> callGenericStrict(Class<T> dtoClass, String apiName,
 
 将现有 `callGeneric` 中的 DTO 转换循环提取为 `convertRows`，供两个覆盖方法复用。
 
-- [ ] **步骤 5：运行 Provider 测试验证失败**
+- [x] **步骤 5：运行 Provider 测试验证失败**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -277,7 +277,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtes
 
 预期：新增测试失败，尚未调用 `daily_basic`。
 
-- [ ] **步骤 6：实现估值查询与映射**
+- [x] **步骤 6：实现估值查询与映射**
 
 ```java
 private TushareDailyBasicDTO loadValuation(String tsCode, String tradeDate) {
@@ -298,7 +298,7 @@ private TushareDailyBasicDTO loadValuation(String tsCode, String tradeDate) {
 
 `getStockInfo` 使用最新 `daily.tradeDate` 精确查询；`getFundamentalData` 查询最新快照。Builder 写入 `pe`、`peTtm`、`pb`、`totalMv`、`circMv`、`valuationTradeDate`。精确日期不一致时记录警告且不合并。
 
-- [ ] **步骤 7：移除 fina_indicator 的错误估值请求**
+- [x] **步骤 7：移除 fina_indicator 的错误估值请求**
 
 当前期字段改为：
 
@@ -309,7 +309,7 @@ private TushareDailyBasicDTO loadValuation(String tsCode, String tradeDate) {
 
 从 `TushareFinaIndicatorDTO` 删除 `pe`、`pbRatio`、`psRatio`、`peg`；`FundamentalDataVO.psRatio/pegRatio` 兼容字段保留为空。
 
-- [ ] **步骤 8：运行 DTO 和 Provider 测试**
+- [x] **步骤 8：运行 DTO 和 Provider 测试**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest,TushareDailyBasicDTOTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -317,7 +317,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtes
 
 预期：全部 `PASS`。
 
-- [ ] **步骤 9：提交数据源修复**
+- [x] **步骤 9：提交数据源修复**
 
 ```powershell
 git add -- ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider

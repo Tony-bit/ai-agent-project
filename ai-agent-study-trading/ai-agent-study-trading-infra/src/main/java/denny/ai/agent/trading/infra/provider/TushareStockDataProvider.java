@@ -72,6 +72,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
 
             BigDecimal currentPrice = null;
             Long volume = null;
+            String priceTradeDate = null;
             if (dailyData.isEmpty()) {
                 // 如果没有当天数据，查询最近交易日
                 dailyData = apiClient.callGeneric(
@@ -83,7 +84,11 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 TushareDailyDTO daily = dailyData.get(0);
                 currentPrice = daily.getClose();
                 volume = daily.getVol();
+                priceTradeDate = daily.getTradeDate();
             }
+
+            TushareDailyBasicDTO valuation = priceTradeDate == null
+                    ? null : loadValuation(tsCode, priceTradeDate);
 
             // 查询 52 周高低
             LocalDate oneYearAgo = LocalDate.now().minusYears(1);
@@ -113,7 +118,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 week52Low = minLow.compareTo(new BigDecimal("999999999")) < 0 ? minLow : null;
             }
 
-            return StockInfoVO.builder()
+            StockInfoVO.StockInfoVOBuilder builder = StockInfoVO.builder()
                     .ticker(ticker)
                     .name(name)
                     .exchange(exchange)
@@ -121,8 +126,16 @@ public class TushareStockDataProvider implements IStockDataProvider {
                     .volume(volume)
                     .week52High(week52High)
                     .week52Low(week52Low)
-                    .industry(basic.getIndustry())
-                    .build();
+                    .industry(basic.getIndustry());
+            if (valuation != null) {
+                builder.pe(valuation.getPe())
+                        .peTtm(valuation.getPeTtm())
+                        .pb(valuation.getPb())
+                        .totalMv(valuation.getTotalMv())
+                        .circMv(valuation.getCircMv())
+                        .valuationTradeDate(valuation.getTradeDateFormatted());
+            }
+            return builder.build();
         } catch (Exception e) {
             log.error("获取股票信息失败: ticker={}, error={}", ticker, e.getMessage());
             throw new RuntimeException("获取股票信息失败: " + ticker, e);
@@ -185,8 +198,10 @@ public class TushareStockDataProvider implements IStockDataProvider {
             List<TushareFinaIndicatorDTO> finaData = apiClient.callGeneric(
                     TushareFinaIndicatorDTO.class, "fina_indicator",
                     Map.of("ts_code", tsCode, "limit", 1, "sort", "ann_date", "order", "desc"),
-                    "roe,grossprofit_margin,netprofit_margin,debt_to_assets,current_ratio," +
-                            "pe,pb_ratio,ps_ratio,peg,eps,revenue,net_profit,div_ratio,total_assets");
+                    "ann_date,end_date,roe,grossprofit_margin,netprofit_margin,debt_to_assets," +
+                            "current_ratio,eps,revenue,net_profit,div_ratio,total_assets");
+
+            TushareDailyBasicDTO valuation = loadValuation(tsCode, null);
 
             // 查询去年同期数据用于计算增长率
             LocalDate lastYear = LocalDate.now().minusYears(1);
@@ -239,16 +254,20 @@ public class TushareStockDataProvider implements IStockDataProvider {
                        .netMargin(fina.getNetprofitMargin())
                        .debtToAssets(fina.getDebtToAssets())
                        .currentRatio(fina.getCurrentRatio())
-                       .peRatio(fina.getPe())
-                       .pbRatio(fina.getPbRatio())
-                       .psRatio(fina.getPsRatio())
-                       .pegRatio(fina.getPeg())
                        .eps(fina.getEps())
                        .revenue(fina.getRevenueYuan())
                        .netIncome(fina.getNetProfitYuan())
                        .totalAssets(fina.getTotalAssets() != null
                                ? fina.getTotalAssets().multiply(new BigDecimal("10000")) : null)
                        .dividendYield(fina.getDivRatio());
+            }
+            if (valuation != null) {
+                builder.pe(valuation.getPe())
+                        .peTtm(valuation.getPeTtm())
+                        .pb(valuation.getPb())
+                        .totalMv(valuation.getTotalMv())
+                        .circMv(valuation.getCircMv())
+                        .valuationTradeDate(valuation.getTradeDateFormatted());
             }
 
             return builder
@@ -412,6 +431,34 @@ public class TushareStockDataProvider implements IStockDataProvider {
         } catch (Exception e) {
             return date.replace("-", "");
         }
+    }
+
+    private TushareDailyBasicDTO loadValuation(String tsCode, String tradeDate) {
+        Map<String, Object> params = tradeDate == null
+                ? Map.of(
+                        "ts_code", tsCode,
+                        "start_date", LocalDate.now().minusYears(1).format(TUSHARE_DATE_FORMAT),
+                        "end_date", LocalDate.now().format(TUSHARE_DATE_FORMAT))
+                : Map.of("ts_code", tsCode, "trade_date", tradeDate);
+        List<TushareDailyBasicDTO> rows = apiClient.callGenericStrict(
+                TushareDailyBasicDTO.class,
+                "daily_basic",
+                params,
+                "ts_code,trade_date,close,pe,pe_ttm,pb,total_mv,circ_mv");
+        if (rows.isEmpty()) {
+            log.warn("未获取到估值快照: tsCode={}, tradeDate={}", tsCode, tradeDate);
+            return null;
+        }
+        TushareDailyBasicDTO selected = rows.stream()
+                .filter(row -> row.getTradeDate() != null)
+                .max(Comparator.comparing(TushareDailyBasicDTO::getTradeDate))
+                .orElse(rows.get(0));
+        if (tradeDate != null && !tradeDate.equals(selected.getTradeDate())) {
+            log.warn("行情与估值交易日不一致，忽略估值: tsCode={}, priceTradeDate={}, valuationTradeDate={}",
+                    tsCode, tradeDate, selected.getTradeDate());
+            return null;
+        }
+        return selected;
     }
 
     private OHLCVBarVO toOHLCVBar(TushareDailyDTO dto) {

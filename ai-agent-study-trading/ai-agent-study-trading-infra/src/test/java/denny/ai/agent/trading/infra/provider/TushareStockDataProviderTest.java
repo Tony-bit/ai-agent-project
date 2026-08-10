@@ -69,6 +69,20 @@ class TushareStockDataProviderTest {
             if (result == null) {
                 return super.callGeneric(dtoClass, apiName, params, fields);
             }
+            return convertRows(dtoClass, result);
+        }
+
+        @Override
+        public <T> List<T> callGenericStrict(Class<T> dtoClass, String apiName,
+                                             Map<String, Object> params, String fields) {
+            List<Map<String, String>> result = handler.handle(apiName, params, fields);
+            if (result == null) {
+                return super.callGenericStrict(dtoClass, apiName, params, fields);
+            }
+            return convertRows(dtoClass, result);
+        }
+
+        private <T> List<T> convertRows(Class<T> dtoClass, List<Map<String, String>> result) {
             List<T> converted = new ArrayList<>(result.size());
             for (Map<String, String> row : result) {
                 try {
@@ -126,6 +140,48 @@ class TushareStockDataProviderTest {
         assertEquals(1000000L, result.getVolume());
         assertEquals(new BigDecimal("12.0"), result.getWeek52High());
         assertEquals(new BigDecimal("8.5"), result.getWeek52Low());
+    }
+
+    @Test
+    void getStockInfoUsesDailyBasicFromPriceTradeDate() {
+        TushareApiClient client = createTestClient((apiName, params, fields) -> {
+            if ("stock_basic".equals(apiName)) {
+                return List.of(Map.of(
+                        "ts_code", "600285.SH",
+                        "name", "羚锐制药",
+                        "exchange", "SSE"));
+            }
+            if ("daily".equals(apiName) && fields.contains("close")) {
+                return List.of(Map.of(
+                        "ts_code", "600285.SH",
+                        "trade_date", "20260807",
+                        "close", "22.24",
+                        "vol", "92306"));
+            }
+            if ("daily".equals(apiName)) {
+                return List.of(Map.of("high", "24.75", "low", "19.00"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                assertEquals("20260807", params.get("trade_date"));
+                return List.of(Map.of(
+                        "ts_code", "600285.SH",
+                        "trade_date", "20260807",
+                        "pe", "16.8",
+                        "pe_ttm", "16.6",
+                        "pb", "3.2",
+                        "total_mv", "1257000",
+                        "circ_mv", "1249000"));
+            }
+            return Collections.emptyList();
+        });
+
+        StockInfoVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getStockInfo("600285.SH");
+
+        assertEquals(16.6, result.getPeTtm());
+        assertEquals(16.6, result.getPeRatio());
+        assertEquals("2026-08-07", result.getValuationTradeDate());
+        assertEquals(0, new BigDecimal("1257000").compareTo(result.getTotalMv()));
     }
 
     @Test
@@ -277,10 +333,6 @@ class TushareStockDataProviderTest {
                     row.put("netprofit_margin", "15.0");
                     row.put("debt_to_assets", "65.0");
                     row.put("current_ratio", "1.5");
-                    row.put("pe", "8.5");
-                    row.put("pb_ratio", "0.9");
-                    row.put("ps_ratio", "1.2");
-                    row.put("peg", "0.8");
                     row.put("eps", "1.25");
                     row.put("revenue", "50000");
                     row.put("net_profit", "8000");
@@ -292,6 +344,13 @@ class TushareStockDataProviderTest {
                     row.put("net_profit", "6000");
                     return List.of(row);
                 }
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of(
+                        "trade_date", "20260807",
+                        "pe", "8.8",
+                        "pe_ttm", "8.5",
+                        "pb", "0.9"));
             }
             if ("cashflow".equals(apiName)) {
                 Map<String, String> row = new HashMap<>();
@@ -309,13 +368,50 @@ class TushareStockDataProviderTest {
         assertEquals(12.5, result.getRoe());
         assertEquals(30.0, result.getGrossMargin());
         assertEquals(65.0, result.getDebtToAssets());
+        assertEquals(8.5, result.getPeTtm());
         assertEquals(8.5, result.getPeRatio());
-        assertEquals(0.9, result.getPbRatio());
+        assertEquals(0.9, result.getPb());
 
         // 验证增长率计算: (50000-40000)/40000*100 = 25%
         assertEquals(25.0, result.getRevenueGrowth(), 0.01);
         // 验证增长率计算: (8000-6000)/6000*100 = 33.33%
         assertEquals(33.33, result.getNetIncomeGrowth(), 0.01);
+    }
+
+    @Test
+    void getFundamentalDataUsesLatestDailyBasicPeTtm() {
+        TushareApiClient client = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName) && fields.contains("roe")) {
+                return List.of(Map.of("eps", "0.435", "roe", "6.9887"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "16.6"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getFundamentalData("600285.SH");
+
+        assertEquals(16.6, result.getPeTtm());
+        assertEquals(new BigDecimal("0.435"), result.getEps());
+        assertEquals("2026-08-07", result.getValuationTradeDate());
+    }
+
+    @Test
+    void missingDailyBasicKeepsValuationNull() {
+        TushareApiClient client = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName) && fields.contains("roe")) {
+                return List.of(Map.of("eps", "0.435", "roe", "6.9887"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getFundamentalData("600285.SH");
+
+        assertNull(result.getPeTtm());
+        assertEquals(new BigDecimal("0.435"), result.getEps());
     }
 
     @Test
