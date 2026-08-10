@@ -398,13 +398,13 @@ git commit -m "fix: migrate trading consumers to PE TTM"
 
 | 任务 | status |
 |------|------|
-| 任务 4：阻止基本面分析师从季度 EPS 补算 PE | append |
+| 任务 4：阻止基本面分析师从季度 EPS 补算 PE | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/FundamentalAnalystNode.java`
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/FundamentalAnalystValuationPolicyTest.java`
 
-- [ ] **步骤 1：编写羚锐制药回归测试**
+- [x] **步骤 1：编写羚锐制药回归测试**
 
 ```java
 @Test
@@ -442,7 +442,7 @@ void setUp() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证 buildStockData 不存在**
+- [x] **步骤 2：运行测试验证 buildStockData 不存在**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-domain -am -Dtest=FundamentalAnalystValuationPolicyTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -450,7 +450,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-domain -am -Dte
 
 预期：编译失败，提示 `buildStockData` 不存在。
 
-- [ ] **步骤 3：实现可测试的估值输入政策**
+- [x] **步骤 3：实现可测试的估值输入政策**
 
 ```java
 String buildStockData(StockInfoVO stockInfo, FundamentalDataVO data) {
@@ -466,7 +466,7 @@ String buildStockData(StockInfoVO stockInfo, FundamentalDataVO data) {
 
 `generateReport` 改用该方法，日志改记 `peTtm`。不修改数据库中的 6002–6013 Prompt 集合，也不改变其他 role 的模板版本。
 
-- [ ] **步骤 4：运行 domain 模块测试**
+- [x] **步骤 4：运行 domain 模块测试**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-domain -am test
@@ -474,7 +474,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-domain -am test
 
 预期：`BUILD SUCCESS`，现有 Prompt 快照测试不变。
 
-- [ ] **步骤 5：提交基本面防线**
+- [x] **步骤 5：提交基本面防线**
 
 ```powershell
 git add -- ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/FundamentalAnalystNode.java ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/FundamentalAnalystValuationPolicyTest.java

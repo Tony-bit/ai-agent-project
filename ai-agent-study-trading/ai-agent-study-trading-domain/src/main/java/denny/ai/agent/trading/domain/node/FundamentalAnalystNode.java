@@ -87,8 +87,8 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
         FundamentalDataVO fundamentalData = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
                 .bind(dataProvider, context.getTargetContext()).getFundamentalData();
 
-        log.info("获取基本面数据: ticker={}, pe={}, roe={}, grossMargin={}",
-                ticker, fundamentalData.getPeRatio(), fundamentalData.getRoe(), fundamentalData.getGrossMargin());
+        log.info("获取基本面数据: ticker={}, peTtm={}, roe={}, grossMargin={}",
+                ticker, fundamentalData.getPeTtm(), fundamentalData.getRoe(), fundamentalData.getGrossMargin());
 
         sendAnalystEvent(dynamicContext, "analyst_progress", "已获取基本面数据，开始分析...");
 
@@ -114,9 +114,7 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
                                              FundamentalDataVO data,
                                              DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         TradingContextVO context = dynamicContext.getValue(TRADING_CONTEXT_KEY);
-        String stockData = structuredPayloadCodec.toJson(java.util.Map.of(
-                "stockInfo", stockInfo,
-                "fundamentalData", data));
+        String stockData = buildStockData(stockInfo, data);
         String prompt = analystPromptService.render("6002", context, dynamicContext,
                 stockData, FundamentalAnalystPayload.class);
 
@@ -143,6 +141,16 @@ public class FundamentalAnalystNode extends AbstractExecuteSupport {
             return FundamentalReportVO.builder().summary(response.trim()).rawData(data).build();
         }
         return parseReport(response, data);
+    }
+
+    String buildStockData(StockInfoVO stockInfo, FundamentalDataVO data) {
+        String valuationPolicy = data.getPeTtm() == null
+                ? "估值口径约束：PE_TTM 不可用；不得自行补算，禁止使用 currentPrice / eps。"
+                : "估值口径约束：peTtm 是默认且权威的 PE 口径，必须标为滚动市盈率或 PE_TTM；"
+                + "禁止使用 currentPrice / eps 生成其他 PE。";
+        return valuationPolicy + System.lineSeparator() + structuredPayloadCodec.toJson(java.util.Map.of(
+                "stockInfo", stockInfo,
+                "fundamentalData", data));
     }
 
     private FundamentalReportVO parseReport(String llmResponse, FundamentalDataVO rawData) {
