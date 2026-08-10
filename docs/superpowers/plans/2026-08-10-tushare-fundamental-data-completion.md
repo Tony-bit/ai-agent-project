@@ -25,7 +25,7 @@
 
 | 任务 | status |
 |------|------|
-| 任务 1：建立 DTO 字段契约 | append |
+| 任务 1：建立 DTO 字段契约 | pass |
 
 **文件：**
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/tushare/dto/TushareIncomeDTO.java`
@@ -35,7 +35,7 @@
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/tushare/dto/TushareDailyBasicDTO.java`
 - 测试：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareStockDataProviderTest.java`
 
-- [ ] **步骤 1：把成功场景改成真实字段并增加逐字段断言**
+- [x] **步骤 1：把成功场景改成真实字段并增加逐字段断言**
 
 ```java
 assertAll(
@@ -56,7 +56,7 @@ assertAll(
         () -> assertEquals(15.9852 / 13.6133, result.getPegRatio(), 0.0001));
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest#getFundamentalData_success -Dsurefire.failIfNoSpecifiedTests=false test
@@ -64,7 +64,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareSt
 
 预期：FAIL，新增字段仍为空或字段名不匹配。
 
-- [ ] **步骤 3：实现 DTO**
+- [x] **步骤 3：实现 DTO**
 
 ```java
 @Data
@@ -107,7 +107,7 @@ private Double psTtm;
 private Double dvRatio;
 ```
 
-- [ ] **步骤 4：编译并提交 DTO**
+- [x] **步骤 4：编译并提交 DTO**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -DskipTests package
@@ -121,13 +121,13 @@ git commit -m "feat: add Tushare financial statement DTOs"
 
 | 任务 | status |
 |------|------|
-| 任务 2：按统一报告期聚合基本面数据 | append |
+| 任务 2：按统一报告期聚合基本面数据 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/TushareStockDataProvider.java:193`
 - 测试：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareStockDataProviderTest.java:323`
 
-- [ ] **步骤 1：断言接口字段和统一报告期**
+- [x] **步骤 1：断言接口字段和统一报告期**
 
 ```java
 if (Set.of("income", "balancesheet", "cashflow").contains(apiName)) {
@@ -141,11 +141,11 @@ if ("income".equals(apiName)) {
 
 分别返回 `end_date=20260331` 的三张报表。
 
-- [ ] **步骤 2：运行成功场景并确认查询尚未发生**
+- [x] **步骤 2：运行成功场景并确认查询尚未发生**
 
 运行任务 1 的单测试命令。预期：FAIL，`income`、`balancesheet` 未调用。
 
-- [ ] **步骤 3：实现报告期查询**
+- [x] **步骤 3：实现报告期查询**
 
 先从 `fina_indicator` 选择最新 `endDate`，再使用：
 
@@ -163,7 +163,7 @@ cashflow: ts_code,ann_date,end_date,update_flag,n_cashflow_act,c_pay_acq_const_f
 
 选择记录时依次比较 `endDate`、`updateFlag == "1"`、`annDate`，所有比较允许 `null`。
 
-- [ ] **步骤 4：映射字段并计算 PEG**
+- [x] **步骤 4：映射字段并计算 PEG**
 
 ```java
 Double growth = fina == null ? null : fina.getNetprofitYoy();
@@ -174,7 +174,7 @@ Double peg = valuation != null && valuation.getPeTtm() != null
 
 builder 同时写入 `roa`、`bps`、两个增长率别名、利润表金额、资产负债表金额、经营现金流、自由现金流、`psTtm`、`dvRatio` 和 PEG，并保留现有 PE/PB/市值字段。
 
-- [ ] **步骤 5：运行 Provider 单测并提交**
+- [x] **步骤 5：运行 Provider 单测并提交**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest -Dsurefire.failIfNoSpecifiedTests=false test
