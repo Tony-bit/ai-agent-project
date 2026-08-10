@@ -545,7 +545,7 @@ git commit -m "feat: constrain summary-level news analysis"
 
 | 任务 | status |
 |------|------|
-| 任务 5：完成回归验证 | append |
+| 任务 5：完成回归验证 | pass |
 
 **文件：**
 - 验证：`ai-agent-study-trading/ai-agent-study-trading-domain`
@@ -593,3 +593,12 @@ git log --oneline -6
 git add docs/superpowers/plans/2026-08-10-news-five-field-summary-analysis-implementation.md
 git commit -m "docs: record news summary analysis verification"
 ```
+
+## 实际验证结果
+
+- 新闻专项测试：32 个通过，0 失败，0 错误，0 跳过。
+- 交易领域及其依赖模块全量测试：149 个通过，0 失败，0 错误，0 跳过。
+- 新闻 provider 映射测试：19 个通过，0 失败，0 错误，0 跳过。
+- 干净编译：`mvn clean compile -q` 成功。
+- 差异检查：`git diff --check` 无输出，分支工作区无未提交业务代码。
+- 非阻塞警告：现有 Maven 插件参数、弃用 API、unchecked 操作和 Lombok `equals/hashCode` 提示仍会输出，本需求未新增对应警告。
