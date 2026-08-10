@@ -16,13 +16,14 @@ import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
 import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
 import denny.ai.agent.trading.api.vo.payload.NewsAnalystPayload;
-import denny.ai.agent.trading.domain.signal.NewsItemSentimentEnricher;
+import denny.ai.agent.trading.domain.signal.NewsAnalysisPreprocessor;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -44,7 +45,7 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
     @Resource private AnalystPromptService analystPromptService;
     @Resource private StructuredPayloadCodec structuredPayloadCodec;
-    @Resource private NewsItemSentimentEnricher newsItemSentimentEnricher;
+    @Resource private NewsAnalysisPreprocessor newsAnalysisPreprocessor;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -82,9 +83,16 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         sendAnalystEvent(dynamicContext, "analyst_start", "新闻分析开始: " + ticker);
 
-        List<NewsItemVO> newsItems = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
+        List<NewsItemVO> fetchedNews = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
                 .bind(dataProvider, context.getTargetContext()).getNews(10);
-        newsItemSentimentEnricher.enrich(newsItems);
+        NewsAnalysisPreprocessor.Result preprocessing = newsAnalysisPreprocessor.prepare(
+                fetchedNews,
+                ZonedDateTime.now(NewsAnalysisPreprocessor.ANALYSIS_ZONE));
+        List<NewsItemVO> newsItems = preprocessing.newsItems();
+
+        log.info("新闻时间窗口过滤完成: ticker={}, fetched={}, retained={}, stale={}, future={}, unknownTime={}",
+                ticker, fetchedNews == null ? 0 : fetchedNews.size(), newsItems.size(),
+                preprocessing.staleCount(), preprocessing.futureCount(), preprocessing.unknownTimeCount());
 
         log.info("获取新闻数据: ticker={}, count={}", ticker, newsItems.size());
 

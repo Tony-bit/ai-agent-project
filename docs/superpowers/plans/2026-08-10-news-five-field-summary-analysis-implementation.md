@@ -235,7 +235,7 @@ git commit -m "feat: filter stale news before scoring"
 
 | 任务 | status |
 |------|------|
-| 任务 2：接入新闻分析节点 | append |
+| 任务 2：接入新闻分析节点 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/NewsAnalystNode.java:45-96`

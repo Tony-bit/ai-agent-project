@@ -11,6 +11,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NewsAnalysisPreprocessorTest {
@@ -75,6 +76,21 @@ class NewsAnalysisPreprocessorTest {
 
         assertEquals(1, result.newsItems().size());
         assertEquals(0, result.unknownTimeCount());
+    }
+
+    @Test
+    void preservesProviderOrderAndNativeScore() {
+        NewsItemVO first = item("2026-08-10 10:00:00", "普通公告");
+        first.setSentimentScore(0.25);
+        NewsItemVO second = item("2026-08-09 10:00:00", "公司回购");
+
+        NewsAnalysisPreprocessor.Result result = preprocessor.prepare(
+                new ArrayList<>(List.of(first, second)), NOW);
+
+        assertSame(first, result.newsItems().get(0));
+        assertSame(second, result.newsItems().get(1));
+        assertEquals(0.25, first.getSentimentScore(), 0.000001);
+        assertTrue(second.getSentimentScore() > 0);
     }
 
     private NewsItemVO item(String publishTime, String title) {
