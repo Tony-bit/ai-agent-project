@@ -241,12 +241,12 @@ git commit -m "test: verify analyst receives shareholder returns"
 
 | 任务 | status |
 |------|------|
-| 任务 3：增加真实 Tushare 在线断言 | append |
+| 任务 3：增加真实 Tushare 在线断言 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareFundamentalDataIntegrationTest.java`
 
-- [ ] **步骤 1：增加 DPS 和股息率有效性断言**
+- [x] **步骤 1：增加 DPS 和股息率有效性断言**
 
 在现有 `assertAll` 中加入：
 
@@ -259,7 +259,7 @@ git commit -m "test: verify analyst receives shareholder returns"
 
 保留已有逐字段断言，不写死 `600285.SH` 的具体 DPS，避免公司下一期已实施分红后造成无意义失败。
 
-- [ ] **步骤 2：运行真实在线集成测试**
+- [x] **步骤 2：运行真实在线集成测试**
 
 ```powershell
 mvn -Pintegration -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dit.test=TushareFundamentalDataIntegrationTest -Dfailsafe.failIfNoSpecifiedTests=false verify
@@ -267,7 +267,7 @@ mvn -Pintegration -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -D
 
 预期：存在 `TUSHARE_TOKEN` 时真实请求 PASS 且 `Tests skipped: 0`；权限、参数、响应协议或字段缺失均使测试失败。
 
-- [ ] **步骤 3：提交在线测试**
+- [x] **步骤 3：提交在线测试**
 
 ```powershell
 git add ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareFundamentalDataIntegrationTest.java

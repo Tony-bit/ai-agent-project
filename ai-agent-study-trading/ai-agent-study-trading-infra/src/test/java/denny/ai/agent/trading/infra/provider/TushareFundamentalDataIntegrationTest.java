@@ -5,6 +5,7 @@ import denny.ai.agent.trading.infra.calculator.TechnicalIndicatorCalculator;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -53,7 +54,12 @@ class TushareFundamentalDataIntegrationTest {
                 () -> assertNotNull(result.getFreeCashFlow(), "freeCashFlow"),
                 () -> assertNotNull(result.getDebtToAssets(), "debtToAssets"),
                 () -> assertNotNull(result.getCurrentRatio(), "currentRatio"),
-                () -> assertNotNull(result.getDividendYield(), "dividendYield"));
+                () -> assertNotNull(result.getDps(), "dps"),
+                () -> assertNotNull(result.getDividendYield(), "dividendYield"),
+                () -> assertTrue(result.getDps().compareTo(BigDecimal.ZERO) >= 0,
+                        "dps 应大于等于零"),
+                () -> assertTrue(result.getDividendYield() >= 0,
+                        "dividendYield 应大于等于零"));
         assertTrue(result.getTotalAssets().compareTo(result.getTotalDebt()) > 0,
                 "总资产应大于负债合计");
         assertEquals(result.getNetIncomeGrowth(), result.getEarningsGrowth(),
