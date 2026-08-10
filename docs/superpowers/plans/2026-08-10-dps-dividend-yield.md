@@ -205,12 +205,12 @@ git commit -m "feat: populate implemented DPS from Tushare"
 
 | 任务 | status |
 |------|------|
-| 任务 2：验证基本面分析师收到股东回报字段 | append |
+| 任务 2：验证基本面分析师收到股东回报字段 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/test/java/denny/ai/agent/trading/domain/node/FundamentalAnalystValuationPolicyTest.java`
 
-- [ ] **步骤 1：增加 analyst 输入序列化断言**
+- [x] **步骤 1：增加 analyst 输入序列化断言**
 
 ```java
 @Test
@@ -227,7 +227,7 @@ void stockDataIncludesShareholderReturnFields() {
 }
 ```
 
-- [ ] **步骤 2：运行 domain 目标测试并提交**
+- [x] **步骤 2：运行 domain 目标测试并提交**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-domain -am -Dtest=FundamentalAnalystValuationPolicyTest -Dsurefire.failIfNoSpecifiedTests=false test

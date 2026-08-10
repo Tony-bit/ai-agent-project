@@ -60,4 +60,17 @@ class FundamentalAnalystValuationPolicyTest {
         assertTrue(input.contains("禁止使用 currentPrice / eps"));
         assertFalse(input.contains("51.1"));
     }
+
+    @Test
+    void stockDataIncludesShareholderReturnFields() {
+        String input = node.buildStockData(
+                StockInfoVO.builder().ticker("600285.SH").build(),
+                FundamentalDataVO.builder()
+                        .dps(new BigDecimal("1.10"))
+                        .dividendYield(4.0468)
+                        .build());
+
+        assertTrue(input.contains("\"dps\":1.10"));
+        assertTrue(input.contains("\"dividendYield\":4.0468"));
+    }
 }
