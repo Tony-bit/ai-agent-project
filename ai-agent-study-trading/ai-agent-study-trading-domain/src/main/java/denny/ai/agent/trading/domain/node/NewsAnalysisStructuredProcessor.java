@@ -46,6 +46,7 @@ class NewsAnalysisStructuredProcessor {
                 item.put("source", prepared.source);
                 item.put("title", prepared.title);
                 item.put("summary", prepared.summary);
+                putIfNotNull(item, "sentimentScore", prepared.sentimentScore);
                 putIfNotBlank(item, "content", prepared.content);
                 putIfNotNull(item, "fullTextFetched", prepared.fullTextFetched);
                 putIfNotBlank(item, "contentQuality", prepared.contentQuality);
@@ -225,6 +226,7 @@ class NewsAnalysisStructuredProcessor {
                     cleanBasic(news.getSource()),
                     cleanContent(news.getTitle(), ticker, stockName),
                     cleanContent(news.getSummary(), ticker, stockName),
+                    news.getSentimentScore(),
                     cleanBasic(news.getContent()),
                     news.getFullTextFetched(),
                     cleanBasic(news.getContentQuality()),
@@ -320,6 +322,7 @@ class NewsAnalysisStructuredProcessor {
         private final String source;
         private final String title;
         private final String summary;
+        private final Double sentimentScore;
         private final String content;
         private final Boolean fullTextFetched;
         private final String contentQuality;
@@ -333,6 +336,7 @@ class NewsAnalysisStructuredProcessor {
                                  String source,
                                  String title,
                                  String summary,
+                                 Double sentimentScore,
                                  String content,
                                  Boolean fullTextFetched,
                                  String contentQuality,
@@ -343,6 +347,7 @@ class NewsAnalysisStructuredProcessor {
             this.source = source;
             this.title = title;
             this.summary = summary;
+            this.sentimentScore = sentimentScore;
             this.content = content;
             this.fullTextFetched = fullTextFetched;
             this.contentQuality = contentQuality;

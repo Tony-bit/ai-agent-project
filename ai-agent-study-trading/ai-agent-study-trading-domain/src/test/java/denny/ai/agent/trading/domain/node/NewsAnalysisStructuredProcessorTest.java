@@ -42,6 +42,22 @@ class NewsAnalysisStructuredProcessorTest {
     }
 
     @Test
+    void includesAvailableSentimentScoresAndOmitsMissingOnes() {
+        NewsAnalysisStructuredProcessor processor = new NewsAnalysisStructuredProcessor();
+        List<NewsItemVO> items = List.of(
+                NewsItemVO.builder().title("approved").sentimentScore(0.6).build(),
+                NewsItemVO.builder().title("unknown").build());
+
+        JSONObject root = JSON.parseObject(
+                processor.buildLlmInput("600285.SH", "羚锐制药", items));
+        JSONObject scoredItem = root.getJSONArray("newsItems").getJSONObject(0);
+        JSONObject unscoredItem = root.getJSONArray("newsItems").getJSONObject(1);
+
+        assertEquals(0.6, scoredItem.getDoubleValue("sentimentScore"), 0.000001);
+        assertFalse(unscoredItem.containsKey("sentimentScore"));
+    }
+
+    @Test
     void parsesStructuredLlmReportAndKeepsOriginalNewsItems() {
         NewsAnalysisStructuredProcessor processor = new NewsAnalysisStructuredProcessor();
         List<NewsItemVO> newsItems = List.of(

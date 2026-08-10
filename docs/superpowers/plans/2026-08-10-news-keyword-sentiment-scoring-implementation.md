@@ -330,7 +330,7 @@ git commit -m "feat: enrich missing news sentiment scores"
 
 | 任务 | status |
 |------|------|
-| 任务 3：接入新闻节点和 LLM 新闻快照 | append |
+| 任务 3：接入新闻节点和 LLM 新闻快照 | pass |
 
 **文件：**
 

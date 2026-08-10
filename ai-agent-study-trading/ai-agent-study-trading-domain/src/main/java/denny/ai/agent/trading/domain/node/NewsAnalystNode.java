@@ -16,6 +16,7 @@ import denny.ai.agent.trading.domain.prompt.AnalystPromptTemplate;
 import denny.ai.agent.trading.domain.prompt.AnalystPromptService;
 import denny.ai.agent.trading.domain.execution.StructuredPayloadCodec;
 import denny.ai.agent.trading.api.vo.payload.NewsAnalystPayload;
+import denny.ai.agent.trading.domain.signal.NewsItemSentimentEnricher;
 import denny.ai.agent.trading.domain.vo.TradingContextVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
     @Resource private AnalystPromptService analystPromptService;
     @Resource private StructuredPayloadCodec structuredPayloadCodec;
+    @Resource private NewsItemSentimentEnricher newsItemSentimentEnricher;
 
     @Override
     public String doApply(ExecuteCommandEntity requestParameter,
@@ -82,6 +84,7 @@ public class NewsAnalystNode extends AbstractExecuteSupport {
 
         List<NewsItemVO> newsItems = denny.ai.agent.trading.domain.execution.TargetBoundStockDataProvider
                 .bind(dataProvider, context.getTargetContext()).getNews(10);
+        newsItemSentimentEnricher.enrich(newsItems);
 
         log.info("获取新闻数据: ticker={}, count={}", ticker, newsItems.size());
 
