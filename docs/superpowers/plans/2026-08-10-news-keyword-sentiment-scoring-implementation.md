@@ -435,7 +435,7 @@ git commit -m "feat: wire keyword scores into news analysis"
 
 | 任务 | status |
 |------|------|
-| 任务 4：完成回归验证与交付检查 | append |
+| 任务 4：完成回归验证与交付检查 | pass |
 
 **文件：**
 

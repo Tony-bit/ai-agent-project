@@ -57,13 +57,29 @@ class NewsKeywordSentimentScorerTest {
     void appliesSummaryWeightDegreeModifierAndHtmlCleanup() {
         var summaryOnly = scorer.score(item("公司发布公告", "净利润增长"));
         var amplified = scorer.score(item("净利润大幅增长", ""));
+        var increased = scorer.score(item("净利润大增", ""));
+        var decreased = scorer.score(item("净利润大降", ""));
         var weakened = scorer.score(item("净利润小幅下降", ""));
         var html = scorer.score(item("<em>公司</em>新药获批", ""));
 
         assertEquals(0.30, summaryOnly.score(), 0.000001);
         assertEquals(0.60, amplified.score(), 0.000001);
+        assertEquals(0.60, increased.score(), 0.000001);
+        assertEquals(-0.60, decreased.score(), 0.000001);
         assertEquals(-0.35, weakened.score(), 0.000001);
         assertEquals(0.60, html.score(), 0.000001);
+    }
+
+    @Test
+    void scoresCurrentLingruiNewsTitles() {
+        var catalog = scorer.score(item("羚锐制药：4个药品新纳入国家基药目录", ""));
+        var pledge = scorer.score(item(
+                "羚锐制药：股东羚锐集团解押975万股 质押508万股", ""));
+        var approval = scorer.score(item("羚锐制药：肤痒颗粒持有人变更获批", ""));
+
+        assertEquals(0.45, catalog.score(), 0.000001);
+        assertEquals(-0.10, pledge.score(), 0.000001);
+        assertEquals(0.60, approval.score(), 0.000001);
     }
 
     @Test

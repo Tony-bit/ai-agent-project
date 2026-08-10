@@ -34,7 +34,7 @@ public final class NewsKeywordSentimentScorer {
             rule("rating_downgrade", -0.60, "下调评级"),
             rule("rating_upgrade", 0.55, "上调评级"),
             rule("pledge_release", 0.20, "解除质押", "解押"),
-            rule("new_pledge", -0.30, "新增质押")
+            rule("new_pledge", -0.30, "新增质押", "质押")
     );
 
     private static final List<Rule> DIRECTIONAL_RULES = List.of(
@@ -49,7 +49,7 @@ public final class NewsKeywordSentimentScorer {
             rule("net_profit_growth", 0.50, "净利润增长"),
             rule("revenue_growth", 0.40, "营收增长"),
             rule("essential_drug_catalog", 0.45,
-                    "纳入国家基本药物目录", "纳入基药目录"),
+                    "纳入国家基本药物目录", "纳入国家基药目录", "纳入基药目录"),
             rule("breakthrough", 0.35, "突破"),
             rule("delisting", -1.00, "退市"),
             rule("limit_down", -1.00, "跌停"),
@@ -148,8 +148,8 @@ public final class NewsKeywordSentimentScorer {
     }
 
     private String removeDegreeWords(String text) {
-        String result = text;
-        for (String word : STRONG_DEGREE_WORDS) {
+        String result = text.replace("大增", "增长").replace("大降", "下降");
+        for (String word : List.of("大幅", "显著")) {
             result = result.replace(word, "");
         }
         for (String word : WEAK_DEGREE_WORDS) {
