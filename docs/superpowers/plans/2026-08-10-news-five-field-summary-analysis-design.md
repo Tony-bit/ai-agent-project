@@ -117,9 +117,9 @@
 ## 代码变更范围
 
 1. 修改 `NewsAnalysisStructuredProcessor`，在准备、去重后的 LLM 新闻条目中保留并输出 `url`。
-2. 修改 `AnalystPromptTemplate.NEWS_ANALYST_STRUCTURED_PROMPT`，明确五字段职责和摘要级证据边界。
+2. 修改 `NewsAnalysisStructuredProcessor` 生成的 `instructions`，明确五字段职责和摘要级证据边界；该字段通过现有 `stockData` 占位符进入所有 Prompt 模式。
 3. 在新闻进入 `NewsItemSentimentEnricher` 前增加可独立测试的 15 天时间窗口过滤，统一使用 `Asia/Shanghai` 分析时间。
-4. 根据现有 Prompt 版本管理机制同步新闻分析师 Prompt，避免模板与运行时 Prompt 内容不一致。
+4. 不修改已归档的旧 Prompt 模板或历史数据库迁移，避免破坏 Prompt 版本快照的一致性。
 5. 不修改 `NewsKeywordSentimentScorer` 的权重和关键词规则。
 6. 不修改新闻 provider 的请求方式，不新增外部接口调用。
 
