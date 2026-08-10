@@ -203,7 +203,7 @@ git commit -m "feat: add deterministic news keyword scoring"
 
 | 任务 | status |
 |------|------|
-| 任务 2：实现新闻条目评分增强器 | append |
+| 任务 2：实现新闻条目评分增强器 | pass |
 
 **文件：**
 

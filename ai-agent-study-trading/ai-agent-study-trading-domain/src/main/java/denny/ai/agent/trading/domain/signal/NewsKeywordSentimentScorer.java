@@ -1,6 +1,7 @@
 package denny.ai.agent.trading.domain.signal;
 
 import denny.ai.agent.trading.api.vo.NewsItemVO;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+@Component
 public final class NewsKeywordSentimentScorer {
 
     public static final String VERSION = "news-keyword-score-v1";
