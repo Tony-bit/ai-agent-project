@@ -729,6 +729,87 @@ class TushareStockDataProviderTest {
     }
 
     @Test
+    void getFundamentalData_prefersLatestRevisionForSamePeriod() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(
+                        Map.of("ann_date", "20260420", "end_date", "20260331",
+                                "update_flag", "0", "tr_yoy", "8.0", "netprofit_yoy", "9.0"),
+                        Map.of("ann_date", "20260428", "end_date", "20260331",
+                                "update_flag", "1", "tr_yoy", "12.0", "netprofit_yoy", "15.0"));
+            }
+            if ("income".equals(apiName)) {
+                return List.of(
+                        Map.of("ann_date", "20260420", "end_date", "20260331",
+                                "update_flag", "0", "revenue", "100000000",
+                                "n_income_attr_p", "20000000"),
+                        Map.of("ann_date", "20260428", "end_date", "20260331",
+                                "update_flag", "1", "revenue", "120000000",
+                                "n_income_attr_p", "24000000"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertEquals(12.0, result.getRevenueGrowth());
+        assertEquals(15.0, result.getNetIncomeGrowth());
+        assertEquals(new BigDecimal("120000000"), result.getRevenue());
+        assertEquals(new BigDecimal("24000000"), result.getNetIncome());
+    }
+
+    @Test
+    void getFundamentalData_emptyBalanceSheetKeepsOtherSources() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "roe", "12.0"));
+            }
+            if ("income".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "revenue", "120000000"));
+            }
+            if ("cashflow".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "n_cashflow_act", "30000000"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertNull(result.getTotalAssets());
+        assertNull(result.getTotalDebt());
+        assertEquals(new BigDecimal("120000000"), result.getRevenue());
+        assertEquals(new BigDecimal("30000000"), result.getOperatingCashFlow());
+        assertEquals(15.0, result.getPeTtm());
+    }
+
+    @Test
+    void getFundamentalData_missingGrowthKeepsPegNull() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "roe", "12.0"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertNull(result.getNetIncomeGrowth());
+        assertNull(result.getPegRatio());
+    }
+
+    @Test
     void getFundamentalData_negativeGrowth() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {

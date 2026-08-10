@@ -188,25 +188,25 @@ git commit -m "feat: complete Tushare fundamental data mapping"
 
 | 任务 | status |
 |------|------|
-| 任务 3：覆盖修订记录和派生边界 | append |
+| 任务 3：覆盖修订记录和派生边界 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareStockDataProviderTest.java`
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/TushareStockDataProvider.java`
 
-- [ ] **步骤 1：测试修订记录选择**
+- [x] **步骤 1：测试修订记录选择**
 
 同报告期返回 `update_flag=0` 和 `update_flag=1` 两条记录，断言使用后者的营收和增长率。
 
-- [ ] **步骤 2：测试部分数据**
+- [x] **步骤 2：测试部分数据**
 
 让 `balancesheet` 返回空列表，断言 `totalAssets/totalDebt` 为空，而营收、现金流和估值仍非空。
 
-- [ ] **步骤 3：测试 PEG 边界**
+- [x] **步骤 3：测试 PEG 边界**
 
 分别构造 `netprofit_yoy` 为 `0`、`-5` 和缺失，断言 PEG 为 `null`；正增长断言等于 `peTtm / growth`。
 
-- [ ] **步骤 4：运行并提交边界测试**
+- [x] **步骤 4：运行并提交边界测试**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest -Dsurefire.failIfNoSpecifiedTests=false test
