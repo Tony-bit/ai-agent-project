@@ -21,6 +21,9 @@ public class TushareCashFlowDTO extends TushareBaseDTO {
 
     private String annDate;
     private String endDate;
+    private String updateFlag;
+    private BigDecimal nCashflowAct;          // 元
+    private BigDecimal cPayAcqConstFiolta;    // 元
     private BigDecimal imNetIncrCashEquv;  // 万元
     private BigDecimal payForFixedAssets;  // 万元
     private BigDecimal operNetCashFlow;    // 万元
@@ -32,11 +35,19 @@ public class TushareCashFlowDTO extends TushareBaseDTO {
      * 自由现金流 = 经营活动现金流净额 - 资本支出（单位：元）
      */
     public BigDecimal getFreeCashFlowYuan() {
+        if (nCashflowAct != null) return calculateFreeCashFlow();
         if (operNetCashFlow == null) return null;
         BigDecimal result = operNetCashFlow.multiply(new BigDecimal("10000"));
         if (payForFixedAssets != null) {
             result = result.subtract(payForFixedAssets.abs().multiply(new BigDecimal("10000")));
         }
         return result;
+    }
+
+    public BigDecimal calculateFreeCashFlow() {
+        if (nCashflowAct == null) return null;
+        return cPayAcqConstFiolta == null
+                ? nCashflowAct
+                : nCashflowAct.subtract(cPayAcqConstFiolta.abs());
     }
 }

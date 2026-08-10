@@ -21,7 +21,9 @@ public class TushareFinaIndicatorDTO extends TushareBaseDTO {
 
     private String annDate;
     private String endDate;
+    private String updateFlag;
     private Double roe;
+    private Double roa;
     private Double grossprofitMargin;
     private Double netprofitMargin;
     private Double debtToAssets;
@@ -29,6 +31,9 @@ public class TushareFinaIndicatorDTO extends TushareBaseDTO {
     private Double quickRatio;
     private Double cashRatio;
     private BigDecimal eps;
+    private BigDecimal bps;
+    private Double trYoy;
+    private Double netprofitYoy;
     private BigDecimal revenue;      // 单位：万元
     private BigDecimal totalRevenue;
     private BigDecimal netProfit;    // 单位：万元
