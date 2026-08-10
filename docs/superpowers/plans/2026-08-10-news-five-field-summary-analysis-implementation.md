@@ -27,7 +27,7 @@
 
 | 任务 | status |
 |------|------|
-| 任务 1：实现 15 天新闻预处理器 | append |
+| 任务 1：实现 15 天新闻预处理器 | pass |
 
 **文件：**
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/signal/NewsAnalysisPreprocessor.java`
