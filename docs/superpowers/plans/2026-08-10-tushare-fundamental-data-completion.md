@@ -220,12 +220,12 @@ git commit -m "test: cover Tushare financial data boundaries"
 
 | 任务 | status |
 |------|------|
-| 任务 4：增加真实 Tushare 在线验证 | append |
+| 任务 4：增加真实 Tushare 在线验证 | pass |
 
 **文件：**
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareFundamentalDataIntegrationTest.java`
 
-- [ ] **步骤 1：编写环境变量门控的真实测试**
+- [x] **步骤 1：编写环境变量门控的真实测试**
 
 ```java
 @Test
@@ -256,7 +256,7 @@ void getFundamentalData_realApi_populatesSupportedFields() {
 
 在同一个 `assertAll` 中继续明确断言 `pe`、`pb`、`totalMv`、`circMv`、`valuationTradeDate`、`roe`、`grossMargin`、`netMargin`、`bookValuePerShare`、`eps`、`earningsGrowth`、`debtToAssets`、`currentRatio` 均非空。另行断言 `totalAssets > totalDebt`、`earningsGrowth == netIncomeGrowth`、`freeCashFlow <= operatingCashFlow`。存在 token 时任何缺失都必须失败。
 
-- [ ] **步骤 2：运行默认测试确认隔离**
+- [x] **步骤 2：运行默认测试确认隔离**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -264,7 +264,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareSt
 
 预期：BUILD SUCCESS，未运行 `*IntegrationTest`。
 
-- [ ] **步骤 3：运行真实在线测试**
+- [x] **步骤 3：运行真实在线测试**
 
 ```powershell
 mvn -Pintegration -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dit.test=TushareFundamentalDataIntegrationTest -Dfailsafe.failIfNoSpecifiedTests=false verify
@@ -272,7 +272,7 @@ mvn -Pintegration -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -D
 
 预期：真实请求 `600285.SH`，测试 PASS 且不显示 skipped。
 
-- [ ] **步骤 4：运行全量模块回归并提交**
+- [x] **步骤 4：运行全量模块回归并提交**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dsurefire.failIfNoSpecifiedTests=false test
