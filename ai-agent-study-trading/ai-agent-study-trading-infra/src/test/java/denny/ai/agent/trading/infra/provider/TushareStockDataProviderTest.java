@@ -358,6 +358,21 @@ class TushareStockDataProviderTest {
                         "total_mv", "1261264.872",
                         "circ_mv", "1259874.872"));
             }
+            if ("dividend".equals(apiName)) {
+                assertEquals("600285.SH", params.get("ts_code"));
+                assertEquals(
+                        "ts_code,end_date,ann_date,div_proc,cash_div_tax,record_date,ex_date,pay_date",
+                        fields);
+                return List.of(Map.of(
+                        "ts_code", "600285.SH",
+                        "end_date", "20251231",
+                        "ann_date", "20260428",
+                        "div_proc", "实施",
+                        "cash_div_tax", "1.10",
+                        "record_date", "20260610",
+                        "ex_date", "20260611",
+                        "pay_date", "20260611"));
+            }
             if ("income".equals(apiName)) {
                 assertEquals("600285.SH", params.get("ts_code"));
                 assertEquals("20260331", params.get("period"));
@@ -420,8 +435,58 @@ class TushareStockDataProviderTest {
                 () -> assertEquals(15.9852, result.getPeTtm()),
                 () -> assertEquals(3.4566, result.getPb()),
                 () -> assertEquals(3.1861, result.getPsRatio()),
+                () -> assertEquals(new BigDecimal("1.10"), result.getDps()),
                 () -> assertEquals(4.0468, result.getDividendYield()),
                 () -> assertEquals(15.9852 / 13.6133, result.getPegRatio(), 0.0001));
+    }
+
+    @Test
+    void getFundamentalDataSelectsLatestImplementedDividend() {
+        TushareApiClient client = createTestClient((apiName, params, fields) -> {
+            if (!"dividend".equals(apiName)) {
+                return Collections.emptyList();
+            }
+            return List.of(
+                    Map.of("end_date", "20261231", "ann_date", "20270401",
+                            "div_proc", "预案", "cash_div_tax", "2.00"),
+                    Map.of("end_date", "20251231", "ann_date", "20260428",
+                            "div_proc", "实施", "cash_div_tax", "1.10"),
+                    Map.of("end_date", "20241231", "ann_date", "20250428",
+                            "div_proc", "实施", "cash_div_tax", "0.80"));
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getFundamentalData("600285.SH");
+
+        assertEquals(new BigDecimal("1.10"), result.getDps());
+    }
+
+    @Test
+    void getFundamentalDataPreservesZeroImplementedDividend() {
+        TushareApiClient client = createTestClient((apiName, params, fields) ->
+                "dividend".equals(apiName)
+                        ? List.of(Map.of("end_date", "20251231", "ann_date", "20260428",
+                                "div_proc", "实施", "cash_div_tax", "0"))
+                        : Collections.emptyList());
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getFundamentalData("600285.SH");
+
+        assertEquals(BigDecimal.ZERO, result.getDps());
+    }
+
+    @Test
+    void getFundamentalDataKeepsDpsNullWithoutImplementedDividend() {
+        TushareApiClient client = createTestClient((apiName, params, fields) ->
+                "dividend".equals(apiName)
+                        ? List.of(Map.of("end_date", "20251231", "ann_date", "20260428",
+                                "div_proc", "股东大会通过", "cash_div_tax", "1.10"))
+                        : Collections.emptyList());
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                client, indicatorCalculator, mockNewsSearchProvider).getFundamentalData("600285.SH");
+
+        assertNull(result.getDps());
     }
 
     @Test

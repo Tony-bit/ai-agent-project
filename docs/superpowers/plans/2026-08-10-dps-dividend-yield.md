@@ -23,14 +23,14 @@
 
 | 任务 | status |
 |------|------|
-| 任务 1：以测试锁定分红选择和映射契约 | append |
+| 任务 1：以测试锁定分红选择和映射契约 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/provider/TushareStockDataProviderTest.java`
 - 创建：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/tushare/dto/TushareDividendDTO.java`
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/TushareStockDataProvider.java`
 
-- [ ] **步骤 1：在成功场景中增加接口契约和字段断言**
+- [x] **步骤 1：在成功场景中增加接口契约和字段断言**
 
 在 `getFundamentalData_success()` 的测试 client 中增加：
 
@@ -57,7 +57,7 @@ if ("dividend".equals(apiName)) {
 () -> assertEquals(4.0468, result.getDividendYield())
 ```
 
-- [ ] **步骤 2：增加状态、日期排序和边界测试**
+- [x] **步骤 2：增加状态、日期排序和边界测试**
 
 增加三个独立测试：
 
@@ -116,7 +116,7 @@ void getFundamentalDataKeepsDpsNullWithoutImplementedDividend() {
 }
 ```
 
-- [ ] **步骤 3：运行目标测试并确认失败**
+- [x] **步骤 3：运行目标测试并确认失败**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am "-Dtest=TushareStockDataProviderTest#getFundamentalData_success+getFundamentalDataSelectsLatestImplementedDividend+getFundamentalDataPreservesZeroImplementedDividend+getFundamentalDataKeepsDpsNullWithoutImplementedDividend" -Dsurefire.failIfNoSpecifiedTests=false test
@@ -124,7 +124,7 @@ mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am "-Dtest=TushareS
 
 预期：FAIL；provider 尚未调用 `dividend`，DPS 断言得到 `null`。
 
-- [ ] **步骤 4：创建分红 DTO**
+- [x] **步骤 4：创建分红 DTO**
 
 ```java
 package denny.ai.agent.trading.infra.provider.tushare.dto;
@@ -154,7 +154,7 @@ public class TushareDividendDTO extends TushareBaseDTO {
 }
 ```
 
-- [ ] **步骤 5：实现查询、筛选和映射**
+- [x] **步骤 5：实现查询、筛选和映射**
 
 在 `getFundamentalData()` 中加载分红并映射：
 
@@ -191,7 +191,7 @@ private TushareDividendDTO selectLatestImplementedDividend(List<TushareDividendD
 }
 ```
 
-- [ ] **步骤 6：运行 provider 全量测试并提交**
+- [x] **步骤 6：运行 provider 全量测试并提交**
 
 ```powershell
 mvn -pl ai-agent-study-trading/ai-agent-study-trading-infra -am -Dtest=TushareStockDataProviderTest -Dsurefire.failIfNoSpecifiedTests=false test

@@ -207,6 +207,12 @@ public class TushareStockDataProvider implements IStockDataProvider {
                     TushareFinaIndicatorDTO::getUpdateFlag);
 
             TushareDailyBasicDTO valuation = loadValuation(tsCode, null);
+            TushareDividendDTO dividend = selectLatestImplementedDividend(
+                    apiClient.callGenericStrict(
+                            TushareDividendDTO.class,
+                            "dividend",
+                            Map.of("ts_code", tsCode),
+                            "ts_code,end_date,ann_date,div_proc,cash_div_tax,record_date,ex_date,pay_date"));
             String period = fina == null ? null : fina.getEndDate();
             TushareIncomeDTO income = null;
             TushareBalanceSheetDTO balanceSheet = null;
@@ -254,6 +260,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
                     .totalDebt(balanceSheet == null ? null : balanceSheet.getTotalLiab())
                     .operatingCashFlow(cashFlow == null ? null : cashFlow.getNCashflowAct())
                     .freeCashFlow(cashFlow == null ? null : cashFlow.calculateFreeCashFlow())
+                    .dps(dividend == null ? null : dividend.getCashDivTax())
                     .pegRatio(pegRatio);
 
             if (valuation != null) {
@@ -466,6 +473,20 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 .max(Comparator.comparing(endDate, dates)
                         .thenComparing(row -> "1".equals(updateFlag.apply(row)))
                         .thenComparing(annDate, dates))
+                .orElse(null);
+    }
+
+    private TushareDividendDTO selectLatestImplementedDividend(List<TushareDividendDTO> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Comparator<String> dates = Comparator.nullsFirst(Comparator.naturalOrder());
+        return rows.stream()
+                .filter(Objects::nonNull)
+                .filter(row -> "实施".equals(row.getDivProc()))
+                .filter(row -> row.getCashDivTax() != null)
+                .max(Comparator.comparing(TushareDividendDTO::getEndDate, dates)
+                        .thenComparing(TushareDividendDTO::getAnnDate, dates))
                 .orElse(null);
     }
 
