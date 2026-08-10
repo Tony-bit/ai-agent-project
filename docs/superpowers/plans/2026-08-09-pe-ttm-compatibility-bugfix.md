@@ -328,7 +328,7 @@ git commit -m "fix: load PE TTM from Tushare daily basic"
 
 | 任务 | status |
 |------|------|
-| 任务 3：迁移共享角色消费者和 ToolCallback | append |
+| 任务 3：迁移共享角色消费者和 ToolCallback | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/tools/TradingToolCallbacks.java`
@@ -336,7 +336,7 @@ git commit -m "fix: load PE TTM from Tushare daily basic"
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/MockStockDataProvider.java`
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/tools/TradingToolCallbacksTest.java`
 
-- [ ] **步骤 1：编写共享工具输出失败测试**
+- [x] **步骤 1：编写共享工具输出失败测试**
 
 ```java
 @Test
@@ -359,7 +359,7 @@ void toolsLabelPeTtmAndMarketValueUnit() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证旧标签仍存在**
+- [x] **步骤 2：运行测试验证旧标签仍存在**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtest=TradingToolCallbacksTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -367,7 +367,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am -Dtes
 
 预期：新增测试失败，输出仍使用旧 PE 标签或没有新市值字段。
 
-- [ ] **步骤 3：迁移格式化、情绪推导和 Mock**
+- [x] **步骤 3：迁移格式化、情绪推导和 Mock**
 
 ```java
 appendLine(sb, "静态市盈率(PE)", vo.getPe(), "%.2f");
@@ -379,7 +379,7 @@ appendLine(sb, "流通市值(万元)", vo.getCircMv());
 
 `totalMv/circMv` 不调用会按“元”缩放的 `appendMoney`。`deriveAnalystScore` 改读 `getPeTtm()`；Mock 使用新字段构造合理估值样本。ToolCallback 名称、数量、输入 Schema 和授权集合不变。
 
-- [ ] **步骤 4：运行 infra 模块测试**
+- [x] **步骤 4：运行 infra 模块测试**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am test
@@ -387,7 +387,7 @@ mvn -f ai-agent-study-trading/pom.xml -pl ai-agent-study-trading-infra -am test
 
 预期：`BUILD SUCCESS`。
 
-- [ ] **步骤 5：提交共享消费者迁移**
+- [x] **步骤 5：提交共享消费者迁移**
 
 ```powershell
 git add -- ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/tools/TradingToolCallbacks.java ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/TushareStockDataProvider.java ai-agent-study-trading/ai-agent-study-trading-infra/src/main/java/denny/ai/agent/trading/infra/provider/MockStockDataProvider.java ai-agent-study-trading/ai-agent-study-trading-infra/src/test/java/denny/ai/agent/trading/infra/tools/TradingToolCallbacksTest.java

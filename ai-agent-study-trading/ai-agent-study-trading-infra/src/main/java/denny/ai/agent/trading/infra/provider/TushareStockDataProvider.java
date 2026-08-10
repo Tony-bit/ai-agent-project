@@ -497,7 +497,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
     private Double deriveAnalystScore(FundamentalDataVO fundamentals) {
         if (fundamentals == null) return null;
         try {
-            Double pe = fundamentals.getPeRatio();
+            Double pe = fundamentals.getPeTtm();
             Double roe = fundamentals.getRoe();
             if (pe == null || pe <= 0) return null;
             double score = 0;

@@ -326,8 +326,11 @@ public class TradingToolCallbacks {
         sb.append("# ").append(nvl(vo.getName())).append(" (").append(vo.getTicker()).append(")\n");
         sb.append("- 交易所: ").append(nvl(vo.getExchange())).append("\n");
         if (vo.getCurrentPrice() != null) sb.append("- 当前价格: ").append(vo.getCurrentPrice()).append(" 元\n");
-        if (vo.getPeRatio() != null) sb.append("- 市盈率(PE): ").append(String.format("%.2f", vo.getPeRatio())).append("\n");
-        if (vo.getPbRatio() != null) sb.append("- 市净率(PB): ").append(String.format("%.2f", vo.getPbRatio())).append("\n");
+        if (vo.getPe() != null) sb.append("- 静态市盈率(PE): ").append(String.format("%.2f", vo.getPe())).append("\n");
+        if (vo.getPeTtm() != null) sb.append("- 滚动市盈率(PE_TTM): ").append(String.format("%.2f", vo.getPeTtm())).append("\n");
+        if (vo.getPb() != null) sb.append("- 市净率(PB): ").append(String.format("%.2f", vo.getPb())).append("\n");
+        if (vo.getTotalMv() != null) sb.append("- 总市值(万元): ").append(vo.getTotalMv().toPlainString()).append("\n");
+        if (vo.getCircMv() != null) sb.append("- 流通市值(万元): ").append(vo.getCircMv().toPlainString()).append("\n");
         if (vo.getMarketCap() != null) sb.append("- 市值: ").append(vo.getMarketCap()).append(" 十亿美元\n");
         if (vo.getVolume() != null) sb.append("- 日成交量: ").append(formatVolume(vo.getVolume())).append("\n");
         if (vo.getWeek52High() != null) sb.append("- 52周最高: ").append(vo.getWeek52High()).append(" 元\n");
@@ -402,10 +405,13 @@ public class TradingToolCallbacks {
         StringBuilder sb = new StringBuilder("# 基本面数据\n\n");
 
         sb.append("## 估值指标\n");
-        appendLine(sb, "市盈率(PE)", vo.getPeRatio(), "%.2f");
-        appendLine(sb, "市净率(PB)", vo.getPbRatio(), "%.2f");
+        appendLine(sb, "静态市盈率(PE)", vo.getPe(), "%.2f");
+        appendLine(sb, "滚动市盈率(PE_TTM)", vo.getPeTtm(), "%.2f");
+        appendLine(sb, "市净率(PB)", vo.getPb(), "%.2f");
         appendLine(sb, "市销率(PS)", vo.getPsRatio(), "%.2f");
         appendPeg(sb, "PEG", vo.getPegRatio());
+        if (vo.getTotalMv() != null) sb.append("- 总市值(万元): ").append(vo.getTotalMv().toPlainString()).append("\n");
+        if (vo.getCircMv() != null) sb.append("- 流通市值(万元): ").append(vo.getCircMv().toPlainString()).append("\n");
 
         sb.append("\n## 盈利能力\n");
         appendLine(sb, "ROE", vo.getRoe());

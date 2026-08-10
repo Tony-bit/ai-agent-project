@@ -6,7 +6,9 @@ import denny.ai.agent.trading.api.provider.IStockDataProvider;
 import denny.ai.agent.trading.api.context.TradingTargetContextKeys;
 import denny.ai.agent.trading.api.metrics.TradingRolloutMonitor;
 import denny.ai.agent.trading.api.vo.OHLCVBarVO;
+import denny.ai.agent.trading.api.vo.FundamentalDataVO;
 import denny.ai.agent.trading.api.vo.StockSearchResultVO;
+import denny.ai.agent.trading.api.vo.StockInfoVO;
 import denny.ai.agent.trading.api.vo.TargetContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,6 +104,33 @@ class TradingToolCallbacksTest {
         }
 
         assertEquals(7, callbacks.length, "Should have 7 callbacks");
+    }
+
+    @Test
+    void toolsLabelPeTtmAndMarketValueUnit() {
+        when(mockProvider.getStockInfo("600285.SH")).thenReturn(StockInfoVO.builder()
+                .ticker("600285.SH")
+                .pe(16.8)
+                .peTtm(16.6)
+                .pb(3.2)
+                .totalMv(new BigDecimal("1257000"))
+                .build());
+        when(mockProvider.getFundamentalData("600285.SH")).thenReturn(FundamentalDataVO.builder()
+                .pe(16.8)
+                .peTtm(16.6)
+                .eps(new BigDecimal("0.435"))
+                .build());
+
+        String stockText = tradingToolCallbacks.getStockInfoCallback()
+                .call("{\"ticker\":\"600285.SH\"}");
+        String fundamentalText = tradingToolCallbacks.getFundamentalDataCallback()
+                .call("{\"ticker\":\"600285.SH\"}");
+
+        assertTrue(stockText.contains("静态市盈率(PE): 16.80"));
+        assertTrue(stockText.contains("滚动市盈率(PE_TTM): 16.60"));
+        assertTrue(stockText.contains("总市值(万元): 1257000"));
+        assertTrue(fundamentalText.contains("滚动市盈率(PE_TTM): 16.60"));
+        assertFalse(fundamentalText.contains("51"));
     }
 
     @Test
