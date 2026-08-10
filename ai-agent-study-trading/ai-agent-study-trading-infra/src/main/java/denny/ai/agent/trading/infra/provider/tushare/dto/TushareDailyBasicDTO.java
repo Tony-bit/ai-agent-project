@@ -21,6 +21,9 @@ public class TushareDailyBasicDTO extends TushareBaseDTO {
     private Double pe;
     private Double peTtm;
     private Double pb;
+    private Double ps;
+    private Double psTtm;
+    private Double dvRatio;
     private BigDecimal totalMv;
     private BigDecimal circMv;
 

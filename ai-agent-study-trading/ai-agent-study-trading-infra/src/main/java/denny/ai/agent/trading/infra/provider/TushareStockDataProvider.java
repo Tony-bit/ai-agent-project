@@ -11,6 +11,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -194,87 +195,78 @@ public class TushareStockDataProvider implements IStockDataProvider {
         String tsCode = toTsCode(ticker);
 
         try {
-            // 查询财务指标（最新一期）
-            List<TushareFinaIndicatorDTO> finaData = apiClient.callGeneric(
+            List<TushareFinaIndicatorDTO> finaData = apiClient.callGenericStrict(
                     TushareFinaIndicatorDTO.class, "fina_indicator",
-                    Map.of("ts_code", tsCode, "limit", 1, "sort", "ann_date", "order", "desc"),
-                    "ann_date,end_date,roe,grossprofit_margin,netprofit_margin,debt_to_assets," +
-                            "current_ratio,eps,revenue,net_profit,div_ratio,total_assets");
+                    Map.of("ts_code", tsCode),
+                    "ts_code,ann_date,end_date,update_flag,roe,roa,grossprofit_margin," +
+                            "netprofit_margin,debt_to_assets,current_ratio,eps,bps,tr_yoy,netprofit_yoy");
+            TushareFinaIndicatorDTO fina = selectLatestFinancialRecord(
+                    finaData,
+                    TushareFinaIndicatorDTO::getEndDate,
+                    TushareFinaIndicatorDTO::getAnnDate,
+                    TushareFinaIndicatorDTO::getUpdateFlag);
 
             TushareDailyBasicDTO valuation = loadValuation(tsCode, null);
-
-            // 查询去年同期数据用于计算增长率
-            LocalDate lastYear = LocalDate.now().minusYears(1);
-            List<TushareFinaIndicatorDTO> lastYearData = apiClient.callGeneric(
-                    TushareFinaIndicatorDTO.class, "fina_indicator",
-                    Map.of("ts_code", tsCode, "end_date", lastYear.format(TUSHARE_DATE_FORMAT),
-                            "limit", 1, "sort", "end_date", "order", "desc"),
-                    "revenue,net_profit");
-
-            Double revenueGrowth = null;
-            Double netIncomeGrowth = null;
-
-            if (!finaData.isEmpty() && !lastYearData.isEmpty()) {
-                BigDecimal currentRev = finaData.get(0).getRevenueYuan();
-                BigDecimal lastRev = lastYearData.get(0).getRevenueYuan();
-                BigDecimal currentNi = finaData.get(0).getNetProfitYuan();
-                BigDecimal lastNi = lastYearData.get(0).getNetProfitYuan();
-
-                if (currentRev != null && lastRev != null && lastRev.compareTo(BigDecimal.ZERO) != 0) {
-                    revenueGrowth = currentRev.subtract(lastRev)
-                            .divide(lastRev, 4, RoundingMode.HALF_UP)
-                            .multiply(new BigDecimal("100")).doubleValue();
-                }
-                if (currentNi != null && lastNi != null && lastNi.compareTo(BigDecimal.ZERO) != 0) {
-                    netIncomeGrowth = currentNi.subtract(lastNi)
-                            .divide(lastNi, 4, RoundingMode.HALF_UP)
-                            .multiply(new BigDecimal("100")).doubleValue();
-                }
+            String period = fina == null ? null : fina.getEndDate();
+            TushareIncomeDTO income = null;
+            TushareBalanceSheetDTO balanceSheet = null;
+            TushareCashFlowDTO cashFlow = null;
+            if (period != null && !period.isBlank()) {
+                Map<String, Object> periodParams = Map.of("ts_code", tsCode, "period", period);
+                income = selectLatestFinancialRecord(
+                        apiClient.callGenericStrict(TushareIncomeDTO.class, "income", periodParams,
+                                "ts_code,ann_date,end_date,update_flag,revenue,n_income_attr_p"),
+                        TushareIncomeDTO::getEndDate,
+                        TushareIncomeDTO::getAnnDate,
+                        TushareIncomeDTO::getUpdateFlag);
+                balanceSheet = selectLatestFinancialRecord(
+                        apiClient.callGenericStrict(TushareBalanceSheetDTO.class, "balancesheet", periodParams,
+                                "ts_code,ann_date,end_date,update_flag,total_assets,total_liab"),
+                        TushareBalanceSheetDTO::getEndDate,
+                        TushareBalanceSheetDTO::getAnnDate,
+                        TushareBalanceSheetDTO::getUpdateFlag);
+                cashFlow = selectLatestFinancialRecord(
+                        apiClient.callGenericStrict(TushareCashFlowDTO.class, "cashflow", periodParams,
+                                "ts_code,ann_date,end_date,update_flag,n_cashflow_act,c_pay_acq_const_fiolta"),
+                        TushareCashFlowDTO::getEndDate,
+                        TushareCashFlowDTO::getAnnDate,
+                        TushareCashFlowDTO::getUpdateFlag);
             }
 
-            // 查询现金流数据（计算 freeCashFlow）
-            List<TushareCashFlowDTO> cashFlowData = apiClient.callGeneric(
-                    TushareCashFlowDTO.class, "cashflow",
-                    Map.of("ts_code", tsCode, "limit", 1, "order", "desc"),
-                    "im_net_incr_cash_equv,pay_for_fixed_assets,oper_net_cash_flow");
+            Double netIncomeGrowth = fina == null ? null : fina.getNetprofitYoy();
+            Double pegRatio = calculatePegRatio(
+                    valuation == null ? null : valuation.getPeTtm(), netIncomeGrowth);
+            FundamentalDataVO.FundamentalDataVOBuilder builder = FundamentalDataVO.builder()
+                    .roe(fina == null ? null : fina.getRoe())
+                    .roa(fina == null ? null : fina.getRoa())
+                    .grossMargin(fina == null ? null : fina.getGrossprofitMargin())
+                    .netMargin(fina == null ? null : fina.getNetprofitMargin())
+                    .debtToAssets(fina == null ? null : fina.getDebtToAssets())
+                    .currentRatio(fina == null ? null : fina.getCurrentRatio())
+                    .eps(fina == null ? null : fina.getEps())
+                    .bookValuePerShare(fina == null ? null : fina.getBps())
+                    .revenueGrowth(fina == null ? null : fina.getTrYoy())
+                    .earningsGrowth(netIncomeGrowth)
+                    .netIncomeGrowth(netIncomeGrowth)
+                    .revenue(income == null ? null : income.getRevenue())
+                    .netIncome(income == null ? null : income.getNIncomeAttrP())
+                    .totalAssets(balanceSheet == null ? null : balanceSheet.getTotalAssets())
+                    .totalDebt(balanceSheet == null ? null : balanceSheet.getTotalLiab())
+                    .operatingCashFlow(cashFlow == null ? null : cashFlow.getNCashflowAct())
+                    .freeCashFlow(cashFlow == null ? null : cashFlow.calculateFreeCashFlow())
+                    .pegRatio(pegRatio);
 
-            BigDecimal freeCashFlow = null;
-            if (!cashFlowData.isEmpty()) {
-                TushareCashFlowDTO cf = cashFlowData.get(0);
-                freeCashFlow = cf.getFreeCashFlowYuan();
-            }
-
-            // 构建返回值
-            FundamentalDataVO.FundamentalDataVOBuilder builder = FundamentalDataVO.builder();
-
-            if (!finaData.isEmpty()) {
-                TushareFinaIndicatorDTO fina = finaData.get(0);
-                builder.roe(fina.getRoe())
-                       .grossMargin(fina.getGrossprofitMargin())
-                       .netMargin(fina.getNetprofitMargin())
-                       .debtToAssets(fina.getDebtToAssets())
-                       .currentRatio(fina.getCurrentRatio())
-                       .eps(fina.getEps())
-                       .revenue(fina.getRevenueYuan())
-                       .netIncome(fina.getNetProfitYuan())
-                       .totalAssets(fina.getTotalAssets() != null
-                               ? fina.getTotalAssets().multiply(new BigDecimal("10000")) : null)
-                       .dividendYield(fina.getDivRatio());
-            }
             if (valuation != null) {
                 builder.pe(valuation.getPe())
-                        .peTtm(valuation.getPeTtm())
-                        .pb(valuation.getPb())
-                        .totalMv(valuation.getTotalMv())
-                        .circMv(valuation.getCircMv())
-                        .valuationTradeDate(valuation.getTradeDateFormatted());
+                         .peTtm(valuation.getPeTtm())
+                         .pb(valuation.getPb())
+                         .psRatio(valuation.getPsTtm())
+                         .totalMv(valuation.getTotalMv())
+                         .circMv(valuation.getCircMv())
+                         .valuationTradeDate(valuation.getTradeDateFormatted())
+                         .dividendYield(valuation.getDvRatio());
             }
-
-            return builder
-                    .revenueGrowth(revenueGrowth)
-                    .netIncomeGrowth(netIncomeGrowth)
-                    .freeCashFlow(freeCashFlow)
-                    .build();
+            return builder.build();
         } catch (Exception e) {
             log.error("获取基本面数据失败: ticker={}, error={}", ticker, e.getMessage());
             throw new RuntimeException("获取基本面数据失败: " + ticker, e);
@@ -444,7 +436,7 @@ public class TushareStockDataProvider implements IStockDataProvider {
                 TushareDailyBasicDTO.class,
                 "daily_basic",
                 params,
-                "ts_code,trade_date,close,pe,pe_ttm,pb,total_mv,circ_mv");
+                "ts_code,trade_date,close,pe,pe_ttm,pb,ps,ps_ttm,dv_ratio,total_mv,circ_mv");
         if (rows.isEmpty()) {
             log.warn("未获取到估值快照: tsCode={}, tradeDate={}", tsCode, tradeDate);
             return null;
@@ -459,6 +451,29 @@ public class TushareStockDataProvider implements IStockDataProvider {
             return null;
         }
         return selected;
+    }
+
+    private <T> T selectLatestFinancialRecord(List<T> rows,
+                                               Function<T, String> endDate,
+                                               Function<T, String> annDate,
+                                               Function<T, String> updateFlag) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Comparator<String> dates = Comparator.nullsFirst(Comparator.naturalOrder());
+        return rows.stream()
+                .filter(Objects::nonNull)
+                .max(Comparator.comparing(endDate, dates)
+                        .thenComparing(row -> "1".equals(updateFlag.apply(row)))
+                        .thenComparing(annDate, dates))
+                .orElse(null);
+    }
+
+    private Double calculatePegRatio(Double peTtm, Double netIncomeGrowth) {
+        if (peTtm == null || peTtm <= 0 || netIncomeGrowth == null || netIncomeGrowth <= 0) {
+            return null;
+        }
+        return peTtm / netIncomeGrowth;
     }
 
     private OHLCVBarVO toOHLCVBar(TushareDailyDTO dto) {

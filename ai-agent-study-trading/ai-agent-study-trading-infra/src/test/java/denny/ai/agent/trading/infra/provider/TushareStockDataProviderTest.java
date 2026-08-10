@@ -324,56 +324,104 @@ class TushareStockDataProviderTest {
     void getFundamentalData_success() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {
-                // 首次调用返回本期数据（含 roe），第二次返回去年同期数据
-                if (fields.contains("roe")) {
-                    Map<String, String> row = new HashMap<>();
-                    row.put("roe", "12.5");
-                    row.put("grossprofit_margin", "30.0");
-                    row.put("netprofit_margin", "15.0");
-                    row.put("debt_to_assets", "65.0");
-                    row.put("current_ratio", "1.5");
-                    row.put("eps", "1.25");
-                    row.put("revenue", "50000");
-                    row.put("net_profit", "8000");
-                    row.put("div_ratio", "3.5");
-                    return List.of(row);
-                } else {
-                    Map<String, String> row = new HashMap<>();
-                    row.put("revenue", "40000");
-                    row.put("net_profit", "6000");
-                    return List.of(row);
-                }
+                assertEquals("600285.SH", params.get("ts_code"));
+                assertTrue(fields.contains("roa"));
+                assertTrue(fields.contains("tr_yoy"));
+                assertTrue(fields.contains("netprofit_yoy"));
+                Map<String, String> row = new HashMap<>();
+                row.put("ann_date", "20260428");
+                row.put("end_date", "20260331");
+                row.put("update_flag", "1");
+                row.put("roe", "6.9887");
+                row.put("roa", "4.815");
+                row.put("grossprofit_margin", "78.1878");
+                row.put("netprofit_margin", "21.9738");
+                row.put("debt_to_assets", "38.2246");
+                row.put("current_ratio", "1.1712");
+                row.put("eps", "0.435");
+                row.put("bps", "6.4341");
+                row.put("tr_yoy", "10.3177");
+                row.put("netprofit_yoy", "13.6133");
+                return List.of(row);
             }
             if ("daily_basic".equals(apiName)) {
+                assertTrue(fields.contains("ps_ttm"));
+                assertTrue(fields.contains("dv_ratio"));
                 return List.of(Map.of(
                         "trade_date", "20260807",
-                        "pe", "8.8",
-                        "pe_ttm", "8.5",
-                        "pb", "0.9"));
+                        "pe", "16.6064",
+                        "pe_ttm", "15.9852",
+                        "pb", "3.4566",
+                        "ps", "3.2731",
+                        "ps_ttm", "3.1861",
+                        "dv_ratio", "4.0468",
+                        "total_mv", "1261264.872",
+                        "circ_mv", "1259874.872"));
+            }
+            if ("income".equals(apiName)) {
+                assertEquals("600285.SH", params.get("ts_code"));
+                assertEquals("20260331", params.get("period"));
+                assertEquals("ts_code,ann_date,end_date,update_flag,revenue,n_income_attr_p", fields);
+                return List.of(Map.of(
+                        "ann_date", "20260428",
+                        "end_date", "20260331",
+                        "update_flag", "1",
+                        "revenue", "1126074496.05",
+                        "n_income_attr_p", "246333622.73"));
+            }
+            if ("balancesheet".equals(apiName)) {
+                assertEquals("600285.SH", params.get("ts_code"));
+                assertEquals("20260331", params.get("period"));
+                assertEquals("ts_code,ann_date,end_date,update_flag,total_assets,total_liab", fields);
+                return List.of(Map.of(
+                        "ann_date", "20260428",
+                        "end_date", "20260331",
+                        "update_flag", "1",
+                        "total_assets", "5965684837.28",
+                        "total_liab", "2280359405.02"));
             }
             if ("cashflow".equals(apiName)) {
-                Map<String, String> row = new HashMap<>();
-                row.put("oper_net_cash_flow", "5000");
-                row.put("pay_for_fixed_assets", "-1000");
-                return List.of(row);
+                assertEquals("600285.SH", params.get("ts_code"));
+                assertEquals("20260331", params.get("period"));
+                assertEquals("ts_code,ann_date,end_date,update_flag,n_cashflow_act,c_pay_acq_const_fiolta", fields);
+                return List.of(Map.of(
+                        "ann_date", "20260428",
+                        "end_date", "20260331",
+                        "update_flag", "1",
+                        "n_cashflow_act", "268450155.61",
+                        "c_pay_acq_const_fiolta", "13131261.23"));
             }
             return Collections.emptyList();
         });
 
         TushareStockDataProvider provider = new TushareStockDataProvider(testClient, indicatorCalculator, mockNewsSearchProvider);
-        FundamentalDataVO result = provider.getFundamentalData("600000");
+        FundamentalDataVO result = provider.getFundamentalData("600285.SH");
 
         assertNotNull(result);
-        assertEquals(12.5, result.getRoe());
-        assertEquals(30.0, result.getGrossMargin());
-        assertEquals(65.0, result.getDebtToAssets());
-        assertEquals(8.5, result.getPeTtm());
-        assertEquals(0.9, result.getPb());
-
-        // 验证增长率计算: (50000-40000)/40000*100 = 25%
-        assertEquals(25.0, result.getRevenueGrowth(), 0.01);
-        // 验证增长率计算: (8000-6000)/6000*100 = 33.33%
-        assertEquals(33.33, result.getNetIncomeGrowth(), 0.01);
+        assertAll(
+                () -> assertEquals(6.9887, result.getRoe()),
+                () -> assertEquals(4.815, result.getRoa()),
+                () -> assertEquals(78.1878, result.getGrossMargin()),
+                () -> assertEquals(21.9738, result.getNetMargin()),
+                () -> assertEquals(38.2246, result.getDebtToAssets()),
+                () -> assertEquals(1.1712, result.getCurrentRatio()),
+                () -> assertEquals(new BigDecimal("0.435"), result.getEps()),
+                () -> assertEquals(new BigDecimal("6.4341"), result.getBookValuePerShare()),
+                () -> assertEquals(new BigDecimal("1126074496.05"), result.getRevenue()),
+                () -> assertEquals(new BigDecimal("246333622.73"), result.getNetIncome()),
+                () -> assertEquals(new BigDecimal("5965684837.28"), result.getTotalAssets()),
+                () -> assertEquals(new BigDecimal("2280359405.02"), result.getTotalDebt()),
+                () -> assertEquals(new BigDecimal("268450155.61"), result.getOperatingCashFlow()),
+                () -> assertEquals(new BigDecimal("255318894.38"), result.getFreeCashFlow()),
+                () -> assertEquals(10.3177, result.getRevenueGrowth()),
+                () -> assertEquals(13.6133, result.getNetIncomeGrowth()),
+                () -> assertEquals(result.getNetIncomeGrowth(), result.getEarningsGrowth()),
+                () -> assertEquals(16.6064, result.getPe()),
+                () -> assertEquals(15.9852, result.getPeTtm()),
+                () -> assertEquals(3.4566, result.getPb()),
+                () -> assertEquals(3.1861, result.getPsRatio()),
+                () -> assertEquals(4.0468, result.getDividendYield()),
+                () -> assertEquals(15.9852 / 13.6133, result.getPegRatio(), 0.0001));
     }
 
     @Test
@@ -413,22 +461,16 @@ class TushareStockDataProviderTest {
     }
 
     @Test
-    void getFundamentalData_growthCalculation_zeroLastYear() {
+    void getFundamentalData_zeroNetProfitGrowthKeepsPegNull() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {
-                if (fields.contains("roe")) {
-                    Map<String, String> row = new HashMap<>();
-                    row.put("roe", "12.0");
-                    row.put("revenue", "50000");
-                    row.put("net_profit", "8000");
-                    return List.of(row);
-                } else {
-                    // 去年同期收入为0
-                    Map<String, String> row = new HashMap<>();
-                    row.put("revenue", "0");
-                    row.put("net_profit", "6000");
-                    return List.of(row);
-                }
+                return List.of(Map.of(
+                        "roe", "12.0",
+                        "tr_yoy", "10.0",
+                        "netprofit_yoy", "0"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
             }
             return Collections.emptyList();
         });
@@ -436,11 +478,9 @@ class TushareStockDataProviderTest {
         TushareStockDataProvider provider = new TushareStockDataProvider(testClient, indicatorCalculator, mockNewsSearchProvider);
         FundamentalDataVO result = provider.getFundamentalData("600000");
 
-        // 去年收入为0，增长率应为null
-        assertNull(result.getRevenueGrowth());
-        // 净利润有值，应能计算增长率: (8000-6000)/6000*100 = 33.33%
-        assertNotNull(result.getNetIncomeGrowth());
-        assertEquals(33.33, result.getNetIncomeGrowth(), 0.01);
+        assertEquals(10.0, result.getRevenueGrowth());
+        assertEquals(0.0, result.getNetIncomeGrowth());
+        assertNull(result.getPegRatio());
     }
 
     // ==================== getSentiment 测试 ====================
@@ -666,20 +706,17 @@ class TushareStockDataProviderTest {
 
     @Test
     void getFundamentalData_fcfCapexPositive() {
-        // capex 为正数场景，验证取绝对值处理（对应 Q7）
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {
-                Map<String, String> row = new HashMap<>();
-                row.put("roe", "12.5");
-                row.put("revenue", "50000");
-                row.put("net_profit", "8000");
-                return List.of(row);
+                return List.of(Map.of(
+                        "end_date", "20260331",
+                        "roe", "12.5"));
             }
             if ("cashflow".equals(apiName)) {
-                Map<String, String> row = new HashMap<>();
-                row.put("oper_net_cash_flow", "5000");
-                row.put("pay_for_fixed_assets", "1000"); // capex 为正数 1000 万元
-                return List.of(row);
+                return List.of(Map.of(
+                        "end_date", "20260331",
+                        "n_cashflow_act", "50000000",
+                        "c_pay_acq_const_fiolta", "10000000"));
             }
             return Collections.emptyList();
         });
@@ -688,27 +725,101 @@ class TushareStockDataProviderTest {
         FundamentalDataVO result = provider.getFundamentalData("600000");
 
         assertNotNull(result);
-        // freeCashFlow = 5000*10000 - 1000*10000 = 40000000 (4000 万元)
         assertEquals(40000000L, result.getFreeCashFlow().longValue());
     }
 
     @Test
-    void getFundamentalData_negativeGrowth() {
-        // 收入/净利润同比下降，验证增长率为负数（如 -20%）
+    void getFundamentalData_prefersLatestRevisionForSamePeriod() {
         TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
             if ("fina_indicator".equals(apiName)) {
-                if (fields.contains("roe")) {
-                    Map<String, String> row = new HashMap<>();
-                    row.put("roe", "10.0");
-                    row.put("revenue", "40000");
-                    row.put("net_profit", "5000");
-                    return List.of(row);
-                } else {
-                    Map<String, String> row = new HashMap<>();
-                    row.put("revenue", "50000");
-                    row.put("net_profit", "8000");
-                    return List.of(row);
-                }
+                return List.of(
+                        Map.of("ann_date", "20260420", "end_date", "20260331",
+                                "update_flag", "0", "tr_yoy", "8.0", "netprofit_yoy", "9.0"),
+                        Map.of("ann_date", "20260428", "end_date", "20260331",
+                                "update_flag", "1", "tr_yoy", "12.0", "netprofit_yoy", "15.0"));
+            }
+            if ("income".equals(apiName)) {
+                return List.of(
+                        Map.of("ann_date", "20260420", "end_date", "20260331",
+                                "update_flag", "0", "revenue", "100000000",
+                                "n_income_attr_p", "20000000"),
+                        Map.of("ann_date", "20260428", "end_date", "20260331",
+                                "update_flag", "1", "revenue", "120000000",
+                                "n_income_attr_p", "24000000"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertEquals(12.0, result.getRevenueGrowth());
+        assertEquals(15.0, result.getNetIncomeGrowth());
+        assertEquals(new BigDecimal("120000000"), result.getRevenue());
+        assertEquals(new BigDecimal("24000000"), result.getNetIncome());
+    }
+
+    @Test
+    void getFundamentalData_emptyBalanceSheetKeepsOtherSources() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "roe", "12.0"));
+            }
+            if ("income".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "revenue", "120000000"));
+            }
+            if ("cashflow".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "n_cashflow_act", "30000000"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertNull(result.getTotalAssets());
+        assertNull(result.getTotalDebt());
+        assertEquals(new BigDecimal("120000000"), result.getRevenue());
+        assertEquals(new BigDecimal("30000000"), result.getOperatingCashFlow());
+        assertEquals(15.0, result.getPeTtm());
+    }
+
+    @Test
+    void getFundamentalData_missingGrowthKeepsPegNull() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(Map.of("end_date", "20260331", "roe", "12.0"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
+            }
+            return Collections.emptyList();
+        });
+
+        FundamentalDataVO result = new TushareStockDataProvider(
+                testClient, indicatorCalculator, mockNewsSearchProvider)
+                .getFundamentalData("600285.SH");
+
+        assertNull(result.getNetIncomeGrowth());
+        assertNull(result.getPegRatio());
+    }
+
+    @Test
+    void getFundamentalData_negativeGrowth() {
+        TushareApiClient testClient = createTestClient((apiName, params, fields) -> {
+            if ("fina_indicator".equals(apiName)) {
+                return List.of(Map.of(
+                        "roe", "10.0",
+                        "tr_yoy", "-20.0",
+                        "netprofit_yoy", "-37.5"));
+            }
+            if ("daily_basic".equals(apiName)) {
+                return List.of(Map.of("trade_date", "20260807", "pe_ttm", "15.0"));
             }
             return Collections.emptyList();
         });
@@ -717,10 +828,9 @@ class TushareStockDataProviderTest {
         FundamentalDataVO result = provider.getFundamentalData("600000");
 
         assertNotNull(result);
-        // revenueGrowth = (40000-50000)/50000*100 = -20%
         assertEquals(-20.0, result.getRevenueGrowth(), 0.01);
-        // netIncomeGrowth = (5000-8000)/8000*100 = -37.5%
         assertEquals(-37.5, result.getNetIncomeGrowth(), 0.01);
+        assertNull(result.getPegRatio());
     }
 
     // ==================== getSentiment 补充场景 ====================
