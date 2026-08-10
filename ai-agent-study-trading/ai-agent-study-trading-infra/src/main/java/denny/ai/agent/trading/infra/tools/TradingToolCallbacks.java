@@ -331,7 +331,6 @@ public class TradingToolCallbacks {
         if (vo.getPb() != null) sb.append("- 市净率(PB): ").append(String.format("%.2f", vo.getPb())).append("\n");
         if (vo.getTotalMv() != null) sb.append("- 总市值(万元): ").append(vo.getTotalMv().toPlainString()).append("\n");
         if (vo.getCircMv() != null) sb.append("- 流通市值(万元): ").append(vo.getCircMv().toPlainString()).append("\n");
-        if (vo.getMarketCap() != null) sb.append("- 市值: ").append(vo.getMarketCap()).append(" 十亿美元\n");
         if (vo.getVolume() != null) sb.append("- 日成交量: ").append(formatVolume(vo.getVolume())).append("\n");
         if (vo.getWeek52High() != null) sb.append("- 52周最高: ").append(vo.getWeek52High()).append(" 元\n");
         if (vo.getWeek52Low() != null) sb.append("- 52周最低: ").append(vo.getWeek52Low()).append(" 元\n");

@@ -179,7 +179,6 @@ class TushareStockDataProviderTest {
                 client, indicatorCalculator, mockNewsSearchProvider).getStockInfo("600285.SH");
 
         assertEquals(16.6, result.getPeTtm());
-        assertEquals(16.6, result.getPeRatio());
         assertEquals("2026-08-07", result.getValuationTradeDate());
         assertEquals(0, new BigDecimal("1257000").compareTo(result.getTotalMv()));
     }
@@ -369,7 +368,6 @@ class TushareStockDataProviderTest {
         assertEquals(30.0, result.getGrossMargin());
         assertEquals(65.0, result.getDebtToAssets());
         assertEquals(8.5, result.getPeTtm());
-        assertEquals(8.5, result.getPeRatio());
         assertEquals(0.9, result.getPb());
 
         // 验证增长率计算: (50000-40000)/40000*100 = 25%
@@ -611,7 +609,7 @@ class TushareStockDataProviderTest {
         assertNull(result.getRoe());
         assertNull(result.getGrossMargin());
         assertNull(result.getNetMargin());
-        assertNull(result.getPeRatio());
+        assertNull(result.getPeTtm());
         assertNull(result.getRevenueGrowth());
         assertNull(result.getNetIncomeGrowth());
         assertNull(result.getFreeCashFlow());

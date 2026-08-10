@@ -485,12 +485,12 @@ git commit -m "fix: prevent quarterly EPS PE derivation"
 
 | 任务 | status |
 |------|------|
-| 任务 5：执行兼容性回归和交付检查 | append |
+| 任务 5：执行兼容性回归和交付检查 | pass |
 
 **文件：**
 - 修改：`docs/superpowers/plans/2026-08-09-pe-ttm-compatibility-bugfix.md`（仅更新状态）
 
-- [ ] **步骤 1：扫描废弃字段依赖**
+- [x] **步骤 1：扫描废弃字段依赖**
 
 ```powershell
 rg -n -F -e 'getPeRatio' -e 'getPbRatio' -e 'getMarketCap' ai-agent-study-trading -g '*.java'
@@ -498,7 +498,7 @@ rg -n -F -e 'getPeRatio' -e 'getPbRatio' -e 'getMarketCap' ai-agent-study-tradin
 
 预期：命中仅限 VO 兼容实现、兼容测试和明确保留的旧契约；Provider、节点、工具和确定性计算不再读取旧 getter。
 
-- [ ] **步骤 2：运行 trading 聚合回归**
+- [x] **步骤 2：运行 trading 聚合回归**
 
 ```powershell
 mvn -f ai-agent-study-trading/pom.xml test
@@ -506,7 +506,7 @@ mvn -f ai-agent-study-trading/pom.xml test
 
 预期：`BUILD SUCCESS`。
 
-- [ ] **步骤 3：运行应用层工具白名单测试**
+- [x] **步骤 3：运行应用层工具白名单测试**
 
 ```powershell
 mvn -pl ai-agent-study-app -am -Dtest=TradingToolAllowlistConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -514,7 +514,7 @@ mvn -pl ai-agent-study-app -am -Dtest=TradingToolAllowlistConfigurationTest -Dsu
 
 预期：`BUILD SUCCESS`，6002–6013 的 Tool 集合没有增加、删除或改名。
 
-- [ ] **步骤 4：检查工作区和提交范围**
+- [x] **步骤 4：检查工作区和提交范围**
 
 ```powershell
 git status --short
@@ -523,7 +523,7 @@ git diff --check HEAD~4..HEAD
 
 预期：用户原有配置、交易报告和 Python 缓存保持原状；实现提交不包含这些文件；`git diff --check` 无错误。
 
-- [ ] **步骤 5：更新状态并提交交付记录**
+- [x] **步骤 5：更新状态并提交交付记录**
 
 将五个任务状态改为 `pass`，勾选复选框，仅提交本计划：
 
