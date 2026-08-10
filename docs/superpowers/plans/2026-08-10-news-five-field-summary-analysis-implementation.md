@@ -334,7 +334,7 @@ git commit -m "feat: apply news analysis time window"
 
 | 任务 | status |
 |------|------|
-| 任务 3：将 URL 加入结构化 LLM 输入 | append |
+| 任务 3：将 URL 加入结构化 LLM 输入 | pass |
 
 **文件：**
 - 修改：`ai-agent-study-trading/ai-agent-study-trading-domain/src/main/java/denny/ai/agent/trading/domain/node/NewsAnalysisStructuredProcessor.java:42-63,220-357`

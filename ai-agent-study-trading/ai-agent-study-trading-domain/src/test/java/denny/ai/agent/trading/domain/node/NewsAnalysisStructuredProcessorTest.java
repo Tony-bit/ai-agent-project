@@ -58,6 +58,42 @@ class NewsAnalysisStructuredProcessorTest {
     }
 
     @Test
+    void includesAllFiveSourceFieldsAndSentimentScore() {
+        NewsItemVO news = NewsItemVO.builder()
+                .publishTime("2026-08-04 15:48:00")
+                .source("财中社")
+                .title("<em>羚锐制药</em>解除部分质押")
+                .summary("公司发布公告，股东解除部分质押。")
+                .url("https://finance.eastmoney.com/a/202608043831176255.html")
+                .sentimentScore(0.2)
+                .build();
+
+        JSONObject item = JSON.parseObject(
+                        new NewsAnalysisStructuredProcessor().buildLlmInput(
+                                "600285.SH", "羚锐制药", List.of(news)))
+                .getJSONArray("newsItems").getJSONObject(0);
+
+        assertEquals("2026-08-04 15:48:00", item.getString("publishTime"));
+        assertEquals("财中社", item.getString("source"));
+        assertEquals("羚锐制药解除部分质押", item.getString("title"));
+        assertEquals("公司发布公告，股东解除部分质押。", item.getString("summary"));
+        assertEquals("https://finance.eastmoney.com/a/202608043831176255.html", item.getString("url"));
+        assertEquals(0.2, item.getDoubleValue("sentimentScore"), 0.000001);
+    }
+
+    @Test
+    void keepsNewsWhenUrlIsMissing() {
+        JSONObject item = JSON.parseObject(
+                        new NewsAnalysisStructuredProcessor().buildLlmInput(
+                                "600285.SH", "羚锐制药",
+                                List.of(NewsItemVO.builder().title("羚锐制药发布公告").build())))
+                .getJSONArray("newsItems").getJSONObject(0);
+
+        assertFalse(item.containsKey("url"));
+        assertEquals("羚锐制药发布公告", item.getString("title"));
+    }
+
+    @Test
     void parsesStructuredLlmReportAndKeepsOriginalNewsItems() {
         NewsAnalysisStructuredProcessor processor = new NewsAnalysisStructuredProcessor();
         List<NewsItemVO> newsItems = List.of(
@@ -271,12 +307,14 @@ class NewsAnalysisStructuredProcessorTest {
                         .title("CleanSoft 002511 Q1 net profit reached 103 million, up 53.76%")
                         .source("Source A")
                         .summary("CleanSoft 002511 disclosed its Q1 report.")
+                        .url("https://example.com/first")
                         .build(),
                 NewsItemVO.builder()
                         .publishTime("2026-05-01 16:48:11")
                         .title("CleanSoft 002511 Q1 net profit reached 103 million, up 53.76%")
                         .source("Source B")
                         .summary("CleanSoft 002511 disclosed its Q1 report.")
+                        .url("https://example.com/duplicate")
                         .build()
         );
 
@@ -286,6 +324,8 @@ class NewsAnalysisStructuredProcessorTest {
         assertEquals(1, input.getJSONArray("newsItems").size());
         assertEquals(List.of(2), input.getJSONArray("newsItems").getJSONObject(0)
                 .getJSONArray("duplicateOriginalIds").toJavaList(Integer.class));
+        assertEquals("https://example.com/first",
+                input.getJSONArray("newsItems").getJSONObject(0).getString("url"));
     }
 
     @Test

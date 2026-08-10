@@ -46,6 +46,7 @@ class NewsAnalysisStructuredProcessor {
                 item.put("source", prepared.source);
                 item.put("title", prepared.title);
                 item.put("summary", prepared.summary);
+                putIfNotBlank(item, "url", prepared.url);
                 putIfNotNull(item, "sentimentScore", prepared.sentimentScore);
                 putIfNotBlank(item, "content", prepared.content);
                 putIfNotNull(item, "fullTextFetched", prepared.fullTextFetched);
@@ -226,6 +227,7 @@ class NewsAnalysisStructuredProcessor {
                     cleanBasic(news.getSource()),
                     cleanContent(news.getTitle(), ticker, stockName),
                     cleanContent(news.getSummary(), ticker, stockName),
+                    cleanBasic(news.getUrl()),
                     news.getSentimentScore(),
                     cleanBasic(news.getContent()),
                     news.getFullTextFetched(),
@@ -322,6 +324,7 @@ class NewsAnalysisStructuredProcessor {
         private final String source;
         private final String title;
         private final String summary;
+        private final String url;
         private final Double sentimentScore;
         private final String content;
         private final Boolean fullTextFetched;
@@ -336,6 +339,7 @@ class NewsAnalysisStructuredProcessor {
                                  String source,
                                  String title,
                                  String summary,
+                                 String url,
                                  Double sentimentScore,
                                  String content,
                                  Boolean fullTextFetched,
@@ -347,6 +351,7 @@ class NewsAnalysisStructuredProcessor {
             this.source = source;
             this.title = title;
             this.summary = summary;
+            this.url = url;
             this.sentimentScore = sentimentScore;
             this.content = content;
             this.fullTextFetched = fullTextFetched;
