@@ -16,6 +16,17 @@ class NewsAnalysisStructuredProcessor {
 
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
     private static final Pattern SPLIT_NOISE_PATTERN = Pattern.compile("[;|\\uFF1B\\uFF5C\\u3002!?\\uFF01\\uFF1F\\n\\r]+");
+    private static final String LLM_INSTRUCTIONS = """
+            The newsItems list contains cleaned source metadata and summary-level evidence.
+            The title and summary determine article sentiment and event impact; sentimentScore is the only per-article stance score.
+            The source, publishTime, and url affect report-level confidence and dataQuality only and must never change sentiment direction.
+            Do not access url or claim that article full text or facts were verified merely because a link exists.
+            Treat missing url, missing source, short summary, missing or unparseable publishTime, and title and summary conflict as data-quality limitations.
+            Items with missing or unparseable publishTime may remain in the input, so disclose that their recency is unknown.
+            Exact duplicates were removed only. Group semantically equivalent news in deduplicatedEvents without repeated weighting.
+            sourceNewsIds and evidenceIds must reference newsItems.id values; duplicateOriginalIds records removed exact duplicate source rows.
+            Unless optional content and fullTextFetched explicitly prove otherwise, keep evidenceLevel as summary and do not assume full text was read.
+            """;
 
     String buildLlmInput(String ticker, List<NewsItemVO> newsItems) {
         return buildLlmInput(ticker, null, newsItems);
@@ -61,7 +72,7 @@ class NewsAnalysisStructuredProcessor {
             }
         }
         input.put("newsItems", items);
-        input.put("instructions", "The newsItems list contains cleaned titles and summaries, and may contain optional full article content for selected items only. Exact duplicates were removed only. The LLM must fill one unified NewsReportVO-shaped result regardless of whether evidence comes from summary or full_text. deduplicatedEvents groups semantically equivalent news. sourceNewsIds and evidenceIds must reference newsItems.id values. duplicateOriginalIds records removed exact duplicate source rows. Use evidenceLevel/evidenceQuality/enhancedSourceNewsIds to show whether conclusions are based on summary, full_text, or authoritative evidence.");
+        input.put("instructions", LLM_INSTRUCTIONS);
         return JSON.toJSONString(input);
     }
 

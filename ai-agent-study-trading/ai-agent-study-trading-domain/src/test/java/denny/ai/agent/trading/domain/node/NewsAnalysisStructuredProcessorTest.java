@@ -94,6 +94,26 @@ class NewsAnalysisStructuredProcessorTest {
     }
 
     @Test
+    void instructionsDefineFiveFieldSummaryOnlyAnalysis() {
+        JSONObject input = JSON.parseObject(
+                new NewsAnalysisStructuredProcessor().buildLlmInput(
+                        "600285.SH", "羚锐制药",
+                        List.of(NewsItemVO.builder()
+                                .title("公司发布公告")
+                                .summary("摘要")
+                                .build())));
+
+        String instructions = input.getString("instructions").toLowerCase();
+        assertTrue(instructions.contains("title and summary determine article sentiment"));
+        assertTrue(instructions.contains(
+                "source, publishtime, and url affect report-level confidence and dataquality"));
+        assertTrue(instructions.contains("do not access url"));
+        assertTrue(instructions.contains("summary-level evidence"));
+        assertTrue(instructions.contains("missing or unparseable publishtime"));
+        assertTrue(instructions.contains("title and summary conflict"));
+    }
+
+    @Test
     void parsesStructuredLlmReportAndKeepsOriginalNewsItems() {
         NewsAnalysisStructuredProcessor processor = new NewsAnalysisStructuredProcessor();
         List<NewsItemVO> newsItems = List.of(
